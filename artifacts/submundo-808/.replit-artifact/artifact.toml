@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Submundo 808 — Passaporte Digital"
+description = "PWA mobile-first em português brasileiro para explorar um festival eletrônico fictício, com programação, mapa simulado, cardápio informativo, amigos e passaporte digital. Sem pagamentos ou GPS real."
+version = "1.0.0"
+id = "artifacts/submundo-808"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22772
+
+[services.development]
+run = "pnpm --filter @workspace/submundo-808 run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/submundo-808", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/submundo-808/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22772"
+BASE_PATH = "/"
