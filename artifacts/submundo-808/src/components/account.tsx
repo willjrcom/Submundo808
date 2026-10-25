@@ -28,7 +28,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
   if(loading)return <p className="text-sm text-white/50">Carregando seu perfil...</p>;
-  if(user && mode!=='password')return <div>
+  if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
       <div className="mb-10 flex items-center justify-between"><span className="rounded-full border border-[#c4ff40]/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#c4ff40]">Passaporte digital</span><Ticket className="text-[#c4ff40]"/></div>
       <p className="text-xs uppercase tracking-widest text-white/50">Bem-vindo(a)</p><h3 className="mt-2 break-words font-display text-2xl font-black uppercase">{user.name}</h3><p className="mt-1 text-sm text-white/50">{user.email}</p>
