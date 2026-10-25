@@ -36,10 +36,10 @@ type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 const geoKey='submundo-geo-bounds-v1';
 const CASA:Bounds={
- tl:{lat:-23.4809490,lng:-47.4364547},
- tr:{lat:-23.4809490,lng:-47.4360629},
- br:{lat:-23.4813084,lng:-47.4360629},
- bl:{lat:-23.4813084,lng:-47.4364547}
+ tl:{lat:-23.4805897,lng:-47.4368465},
+ tr:{lat:-23.4805897,lng:-47.4356711},
+ br:{lat:-23.4816677,lng:-47.4356711},
+ bl:{lat:-23.4816677,lng:-47.4368465}
 };
 const CASA_NAME='Casa (área de teste)';
 const presetKey='submundo-geo-preset-v1';
@@ -95,7 +95,7 @@ export default function VenueMap() {
   const scale=bounds?mapScale(bounds):null;
   const uncertainty=location&&scale?Math.max(location.accuracy/Math.max(scale.width,1)*100,location.accuracy/Math.max(scale.height,1)*100):null;
   const reliable=!!mapped&&!!location&&location.accuracy<=10&&!!scale&&scale.width>10&&scale.height>10&&uncertainty!==null&&uncertainty<15;
-  const applyCasa=()=>{setBounds(CASA);setPresetName('Casa');setGeoDraft(Object.fromEntries((['tl','tr','br','bl'] as const).flatMap(k=>[[k+'Lat',String(CASA[k].lat)],[k+'Lng',String(CASA[k].lng)]])));localStorage.setItem(geoKey,JSON.stringify(CASA));localStorage.setItem(presetKey,'Casa');setGeoError('Casa selecionada. Área provisória de teste, não corresponde necessariamente ao imóvel.');};
+  const applyCasa=()=>{setBounds(CASA);setPresetName('Casa');setGeoDraft(Object.fromEntries((['tl','tr','br','bl'] as const).flatMap(k=>[[k+'Lat',String(CASA[k].lat)],[k+'Lng',String(CASA[k].lng)]])));localStorage.setItem(geoKey,JSON.stringify(CASA));localStorage.setItem(presetKey,'Casa');setGeoError('Casa selecionada. Área provisória ampliada para aproximadamente 120 × 120 m, não corresponde necessariamente ao imóvel.');};
   const saveGeo=()=>{const keys=['tl','tr','br','bl'] as const;const parsed={} as Bounds;for(const k of keys){const lat=Number(geoDraft[k+'Lat']),lng=Number(geoDraft[k+'Lng']);if(!geoDraft[k+'Lat']?.trim()||!geoDraft[k+'Lng']?.trim()||!validGeo({lat,lng})){setGeoError('Preencha as oito coordenadas válidas.');return;}parsed[k]={lat,lng};}const dimensions=mapScale(parsed);if(dimensions.width<3||dimensions.height<3){setGeoError('Os cantos não formam uma área válida.');return;}setBounds(parsed);setPresetName('Personalizado');localStorage.setItem(geoKey,JSON.stringify(parsed));localStorage.setItem(presetKey,'Personalizado');setGeoError('Coordenadas salvas neste aparelho.');};
   const startGps=()=>{if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}setGeoError('');watch.current=navigator.geolocation.watchPosition(p=>{setLocation({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});setTracking(true);if(sharingRef.current&&!sendBusy.current&&Date.now()-lastSend.current>=10000){sendBusy.current=true;const epoch=shareEpoch.current;void requestLocation('update',{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}).then(()=>{if(epoch===shareEpoch.current)lastSend.current=Date.now();}).catch(e=>{if(epoch===shareEpoch.current)setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');}).finally(()=>{sendBusy.current=false;});}},e=>{setGeoError('Não foi possível obter a localização: '+e.message);setTracking(false);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});setTracking(true);};
   const stopSharing=async()=>{shareEpoch.current++;sharingRef.current=false;setSharing(false);lastSend.current=0;try{await requestLocation('stop',{});}catch(e){setFriendError(e instanceof Error?e.message:'Não foi possível parar o compartilhamento.');}};
