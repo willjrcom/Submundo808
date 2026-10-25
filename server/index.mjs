@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
+db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
@@ -123,6 +124,36 @@ http.createServer(async (req,res)=>{
         if(req.method==='GET'&&tables[key]){
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
           return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:row)});
+        }
+        if(req.method==='GET'&&key==='overview'){
+          const cutoff=Date.now()-15*60*1000;
+          return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE expires_at>?').get(Date.now()).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
+        }
+        if(req.method==='POST'&&key==='edit-venue'){
+          const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(id))return json(res,400,{error:'Estabelecimento inválido.'});
+          db.prepare('UPDATE venues SET name=?,address=?,city=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),id);return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='edit-map'){
+          const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
+          if(!name||!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(id)||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId))return json(res,400,{error:'Mapa inválido.'});
+          db.prepare('UPDATE venue_maps SET name=?,venue_id=? WHERE id=?').run(name,venueId,id);return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='edit-area'){
+          const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),nums=[b.x,b.y,b.width,b.height].map(Number);
+          if(!name||!db.prepare('SELECT 1 FROM map_areas WHERE id=?').get(id)||nums.some(n=>!Number.isFinite(n))||nums[0]<0||nums[1]<0||nums[2]<=0||nums[3]<=0||nums[0]+nums[2]>100||nums[1]+nums[3]>100)return json(res,400,{error:'Dimensões inválidas.'});
+          db.prepare('UPDATE map_areas SET name=?,kind=?,x=?,y=?,width=?,height=? WHERE id=?').run(name,String(b.kind||'principal').slice(0,30),...nums,id);return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='markers'){
+          const b=await body(req),id=String(b.map_id||''),markers=b.markers;
+          if(!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(id)||!Array.isArray(markers)||markers.length>250||markers.some(m=>typeof m.name!=='string'||m.name.length>100||typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100)))return json(res,400,{error:'Pontos inválidos.'});
+          db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?) ON CONFLICT(map_id) DO UPDATE SET markers_json=excluded.markers_json').run(id,JSON.stringify(markers));return json(res,200,{ok:true});
+        }
+        if(req.method==='GET'&&key==='markers'){
+          const id=url.searchParams.get('map_id')||'';
+          if(!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(id))return json(res,404,{error:'Mapa não encontrado.'});
+          const row=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(id);
+          return json(res,200,{items:row?JSON.parse(row.markers_json):[]});
         }
         if(req.method==='POST'&&key==='venues'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100);
