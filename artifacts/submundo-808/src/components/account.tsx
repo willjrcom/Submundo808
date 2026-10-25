@@ -25,9 +25,18 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [demoCredentials,setDemoCredentials]=useState<{email:string;password:string}|null>(null);
   const [mode,setMode]=useState<Mode>('login');
   const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [current,setCurrent]=useState('');
-  const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(true);const [initialError,setInitialError]=useState(false);
   const resetToken=new URLSearchParams(window.location.search).get('reset');
-  useEffect(()=>{if(resetToken)setMode('reset');request('me').then(data=>{setUser(data.user);onUser?.(data.user);}).catch(()=>setError('Não foi possível conectar ao servidor.')).finally(()=>setLoading(false));},[]);
+  useEffect(()=>{
+    let active=true;
+    if(resetToken)setMode('reset');
+    request('me').then(data=>{
+      if(!active)return;
+      setUser(data.user||null);onUser?.(data.user||null);
+    }).catch(()=>{if(active)setInitialError(true);})
+      .finally(()=>{if(active)setLoading(false);});
+    return()=>{active=false;};
+  },[]);
   const change=(next:Mode)=>{setMode(next);setError('');setSuccess('');setPassword('');setConfirm('');setCurrent('');};
   async function submit(event:React.FormEvent) {
     event.preventDefault();setError('');setSuccess('');
@@ -43,6 +52,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
   async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
   if(loading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu passaporte digital."/>;
+  if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
       <div className="mb-10 flex items-center justify-between"><span className="rounded-full border border-[#c4ff40]/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#c4ff40]">Passaporte digital</span><Ticket className="text-[#c4ff40]"/></div>
