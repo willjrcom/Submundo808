@@ -125,6 +125,14 @@ http.createServer(async (req,res)=>{
         const rows=db.prepare('SELECT id,venue_id,name FROM venue_maps').all();
         return json(res,200,{items:rows});
       }
+      if(url.pathname==='/api/public/map-detail'&&req.method==='GET'){
+        const id=String(url.searchParams.get('map_id')||'');
+        const map=db.prepare('SELECT id,name,venue_id FROM venue_maps WHERE id=?').get(id);
+        if(!map)return json(res,404,{error:'Mapa não encontrado.'});
+        const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),gps_json:undefined}));
+        const markers=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(id);
+        return json(res,200,{map,areas,markers:JSON.parse(markers?.markers_json||'[]')});
+      }
       if(url.pathname.startsWith('/api/admin/')){
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
