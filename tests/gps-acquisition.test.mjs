@@ -59,7 +59,7 @@ test('permissão negada termina em erro específico, sem novo prompt automático
  startInitialGps(f.geolocation,{onSuccess:()=>{},onError:e=>reason=gpsErrorText(e)},f.clock);
  f.calls[0].error({code:1,message:'Denied'});
  assert.match(reason,/bloqueada/);
- assert.match(reason,/Chrome/);
+ assert.match(reason,/navegador/);
  assert.equal(f.calls.length,1);
 });
 test('indisponibilidade e timeout diferenciam os problemas no Android',()=>{
