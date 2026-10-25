@@ -32,7 +32,7 @@ test('não anuncia GPS ativo antes de receber coordenadas reais',()=>{
  assert.doesNotMatch(source,/watch\.current=navigator\.geolocation\.watchPosition[\s\S]*?setTracking\(true\);trackingRef\.current=true/);
 });
 test('mantém o envio do GPS ativo no servidor apenas se o watch está ativo',()=>{
- assert.match(source,/sharingRef\.current\|\|watch\.current===null/);
+ assert.match(source,/sharingRef\.current\|\|watch\.current===null\|\|gpsActivatingRef\.current\|\|!trackingRef\.current\|\|!locationRef\.current/);
  assert.match(source,/Date\.now\(\)-lastGpsFixAt\.current<=90000/);
 });
 
