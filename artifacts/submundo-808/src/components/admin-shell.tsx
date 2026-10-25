@@ -9,7 +9,7 @@ type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
 export default function AdminShell(){
- const [seedBusy,setSeedBusy]=useState(false),[seedMessage,setSeedMessage]=useState('');
+ const [seedBusy,setSeedBusy]=useState(false),[seedMessage,setSeedMessage]=useState(''),[seedStage,setSeedStage]=useState('Criando...'),[useDemoGps,setUseDemoGps]=useState(true);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
@@ -26,15 +26,52 @@ export default function AdminShell(){
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){go({section,id:null,creating:false});}
- async function seedDemo(){setSeedBusy(true);setError('');setSeedMessage('');try{
-  const result=await api('seed-demo',{});
-  await reload();
-  setSeedMessage(result.created
-   ?'Demonstração criada com estabelecimento, mapa, pontos, 6 DJs e '+result.productsTotal+' produtos no cardápio.'
-   :result.productsLinked>0||result.productsCreated>0
-    ?'Evento de teste já existente: '+result.productsCreated+' produtos criados e '+result.productsLinked+' vinculados ao cardápio, sem alterar preços personalizados.'
-    :'Evento e produtos de teste já existem. Nenhum registro duplicado.');
- }catch(e){setError(e instanceof Error?e.message:'Erro ao criar demonstração');}finally{setSeedBusy(false);}}
+ async function seedDemo(){
+  setSeedBusy(true);setError('');setSeedMessage('');
+  let location:{latitude:number;longitude:number;accuracy:number}|null=null;
+  let gpsWarning='';
+  try{
+   if(useDemoGps){
+    if(!navigator.geolocation){
+     gpsWarning='GPS indisponível neste navegador; a demonstração será criada sem calibração automática.';
+    }else{
+     setSeedStage('Obtendo GPS...');
+     try{
+      const position=await new Promise<GeolocationPosition>((resolve,reject)=>
+       navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,maximumAge:0,timeout:15000})
+      );
+      location={latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy};
+     }catch(e){
+      const err=e as GeolocationPositionError;
+      gpsWarning=err.code===1
+       ?'Permissão de localização negada; o evento será gerado sem GPS. Você poderá calibrar manualmente.'
+       :'Não foi possível obter o GPS agora; o evento será gerado sem calibração automática.';
+     }
+    }
+   }
+   setSeedStage('Gerando demonstração...');
+   const result=await api('seed-demo',{location});
+   await reload();
+   const messages=[
+    result.created
+     ?'Demonstração criada com estabelecimento, mapa, pontos, 6 DJs e '+result.productsTotal+' produtos no cardápio.'
+     :result.productsLinked>0||result.productsCreated>0
+      ?'Demonstração existente atualizada: '+result.productsCreated+' produtos criados e '+result.productsLinked+' vinculados, sem alterar preços personalizados.'
+      :'Evento, DJs e produtos de teste preservados, sem duplicatas.'
+   ];
+   if(result.gpsStatus==='auto-calibrated'){
+    messages.push('GPS de teste calibrado em uma área de 50 × 40 m, com referências de 10 m. Precisão informada pelo dispositivo: ±'+Math.round(result.gpsAccuracy)+' m.');
+    if(result.markersRepositioned)messages.push('Pontos originais reorganizados na grade de 10 m.');
+   }else if(result.gpsStatus==='manual-preserved'){
+    messages.push('Já existe calibração manual; ela foi preservada sem alterações.');
+   }else if(result.gpsStatus==='no-demo-map'||result.gpsStatus==='no-areas'){
+    messages.push('O mapa demonstrativo não foi encontrado para calibrar o GPS.');
+   }
+   if(gpsWarning)messages.push(gpsWarning);
+   setSeedMessage(messages.join(' '));
+  }catch(e){setError(e instanceof Error?e.message:'Erro ao criar demonstração');}
+  finally{setSeedBusy(false);setSeedStage('Criando...');}
+ }
  async function removeConfirmed(){if(!confirmDelete)return;setBusy(true);setError('');try{await api('delete',{id:confirmDelete.id,entity:confirmDelete.entity});setConfirmDelete(null);await reload();if(route.id)back();}catch(e){setError(e instanceof Error?e.message:'Erro ao excluir');setConfirmDelete(null);}finally{setBusy(false);}}
  async function save(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{if(section==='Estabelecimentos')await api(editing?'edit-venue':'venues',{id:editing?.id,name,address,city});else await api(editing?'edit-map':'maps',{id:editing?.id,name,venue_id:venue});await reload();if(editing||creating)back();else setName('');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}finally{setBusy(false);}}
  if(user===undefined)return <div className="min-h-dvh bg-[#0b090f] p-8 text-white">Verificando acesso...</div>;
@@ -44,7 +81,7 @@ export default function AdminShell(){
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing?'Editar '+(section==='Estabelecimentos'?'estabelecimento':section==='Eventos'?'evento':'mapa'):creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':section==='Eventos'?'evento':'mapa'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
  {section==='Produtos e cardápios'&&<AdminProducts events={events}/>}
- {section==='Visão geral'&&<div className="mt-6 rounded-2xl border border-[#c4ff40]/20 bg-white/5 p-5"><h3 className="font-bold">Dados de demonstração</h3><p className="mt-2 text-sm text-white/60">Cria um evento fictício com estabelecimento, mapa, ambientes, pontos, seis DJs e 14 produtos demonstrativos com preços, separados por categoria. Os produtos são vinculados ao cardápio do evento. Se o evento já existir, completa apenas os produtos que estiverem faltando.</p><button disabled={seedBusy} onClick={()=>void seedDemo()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{seedBusy?'Criando...':'Gerar evento, DJs e produtos de teste'}</button>{seedMessage&&<p className="mt-3 text-sm text-[#c4ff40]">{seedMessage}</p>}</div>}
+ {section==='Visão geral'&&<div className="mt-6 rounded-2xl border border-[#c4ff40]/20 bg-white/5 p-5"><h3 className="font-bold">Dados de demonstração</h3><p className="mt-2 text-sm text-white/60">Cria um evento fictício com estabelecimento, mapa, ambientes, pontos, seis DJs e 14 produtos demonstrativos. Pode calibrar o mapa automaticamente usando seu GPS, com grade de 10 metros. Se o evento já existir, preserva as personalizações.</p><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/15 p-3 text-sm"><input type="checkbox" checked={useDemoGps} disabled={seedBusy} onChange={e=>setUseDemoGps(e.target.checked)} className="mt-1 h-4 w-4 accent-[#c4ff40]"/><span><span className="font-semibold">Calibração automática de teste por GPS</span><span className="mt-1 block text-xs text-white/55">Ao gerar, o navegador pedirá sua localização. O sistema estima uma área de 50 × 40 m com referências a cada 10 m, sem substituir a calibração manual. Não é um levantamento real do espaço.</span></span></label><button disabled={seedBusy} onClick={()=>void seedDemo()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{seedBusy?seedStage:'Gerar evento, DJs e produtos de teste'}</button>{seedMessage&&<p className="mt-3 text-sm text-[#c4ff40]">{seedMessage}</p>}</div>}
  {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
  {(section==='Estabelecimentos'||section==='Mapas e ambientes')&&!(section==='Mapas e ambientes'&&editing)&&<div className={'mt-8 grid gap-5 '+(editing||creating?'max-w-xl':'lg:grid-cols-2')}>{(editing||creating)&&<form onSubmit={save} className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold">{editing?'Editar':'Novo'} {section==='Estabelecimentos'?'estabelecimento':'mapa'}</h3>{section==='Mapas e ambientes'&&<select required value={venue} onChange={e=>setVenue(e.target.value)} className={input}><option value="">Selecione o estabelecimento</option>{venues.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}</select>}<input required placeholder="Nome" value={name} onChange={e=>setName(e.target.value)} className={input}/>{section==='Estabelecimentos'&&<><input placeholder="Endereço" value={address} onChange={e=>setAddress(e.target.value)} className={input}/><input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></>}<button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Plus size={18}/>{editing?'Salvar alterações':'Cadastrar'}</button></form>}{!editing&&!creating&&<div className="rounded-2xl border border-white/10 p-5"><div className="mb-4 flex items-center justify-between gap-2"><h3 className="font-bold">Cadastrados</h3><button onClick={()=>go({section,id:null,creating:true})} className="rounded-xl bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black">+ Criar</button></div>{(section==='Estabelecimentos'?venues:maps).map(x=><div key={x.id} className="flex items-center justify-between gap-3 border-b border-white/10 py-3"><div><p className="font-medium">{x.name}</p><p className="text-xs text-white/50">{section==='Estabelecimentos'?x.city:venues.find(v=>v.id===x.venue_id)?.name}</p></div><div className="flex gap-2"><button onClick={()=>edit(x)} className="flex items-center gap-2 rounded-xl border border-white/20 px-3 py-2 text-xs font-bold"><Pencil size={15}/> Editar</button><button aria-label={'Excluir '+x.name} onClick={()=>setConfirmDelete({id:x.id,name:x.name,entity:section==='Estabelecimentos'?'venue':'map'})} className="rounded-xl border border-red-400/40 px-3 py-2 text-red-300"><Trash2 size={15}/></button></div></div>)}</div>}</div>}
  {section==='Eventos'&&(editing||creating?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>:<div className="mt-8 space-y-3"><button onClick={()=>go({section:'Eventos',id:null,creating:true})} className="rounded-xl bg-[#c4ff40] px-4 py-3 font-bold text-black">+ Criar evento</button>{events.map(e=><div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-4"><span>{e.name}</span><div className="flex gap-2"><button onClick={()=>edit(e)} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Editar</button><button onClick={()=>setConfirmDelete({id:e.id,name:e.name,entity:'event'})} className="rounded-xl border border-red-400/40 px-3 py-2 text-sm text-red-300">Excluir</button></div></div>)}</div>)}
