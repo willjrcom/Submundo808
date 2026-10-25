@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NUL
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)');
+db.exec("CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',category TEXT NOT NULL,default_price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL)");
+db.exec('CREATE TABLE IF NOT EXISTS event_products(event_id TEXT NOT NULL,product_id TEXT NOT NULL,price_cents INTEGER,PRIMARY KEY(event_id,product_id))');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
@@ -131,6 +133,7 @@ http.createServer(async (req,res)=>{
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? ORDER BY u.name').all(user.id,user.id,user.id,Date.now()-90000);
         return json(res,200,{friends:rows});
       }
+      if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
         const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city FROM events e JOIN venues v ON v.id=e.venue_id ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
         return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
