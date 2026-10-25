@@ -216,7 +216,7 @@ http.createServer(async (req,res)=>{
           for(const a of areas){
             if(!a||typeof a.id!=='string'||a.id.length>100||!a.id||ids.has(a.id)||typeof a.name!=='string'||!a.name.trim()||a.name.length>100||
               typeof a.kind!=='string'||a.kind.length>30||![a.x,a.y,a.width,a.height].every(n=>typeof n==='number'&&Number.isFinite(n))||
-              a.x<0||a.y<0||a.width<3||a.height<3||a.x+a.width>100.001||a.y+a.height>100.001||
+              a.x< -35.001||a.y< -35.001||a.width<3||a.height<3||a.x+a.width>135.001||a.y+a.height>135.001||
               !validColor(a.color)||typeof(a.description||'')!=='string'||String(a.description||'').length>500||
               typeof(a.icon||'')!=='string'||String(a.icon||'').length>40||!a.gps||typeof a.gps!=='object'||JSON.stringify(a.gps).length>3000
             )return json(res,400,{error:'Ambiente inválido: verifique nome, formato e limites do mapa.'});
@@ -227,7 +227,7 @@ http.createServer(async (req,res)=>{
           const markerIds=new Set();
           for(const m of markers){
             if(!m||typeof m.id!=='string'||!m.id||m.id.length>100||markerIds.has(m.id)||typeof m.name!=='string'||!m.name.trim()||m.name.length>100||
-              typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100)||
+              typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=-35&&n<=135)||
               !['square','circle',undefined].includes(m.shape)||!(m.size===undefined||(Number.isFinite(m.size)&&m.size>=24&&m.size<=72))||
               !validColor(m.color)||typeof(m.description||'')!=='string'||String(m.description||'').length>500
             )return json(res,400,{error:'Ponto inválido: verifique nome, formato, tamanho e posição.'});
