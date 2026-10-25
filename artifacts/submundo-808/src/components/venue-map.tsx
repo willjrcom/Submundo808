@@ -28,6 +28,28 @@ const initial: Point[] = [
   { id: 'stairs', kind: 'escada', x: 85, y: 13 },
   { id: 'entrance', kind: 'entrada', x: 50, y: 92 },
 ];
+
+// Georreferenciamento por quatro cantos: topo esquerdo, topo direito,
+// base direita e base esquerda. Para locais pequenos, aproximação bilinear.
+type Geo={lat:number;lng:number};
+type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
+const geoKey='submundo-geo-bounds-v1';
+function validGeo(p:any):p is Geo{return p&&Number.isFinite(p.lat)&&Math.abs(p.lat)<=90&&Number.isFinite(p.lng)&&Math.abs(p.lng)<=180;}
+function loadGeo():Bounds|null{try{const b=JSON.parse(localStorage.getItem(geoKey)||'null');return b&&validGeo(b.tl)&&validGeo(b.tr)&&validGeo(b.br)&&validGeo(b.bl)?b:null;}catch{return null;}}
+function gpsToMap(p:Geo,b:Bounds){
+ const origin=b.tl;const rad=Math.PI/180;const scaleX=111320*Math.cos(origin.lat*rad);const scaleY=111320;
+ const xy=(q:Geo)=>({x:(q.lng-origin.lng)*scaleX,y:(origin.lat-q.lat)*scaleY});
+ const tr=xy(b.tr),bl=xy(b.bl),br=xy(b.br),pt=xy(p);
+ // Invert bilinear mapping with Newton iterations.
+ let u=.5,v=.5;
+ for(let i=0;i<12;i++){const fx=tr.x*u+bl.x*v+(br.x-tr.x-bl.x)*u*v-pt.x;const fy=tr.y*u+bl.y*v+(br.y-tr.y-bl.y)*u*v-pt.y;
+ const ax=tr.x+(br.x-tr.x-bl.x)*v,ay=tr.y+(br.y-tr.y-bl.y)*v,bx=bl.x+(br.x-tr.x-bl.x)*u,by=bl.y+(br.y-tr.y-bl.y)*u;
+ const det=ax*by-ay*bx;if(Math.abs(det)<1e-8)return null;
+ const du=(fx*by-fy*bx)/det,dv=(ax*fy-ay*fx)/det;u-=du;v-=dv;if(Math.abs(du)+Math.abs(dv)<1e-8)break;}
+ return Number.isFinite(u)&&Number.isFinite(v)?{x:u*100,y:v*100,inside:u>=0&&u<=1&&v>=0&&v<=1}:null;
+}
+function mapScale(b:Bounds){const rad=Math.PI/180;const avgLat=(b.tl.lat+b.tr.lat+b.bl.lat+b.br.lat)/4;const distance=(a:Geo,c:Geo)=>Math.hypot((a.lng-c.lng)*111320*Math.cos(avgLat*rad),(a.lat-c.lat)*111320);return {width:(distance(b.tl,b.tr)+distance(b.bl,b.br))/2,height:(distance(b.tl,b.bl)+distance(b.tr,b.br))/2};}
+
 const storageKey = 'submundo-map-layout-v1';
 function load(): Point[] {
   try {
@@ -43,6 +65,20 @@ export default function VenueMap() {
   const [selected, setSelected] = useState('stage');
   const [kind, setKind] = useState<Kind>('cerveja');
   const [status, setStatus] = useState('');
+  const [bounds,setBounds]=useState<Bounds|null>(loadGeo);
+  const [geoDraft,setGeoDraft]=useState<Record<string,string>>(()=>{const b=loadGeo();return Object.fromEntries((['tl','tr','br','bl'] as const).flatMap(k=>[[k+'Lat',b?.[k].lat.toString()||''],[k+'Lng',b?.[k].lng.toString()||'']]));});
+  const [location,setLocation]=useState<{lat:number;lng:number;accuracy:number}|null>(null);
+  const [geoError,setGeoError]=useState('');
+  const [tracking,setTracking]=useState(false);
+  const watch=useRef<number|null>(null);
+  useEffect(()=>()=>{if(watch.current!==null)navigator.geolocation.clearWatch(watch.current);},[]);
+  const mapped=location&&bounds?gpsToMap(location,bounds):null;
+  const scale=bounds?mapScale(bounds):null;
+  const uncertainty=location&&scale?Math.max(location.accuracy/Math.max(scale.width,1)*100,location.accuracy/Math.max(scale.height,1)*100):null;
+  const reliable=!!mapped&&!!location&&location.accuracy<=10&&!!scale&&scale.width>10&&scale.height>10&&uncertainty!==null&&uncertainty<15;
+  const saveGeo=()=>{const keys=['tl','tr','br','bl'] as const;const parsed={} as Bounds;for(const k of keys){const lat=Number(geoDraft[k+'Lat']),lng=Number(geoDraft[k+'Lng']);if(!geoDraft[k+'Lat']?.trim()||!geoDraft[k+'Lng']?.trim()||!validGeo({lat,lng})){setGeoError('Preencha as oito coordenadas válidas.');return;}parsed[k]={lat,lng};}const dimensions=mapScale(parsed);if(dimensions.width<3||dimensions.height<3){setGeoError('Os cantos não formam uma área válida.');return;}setBounds(parsed);localStorage.setItem(geoKey,JSON.stringify(parsed));setGeoError('Coordenadas salvas neste aparelho.');};
+  const startGps=()=>{if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}setGeoError('');watch.current=navigator.geolocation.watchPosition(p=>{setLocation({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});setTracking(true);},e=>{setGeoError('Não foi possível obter a localização: '+e.message);setTracking(false);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});setTracking(true);};
+  const stopGps=()=>{if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}setTracking(false);setLocation(null);};
   const board = useRef<HTMLDivElement>(null);
   const dragging = useRef<string | null>(null);
   useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(points)); } catch {} }, [points]);
@@ -88,6 +124,7 @@ export default function VenueMap() {
         <div className="pointer-events-none absolute left-[32%] top-[5%] h-[12%] w-[36%] rounded-b-2xl border-x-2 border-b-4 border-[#c4ff40]/50 bg-[#c4ff40]/10" />
         <div className="pointer-events-none absolute bottom-[4%] left-[37%] h-[9%] w-[26%] rounded-t-lg border-x border-t border-[#c4ff40]/30 bg-[#c4ff40]/[.055]" />
         <div className="pointer-events-none absolute bottom-[17%] left-[6%] right-[6%] border-t border-dashed border-white/15"/>
+        {mapped&&mapped.x>=0&&mapped.x<=100&&mapped.y>=0&&mapped.y<=100&&<div aria-label="Sua localização aproximada" className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2" style={{left:mapped.x+'%',top:mapped.y+'%'}}><span className="block h-5 w-5 rounded-full border-[3px] border-white bg-[#33aaff] shadow-[0_0_0_7px_#33aaff55]"/></div>}
         {points.map(p => {
           const item = catalog.find(c => c.kind === p.kind)!;
           const isSelected = selected === p.id;
@@ -98,6 +135,19 @@ export default function VenueMap() {
         <span className="pointer-events-none absolute bottom-2 right-2 rounded bg-black/50 px-2 py-1 font-mono text-[9px] text-white/40">PLANTA DEMO · NÃO EM ESCALA</span>
       </div>
       <div className="flex items-start gap-3 px-2 py-4"><MapPin size={20} className="shrink-0 text-[#c4ff40]"/><div><p className="font-bold">{details?.label || 'Selecione um ponto'}</p><p className="text-xs text-white/50">{active ? `Posição na planta: X ${Math.round(active.x)}% · Y ${Math.round(active.y)}%` : 'Selecione um elemento do mapa.'}</p></div></div>
+    </div>
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+      <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="text-sm font-black uppercase">Minha localização no evento</h3></div>
+      <p className="mt-2 text-xs leading-relaxed text-white/55">Permita o GPS para mostrar sua posição aproximada no mapa. As coordenadas ficam somente neste aparelho e não são enviadas ao servidor.</p>
+      <button onClick={tracking?stopGps:startGps} className="mt-3 w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black">{tracking?'Parar localização':'Ativar minha localização'}</button>
+      {location&&<p className="mt-3 text-xs text-white/70">Precisão estimada: ±{Math.round(location.accuracy)} m. {!bounds?'Configure os quatro cantos da planta para mostrar sua posição.':!mapped?'Não foi possível posicionar no mapa.':!reliable?'Posição incerta; não é seguro identificar o ambiente.':mapped.inside?'Você está provavelmente dentro do perímetro cadastrado.':'Você está provavelmente fora do perímetro cadastrado.'}</p>}
+      {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
+      <details className="mt-4 border-t border-white/10 pt-3"><summary className="cursor-pointer text-xs font-bold text-white/80">Configurar limites geográficos da planta</summary>
+        <p className="mt-2 text-xs leading-relaxed text-white/50">Cadastre latitude e longitude dos quatro cantos reais correspondentes ao desenho, na ordem indicada. Isso é uma calibração local, não uma publicação para todos.</p>
+        <div className="mt-3 space-y-3">{(['tl','tr','br','bl'] as const).map((key,i)=><div key={key}><p className="mb-1 text-xs font-bold">{['Superior esquerdo','Superior direito','Inferior direito','Inferior esquerdo'][i]}</p><div className="grid grid-cols-2 gap-2">{(['Lat','Lng'] as const).map(axis=><input key={axis} type="number" step="any" inputMode="decimal" aria-label={axis==='Lat'?'Latitude':'Longitude'} placeholder={axis==='Lat'?'Latitude':'Longitude'} value={geoDraft[key+axis]||''} onChange={e=>setGeoDraft(old=>({...old,[key+axis]:e.target.value}))} className="min-w-0 rounded-lg border border-white/20 bg-[#211b29] p-2 text-xs text-white"/>)}</div></div>)}</div>
+        <button onClick={saveGeo} className="mt-3 w-full rounded-xl border border-[#c4ff40]/50 px-4 py-3 text-xs font-bold text-[#c4ff40]">Salvar coordenadas</button>
+        <p className="mt-2 text-xs text-white/45">O GPS pode errar vários metros. Este recurso não distingue com segurança pista, bar e camarote próximos.</p>
+      </details>
     </div>
     {editing && <div className="mt-4 rounded-2xl border border-[#c4ff40]/30 bg-[#c4ff40]/[.045] p-4">
       <p className="mb-1 text-sm font-black uppercase">Editor de planta</p><p className="mb-4 text-xs leading-relaxed text-white/55">Escolha um tipo, adicione e arraste na planta. As posições ficam salvas neste dispositivo.</p>
