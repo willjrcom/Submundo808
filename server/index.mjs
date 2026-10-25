@@ -117,6 +117,14 @@ http.createServer(async (req,res)=>{
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? ORDER BY u.name').all(user.id,user.id,user.id,Date.now()-90000);
         return json(res,200,{friends:rows});
       }
+      if(url.pathname==='/api/public/events'&&req.method==='GET'){
+        const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city FROM events e JOIN venues v ON v.id=e.venue_id ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
+        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
+      }
+      if(url.pathname==='/api/public/maps'&&req.method==='GET'){
+        const rows=db.prepare('SELECT id,venue_id,name FROM venue_maps').all();
+        return json(res,200,{items:rows});
+      }
       if(url.pathname.startsWith('/api/admin/')){
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
