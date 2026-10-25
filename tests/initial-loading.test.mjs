@@ -51,7 +51,7 @@ test('catálogo e preços por evento não exibem listas vazias enquanto buscam d
  assert.match(source,/showAssignmentLoading\?<PageLoading compact/);
 });
 test('barra de navegação não muda após montar e mapa não fica um frame vazio',()=>{
- assert.match(app,/useState\(\(\)=>!!localStorage\.getItem\('submundo-event-id'\)\)/);
+ assert.match(app,/\{tabs\.map\(\(\{id,title,Icon\}\)/);
  assert.match(app,/if\(next==='mapa'\)setMapMounted\(true\);setTab\(next\)/);
  assert.match(app,/\{mapMounted&&<div hidden=\{tab!=='mapa'\}/);
 });
