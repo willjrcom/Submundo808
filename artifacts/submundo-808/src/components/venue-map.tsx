@@ -25,6 +25,7 @@ export default function VenueMap(){
   const [location,setLocation]=useState<GpsFix|null>(null);
   const locationRef=useRef<GpsFix|null>(null);
   const rawGpsTimestamp=useRef(0);
+  const lastGpsFixAt=useRef(0);
   const [geoError,setGeoError]=useState('');
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
@@ -56,7 +57,17 @@ export default function VenueMap(){
    const refreshTimer=window.setInterval(()=>void refresh(),10000);
    // Um GPS parado pode não disparar eventos: mantenha o último ponto válido
    // vivo no servidor, desde que o usuário ainda esteja compartilhando.
-   const heartbeat=window.setInterval(()=>sendLatestLocation(true),20000);
+   const heartbeat=window.setInterval(()=>{
+    if(!sharingRef.current)return;
+    if(navigator.geolocation&&Date.now()-lastGpsFixAt.current>17000){
+     // Revalidar a posição ao ficar parado, sem republicar coordenadas antigas
+     // como se fossem novas leituras de GPS.
+     navigator.geolocation.getCurrentPosition(consumeGpsPosition,()=>{
+      trackingRef.current=false;
+      setGeoError('Sem atualização recente do GPS. Compartilhamento aguardando uma nova leitura.');
+     },{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
+    }else sendLatestLocation(true);
+   },20000);
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
     shareEpoch.current++;sharingRef.current=false;
@@ -67,7 +78,7 @@ export default function VenueMap(){
   },[]);
   const sendLatestLocation=(heartbeat=false)=>{
    const position=locationRef.current;
-   if(!sharingRef.current||!position||sendBusy.current)return;
+   if(!sharingRef.current||!trackingRef.current||!position||sendBusy.current)return;
    if(Date.now()-lastSend.current<(heartbeat?15000:10000))return;
    const epoch=shareEpoch.current;
    sendBusy.current=true;
@@ -77,18 +88,20 @@ export default function VenueMap(){
     if(epoch===shareEpoch.current)setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');
    }).finally(()=>{sendBusy.current=false;});
   };
+  const consumeGpsPosition=(p:GeolocationPosition)=>{
+   if(p.timestamp<rawGpsTimestamp.current)return;
+   rawGpsTimestamp.current=p.timestamp;
+   lastGpsFixAt.current=Date.now();
+   const next=stableGps(locationRef.current,{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});
+   locationRef.current=next;
+   setLocation(next);setTracking(true);trackingRef.current=true;setGeoError('');
+   sendLatestLocation();
+  };
   const startGps=()=>{
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
    setGeoError('');
-   watch.current=navigator.geolocation.watchPosition(p=>{
-    if(p.timestamp<rawGpsTimestamp.current)return;
-    rawGpsTimestamp.current=p.timestamp;
-    const next=stableGps(locationRef.current,{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});
-    locationRef.current=next;
-    setLocation(next);setTracking(true);trackingRef.current=true;
-    sendLatestLocation();
-   },e=>{
+   watch.current=navigator.geolocation.watchPosition(consumeGpsPosition,e=>{
     setGeoError(e.code===1?'Permissão de localização negada. Autorize a localização nas configurações do navegador para atualizar o GPS.':'Não foi possível obter a localização: '+e.message);
     setTracking(false);trackingRef.current=false;
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
