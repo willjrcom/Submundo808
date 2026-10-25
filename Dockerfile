@@ -15,7 +15,8 @@ ENV PORT=80
 ENV DATA_DIR=/data
 WORKDIR /app
 COPY --from=builder /app/artifacts/submundo-808/dist/public/ /app/public/
-COPY server/index.mjs /app/server/index.mjs
+COPY server/ /app/server/
+RUN node --check /app/server/index.mjs && node --check /app/server/auth.mjs
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 VOLUME ["/data"]
