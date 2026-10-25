@@ -4,6 +4,7 @@ import useMinimumLoading from './use-minimum-loading';
 import {displayLabel} from './display-label';
 import {MapPin,Navigation,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sofa,Utensils,Wine,Bath,Flag,Stethoscope} from 'lucide-react';
 import {gpsToMap,stableGps,offMapInfo,mapSize,type GpsFix} from './map-location-utils';
+import {startInitialGps,gpsErrorText} from './gps-acquisition';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
@@ -52,6 +53,9 @@ export default function VenueMap(){
   const locationRef=useRef<GpsFix|null>(null);
   const rawGpsTimestamp=useRef(0);
   const lastGpsFixAt=useRef(0);
+  const gpsAttemptId=useRef(0);
+  const gpsInitialCancel=useRef<(()=>void)|null>(null);
+  const watchStartupTimeout=useRef<number|null>(null);
   const [geoError,setGeoError]=useState('');
   const [gpsPermissionRequired,setGpsPermissionRequired]=useState(false);
   const [gpsStarting,setGpsStarting]=useState(false);
@@ -88,11 +92,11 @@ export default function VenueMap(){
       if(!alive||!sharingRef.current)return;
       if(status.state==='granted'){
        setGpsPermissionRequired(false);setGeoError('');
-       if(watch.current===null)startGps();
+       if(watch.current===null&&gpsInitialCancel.current===null)startGps();
       }else{
        // A consulta de permissões pode terminar durante um watchPosition
        // iniciado pelo clique do usuário. Não cancelar essa tentativa.
-       if(status.state==='prompt'&&watch.current!==null)return;
+       if(status.state==='prompt'&&(watch.current!==null||gpsInitialCancel.current!==null))return;
        // "prompt" e "denied" nunca disparam um novo pedido automaticamente.
        // O único pedido de GPS deve partir do botão principal da tela.
        setGpsPermissionRequired(true);
@@ -136,6 +140,9 @@ export default function VenueMap(){
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
     if(permissionStatus)permissionStatus.onchange=null;
+    gpsAttemptId.current++;
+    gpsInitialCancel.current?.();gpsInitialCancel.current=null;
+    if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
     shareEpoch.current++;sharingRef.current=false;
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    };
@@ -156,6 +163,7 @@ export default function VenueMap(){
    if(p.timestamp<rawGpsTimestamp.current)return;
    rawGpsTimestamp.current=p.timestamp;
    lastGpsFixAt.current=Date.now();
+   if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
    setGpsStarting(false);
    setGpsPermissionRequired(false);
    const next=stableGps(locationRef.current,{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});
@@ -164,41 +172,99 @@ export default function VenueMap(){
    sendLatestLocation();
   };
   const startGps=()=>{
-   // Não recria o watch ativo: isso evita novas solicitações desnecessárias
-   // quando a permissão muda de "prompt" para "granted".
+   // Monitoramento contínuo começa automaticamente APENAS com permissão concedida
+   // ou depois da primeira posição obtida por um clique explícito.
    if(watch.current!==null)return;
    if(!navigator.geolocation){setGpsStarting(false);setGeoError('GPS indisponível neste navegador.');return;}
-   setGpsStarting(true);setGeoError('');
-   watch.current=navigator.geolocation.watchPosition(consumeGpsPosition,e=>{
+   if(!locationRef.current)setGpsStarting(true);
+   setGeoError('');
+   watch.current=navigator.geolocation.watchPosition(consumeGpsPosition,error=>{
+    if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
     setGpsStarting(false);
-    if(e.code===1)setGpsPermissionRequired(true);
-    setGeoError(e.code===1?'GPS bloqueado. Permita a localização nas configurações deste site.':'Não foi possível obter a localização: '+e.message);
+    setGpsPermissionRequired(error.code===1);
+    setGeoError(gpsErrorText(error));
     setTracking(false);trackingRef.current=false;
-    if(e.code===1){locationRef.current=null;setLocation(null);}
+    locationRef.current=null;setLocation(null);
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
-   },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
+    if(error.code===1&&sharingRef.current)void requestLocation('stop',{}).catch(()=>{});
+   },{enableHighAccuracy:true,maximumAge:5000,timeout:18000});
+   if(!locationRef.current){
+    watchStartupTimeout.current=window.setTimeout(()=>{
+     if(watch.current===null||locationRef.current)return;
+     navigator.geolocation.clearWatch(watch.current);watch.current=null;
+     setGpsStarting(false);setTracking(false);trackingRef.current=false;
+     setGeoError('Não recebemos coordenadas do Android. Toque em Ativar localização para tentar novamente.');
+    },24000);
+   }
   };
-  const stopSharing=async()=>{try{await savePrefs(false,false);shareEpoch.current++;sharingRef.current=false;setSharing(false);setGpsStarting(false);setGpsPermissionRequired(false);lastSend.current=0;if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}trackingRef.current=false;setTracking(false);setLocation(null);locationRef.current=null;setGeoError('');await requestLocation('stop',{});}catch{}};
-  const startSharing=async()=>{
-   if(gpsStarting||watch.current!==null)return;
-   setFriendError('');
+  const cancelGpsStartup=()=>{
+   gpsAttemptId.current++;
+   gpsInitialCancel.current?.();gpsInitialCancel.current=null;
+   if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
+   if(watch.current!==null&&!locationRef.current){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+   setGpsStarting(false);
+   setGeoError('Busca de localização cancelada.');
+  };
+  const stopSharing=async()=>{
+   cancelGpsStartup();
    try{
-    if(!navigator.geolocation){setGeoError('GPS indisponível neste dispositivo.');return;}
-    if(!sharingRef.current){
-     const response=await fetch('/api/auth/me',{credentials:'same-origin'});
-     if(!response.ok)throw Error('Não foi possível verificar a conta.');
-     const me=await response.json();
-     if(!me.user){setAuthRequired(true);setFriendError('Entre na sua conta para compartilhar sua localização.');return;}
-     await savePrefs(true,true);
-     shareEpoch.current++;
-     sharingRef.current=true;setSharing(true);
-    }
-    // Uma autorização salva no servidor não concede acesso ao GPS do aparelho.
-    // O botão principal chama watchPosition uma única vez por tentativa.
-    lastSend.current=0;startGps();
-   }catch(e){setFriendError(e instanceof Error?e.message:'Não foi possível ativar o GPS.');}
+    await savePrefs(false,false);
+    shareEpoch.current++;sharingRef.current=false;setSharing(false);
+    setGpsPermissionRequired(false);lastSend.current=0;
+    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+    trackingRef.current=false;setTracking(false);
+    setLocation(null);locationRef.current=null;setGeoError('');
+    await requestLocation('stop',{});
+   }catch{}
   };
-
+  // IMPORTANTE: NÃO tornar este handler async. O primeiro acesso ao GPS é
+  // disparado sincronamente no clique, antes de qualquer fetch ou await.
+  // Isso permite que o Android apresente seu diálogo de permissão quando
+  // o site estiver no estado "perguntar".
+  const startSharing=()=>{
+   if(gpsStarting||gpsInitialCancel.current||watch.current!==null)return;
+   setFriendError('');
+   if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
+   if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
+   if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
+   setGpsStarting(true);setGeoError('');
+   const attempt=++gpsAttemptId.current;
+   const cancelled=()=>attempt!==gpsAttemptId.current;
+   const onGpsSuccess=(position:GeolocationPosition)=>{
+    if(cancelled())return;
+    gpsInitialCancel.current=null;
+    void (async()=>{
+     try{
+      // Só registra o compartilhamento no servidor depois que temos GPS real.
+      if(!sharingRef.current){
+       await savePrefs(true,true);
+       if(cancelled())return;
+       shareEpoch.current++;
+       sharingRef.current=true;setSharing(true);
+      }
+      if(cancelled())return;
+      lastSend.current=0;
+      rawGpsTimestamp.current=0;
+      consumeGpsPosition(position);
+      startGps();
+     }catch(error){
+      if(cancelled())return;
+      setGpsStarting(false);
+      setGeoError(error instanceof Error?error.message:'Não foi possível ativar a localização.');
+     }
+    })();
+   };
+   gpsInitialCancel.current=startInitialGps(navigator.geolocation,{
+    onSuccess:onGpsSuccess,
+    onError:error=>{
+     if(cancelled())return;
+     gpsInitialCancel.current=null;
+     setGpsStarting(false);setTracking(false);trackingRef.current=false;
+     setGpsPermissionRequired(error.code===1);
+     setGeoError(gpsErrorText(error));
+    }
+   });
+  };
 
  const mapped=location&&bounds?gpsToMap(location,bounds):null;
  const myOutside=mapped&&bounds&&!mapped.inside?offMapInfo(mapped,bounds):null;
