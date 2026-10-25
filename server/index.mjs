@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,nam
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
+db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
@@ -93,6 +94,19 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const id=String(b.id||'');
         const [a,bId]=[user.id,id].sort();db.prepare('DELETE FROM friendships WHERE user_a=? AND user_b=?').run(a,bId);
         return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/location/preferences'&&req.method==='GET'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const row=db.prepare('SELECT gps_enabled,share_enabled FROM location_preferences WHERE user_id=?').get(user.id);
+        return json(res,200,{gpsEnabled:!!row?.gps_enabled,shareEnabled:!!row?.share_enabled});
+      }
+      if(url.pathname==='/api/location/preferences'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const b=await body(req);
+        if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled))return json(res,400,{error:'Preferências inválidas.'});
+        db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,updated_at) VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,updated_at=excluded.updated_at').run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),Date.now());
+        if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
+        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled});
       }
       if (url.pathname==='/api/location/me' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
