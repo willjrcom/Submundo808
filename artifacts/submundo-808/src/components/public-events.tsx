@@ -7,9 +7,9 @@ const hour=(value?:string)=>{if(!value)return 'A definir';const d=new Date(value
 function link(value:string){if(!value)return '';if(/^https?:\/\//i.test(value))return value;return 'https://'+value.replace(/^@/,'');}
 export default function PublicEvents(){
  const [events,setEvents]=useState<Event[]>([]),[selected,setSelected]=useState(''),[loading,setLoading]=useState(true),[error,setError]=useState('');
- useEffect(()=>{fetch('/api/public/events').then(async r=>{if(!r.ok)throw Error('Não foi possível carregar os eventos');return r.json();}).then(j=>{setEvents(j.items||[]);setSelected(old=>old||localStorage.getItem('submundo-event-id')||j.items?.[0]?.id||'');}).catch(e=>setError(String(e))).finally(()=>setLoading(false));},[]);
+ useEffect(()=>{fetch('/api/public/events').then(async r=>{if(!r.ok)throw Error('Não foi possível carregar os eventos');return r.json();}).then(j=>{setEvents(j.items||[]);setSelected(old=>old||localStorage.getItem('submundo-event-id')||'');}).catch(e=>setError(String(e))).finally(()=>setLoading(false));},[]);
  const event=events.find(e=>e.id===selected)||events[0];
- function choose(id:string){setSelected(id);localStorage.setItem('submundo-event-id',id);}
+ function choose(id:string){setSelected(id);localStorage.setItem('submundo-event-id',id);window.dispatchEvent(new Event('submundo-event-selected'));}
  if(loading)return <div className="py-16 text-center text-sm text-white/50">Carregando eventos...</div>;
  if(error)return <div role="alert" className="rounded-2xl border border-red-400/30 p-5 text-sm text-red-300">{error}<button onClick={()=>window.location.reload()} className="ml-3 underline">Tentar novamente</button></div>;
  if(!events.length)return <div className="rounded-3xl border border-white/10 bg-white/5 p-7"><CalendarDays className="mb-4 text-[#c4ff40]"/><h1 className="text-2xl font-black">Próximos eventos</h1><p className="mt-3 text-sm text-white/60">Nenhum evento cadastrado ainda. A programação aparecerá aqui assim que for publicada.</p></div>;
