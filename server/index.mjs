@@ -1,4 +1,5 @@
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
+import {seedDemoProducts} from './demo-products.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -292,12 +293,22 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='POST'&&key==='seed-demo'){
           const existing=db.prepare("SELECT id FROM events WHERE name='SUBMUNDO 808 — Edição Demo'").get();
-          if(existing)return json(res,409,{error:'Evento de demonstração já existe. Edite-o na lista de eventos.'});
+          if(existing){
+            // Completa o catálogo de eventos já criados, preservando DJs, mapas
+            // e os preços de produtos que o administrador personalizou.
+            db.exec('BEGIN');
+            try{
+              const products=seedDemoProducts(db,existing.id);
+              db.exec('COMMIT');
+              return json(res,200,{id:existing.id,created:false,...products});
+            }catch(e){db.exec('ROLLBACK');throw e;}
+          }
           const venueId=randomUUID(),mapId=randomUUID(),eventId=randomUUID(),now=Date.now();
           const start=new Date(now+7*86400000);start.setHours(21,0,0,0);
           const local=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
           const slots=['DJ NØX','LUNA BASS','KAYO 808','VEXX','MAYA VOLT','DJ SUB 808'];
           const lineup=slots.map((nome,i)=>({nome,instagram:'dj_demo_'+(i+1),inicio:local(new Date(start.getTime()+i*55*60000)),fim:local(new Date(start.getTime()+(i+1)*55*60000))}));
+          let products;
           db.exec('BEGIN');try{
             db.prepare('INSERT INTO venues VALUES(?,?,?,?,?)').run(venueId,'Espaço Submundo — DEMO','Endereço fictício para testes','São Paulo',now);
             db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(mapId,venueId,'Pista principal — DEMO',now);
@@ -305,9 +316,10 @@ http.createServer(async (req,res)=>{
             db.prepare('INSERT INTO map_markers VALUES(?,?)').run(mapId,JSON.stringify([{id:randomUUID(),name:'Bar principal',type:'bar',x:20,y:25},{id:randomUUID(),name:'Banheiros',type:'banheiro',x:78,y:30},{id:randomUUID(),name:'Palco',type:'palco',x:45,y:12},{id:randomUUID(),name:'Entrada',type:'entrada',x:45,y:90}]));
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(eventId,venueId,'SUBMUNDO 808 — Edição Demo','Evento demonstrativo completo para testar a experiência do participante. DJs, local e horários são fictícios.',local(start),local(new Date(start.getTime()+6*55*60000)),'','','',JSON.stringify(lineup),now);
             db.prepare('INSERT INTO event_maps VALUES(?,?)').run(eventId,mapId);
+            products=seedDemoProducts(db,eventId,now);
             db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
-          return json(res,201,{id:eventId,venue_id:venueId,map_id:mapId,created:true});
+          return json(res,201,{id:eventId,venue_id:venueId,map_id:mapId,created:true,...products});
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
