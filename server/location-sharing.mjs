@@ -3,7 +3,7 @@
 export const SHARING_MODES=Object.freeze(['event','4h','1h']);
 export const SHARING_TIME_ZONE='America/Sao_Paulo';
 export const LOCATION_FRESH_MS=90_000;
-export const MAX_EVENT_AHEAD_MS=48*60*60*1000;
+export const MAX_EVENT_AHEAD_MS=30*24*60*60*1000;
 
 export function eventEndTimestamp(value,timeZone=SHARING_TIME_ZONE){
  if(typeof value!=='string'||!value.trim())return null;
@@ -41,7 +41,7 @@ export function resolveSharingExpiry(db,{mode,eventId,now=Date.now()}){
  const end=eventEndTimestamp(event.ends_at);
  if(end===null)throw Object.assign(new Error('Defina o horário de término do evento para usar esta opção.'),{status:400});
  if(end<=now)throw Object.assign(new Error('Este evento já terminou. Escolha outro evento ou um prazo em horas.'),{status:400});
- if(end-now>MAX_EVENT_AHEAD_MS)throw Object.assign(new Error('O evento ainda está distante. Compartilhar até o fim fica disponível nas 48 horas anteriores ao encerramento. Por enquanto, escolha 1 ou 4 horas.'),{status:400});
+ if(end-now>MAX_EVENT_AHEAD_MS)throw Object.assign(new Error('O encerramento está a mais de 30 dias. Escolha um evento mais próximo ou compartilhe por 1 ou 4 horas.'),{status:400});
  return {mode,eventId,expiresAt:end};
 }
 
