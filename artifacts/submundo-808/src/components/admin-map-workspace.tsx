@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
+import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
  Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,
@@ -150,7 +151,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(!active)return;setEditLayout(true);setResizeId(id=>id===active.id?null:active.id);
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
- if(loading)return <div className="space-y-4"><button onClick={back} className="flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar aos mapas</button><PageLoading label="Carregando editor de mapas" description="Carregando ambientes, pontos e calibração antes de abrir o editor."/></div>;
+ const showLoading=useMinimumLoading(loading);
+ if(showLoading)return <div className="space-y-4"><button onClick={back} className="flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar aos mapas</button><PageLoading label="Carregando editor de mapas" description="Carregando ambientes, pontos e calibração antes de abrir o editor."/></div>;
  if(initialLoadError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o mapa.</p><p className="mt-2 text-sm text-white/60">{error}</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 font-bold text-black">Tentar novamente</button><button onClick={back} className="ml-3 rounded-xl border border-white/15 px-4 py-2 text-white">Voltar</button></div>;
  return <div className="space-y-5">
   <button onClick={back} className="flex items-center gap-2 text-sm text-white/60 hover:text-white"><ArrowLeft size={16}/> Voltar aos mapas</button>
