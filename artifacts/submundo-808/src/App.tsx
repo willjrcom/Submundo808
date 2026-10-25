@@ -33,8 +33,16 @@ function DjLinks({ dj }: { dj: (typeof demoLineup)[number] }) {
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`rounded-2xl border border-white/10 bg-white/[.045] ${className}`}>{children}</div>; }
 function Tag({ children }: { children: React.ReactNode }) { return <span className="inline-flex rounded-full border border-[#c4ff40]/30 bg-[#c4ff40]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#c4ff40]">{children}</span>; }
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
+function tabFromUrl():Tab {
+  const params=new URLSearchParams(window.location.search);
+  if(params.has('invite'))return 'amigos';
+  const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
+  return tabs.some(t=>t.id===segment)?segment as Tab:'inicio';
+}
 export default function App() {
-  const [tab, setTab] = useState<Tab>(new URLSearchParams(window.location.search).has('invite') ? 'amigos' : 'inicio');
+  const [tab, setTab] = useState<Tab>(tabFromUrl);
+  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
+  useEffect(()=>{const onPop=()=>{setTab(tabFromUrl());window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
@@ -62,7 +70,7 @@ export default function App() {
               <Tag>Próxima edição</Tag>
               <h1 className="relative mt-6 font-display text-[32px] font-black uppercase leading-[1.1] tracking-[-.06em]">A PRÓXIMA<br/><span className="text-[#c4ff40]">FREQUÊNCIA.</span></h1>
               <p className="relative mt-4 max-w-[270px] text-sm leading-relaxed text-white/60">A próxima noite começa aqui. Acompanhe os anúncios oficiais.</p>
-              <button onClick={() => setTab('perfil')} className="relative mt-7 flex items-center gap-2 rounded-xl bg-[#c4ff40] px-5 py-3 text-sm font-black text-black">MEU PASSAPORTE <ChevronRight size={17}/></button>
+              <button onClick={() => navigate('perfil')} className="relative mt-7 flex items-center gap-2 rounded-xl bg-[#c4ff40] px-5 py-3 text-sm font-black text-black">MEU PASSAPORTE <ChevronRight size={17}/></button>
             </div>
             <Title eyebrow="Anote na agenda">Próxima festa</Title>
             <Panel className="mb-7 p-5"><div className="flex items-center gap-3"><CalendarDays className="shrink-0 text-[#c4ff40]" size={25}/><div><p className="font-bold">Aguardando anúncio oficial</p><p className="mt-1 text-xs text-white/50">Data, horário e local serão divulgados pela organização.</p></div></div></Panel>
@@ -104,6 +112,6 @@ export default function App() {
       </main>
     </div>
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
-    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-cols-5">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => { setTab(id); setNotice(''); window.scrollTo(0,0); }} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
+    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-cols-5">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;
 }
