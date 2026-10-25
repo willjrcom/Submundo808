@@ -309,7 +309,7 @@ http.createServer(async (req,res)=>{
         const password=randomBytes(24).toString('base64url');
         db.exec('BEGIN');
         try{
-          db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
+          db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
           db.prepare('INSERT INTO admin_users VALUES(?,?)').run(id,Date.now());
           db.exec('COMMIT');
         }catch(e){db.exec('ROLLBACK');throw e;}
@@ -322,7 +322,7 @@ http.createServer(async (req,res)=>{
         const name='Teste '+suffix.slice(0,6).toUpperCase();
         const email='teste-'+suffix+'@example.invalid';
         const password=randomBytes(24).toString('base64url');
-        db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
+        db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
         createSession(res,id);
         return json(res,201,{user:{id,name,email},password});
       }
@@ -330,7 +330,7 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const name=String(b.name||'').trim().slice(0,60),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||'');
         if(name.length<2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128) return json(res,400,{error:'Informe nome, e-mail válido e senha de 10 a 128 caracteres.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
-        const id=randomUUID();db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(pass),Date.now());createSession(res,id);return json(res,201,{user:{id,name,email}});
+        const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(pass),Date.now());createSession(res,id);return json(res,201,{user:{id,name,email}});
       }
       if (url.pathname==='/api/auth/login' && req.method==='POST') {
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const pass=String(b.password||'');const user=db.prepare('SELECT * FROM users WHERE email=?').get(email);
