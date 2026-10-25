@@ -19,6 +19,7 @@ test('página de perfil só aparece depois da resposta de /auth/me',()=>{
  assert.match(source,/\[loading,setLoading\]=useState\(true\)/);
  assert.match(source,/request\('me'\)/);
  assert.match(source,/if\(loading\)return <PageLoading/);
+ assert.match(source,/if\(initialError\)return <div role="alert"/);
 });
 test('eventos e cardápio renderizam loading antes do conteúdo definitivo',()=>{
  assert.match(component('public-events'),/if\(loading\)return <PageLoading/);
@@ -42,6 +43,12 @@ test('barra de navegação não muda após montar e mapa não fica um frame vazi
  assert.match(app,/useState\(\(\)=>!!localStorage\.getItem\('submundo-event-id'\)\)/);
  assert.match(app,/if\(next==='mapa'\)setMapMounted\(true\);setTab\(next\)/);
  assert.match(app,/\{mapMounted&&<div hidden=\{tab!=='mapa'\}/);
+});
+test('QR Code reserva espaço antes de carregar a imagem e não desloca o perfil',()=>{
+ const source=component('friend-qr');
+ assert.match(source,/h-\[284px\]/);
+ assert.match(source,/imageReady/);
+ assert.match(source,/onLoad=\{\(\)=>setImageReady\(true\)\}/);
 });
 test('loading compartilhado sinaliza progresso para tecnologias assistivas',()=>{
  const source=component('page-loading');
