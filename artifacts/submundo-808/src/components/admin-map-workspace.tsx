@@ -7,7 +7,8 @@ import {
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
-type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:Record<string,GPS>;description?:string;color?:string;icon?:string};
+type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
+type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;description?:string;color?:string;shape?:'square'|'circle';size?:number};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[]};
@@ -32,7 +33,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
- const calibrationArea=areas.find(a=>['tl','tr','br','bl'].some(k=>a.gps?.[k]))||areas[0];
+ const calibrationArea=areas.find(a=>(['tl','tr','br','bl'] as const).some(k=>a.gps?.[k]))||areas[0];
  const calibrationKeys=['tl','tr','bl','br'] as const;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
@@ -124,7 +125,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   navigator.geolocation.getCurrentPosition(p=>{
    const point={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
    checkpoint();setCalibrationPosition(point);
-   setAreas(v=>v.map(a=>a.id===calibrationArea.id?{...a,gps:{...a.gps,[corner]:point}}:{...a,gps:{}}));
+   setAreas(v=>v.map(a=>{
+    if(a.id!==calibrationArea.id)return {...a,gps:{}};
+    // Nunca misturar cantos gerados automaticamente com cantos medidos.
+    const previous=a.gps?.mode==='demo-auto'?{}:a.gps;
+    return {...a,gps:{...previous,[corner]:point,mode:'manual' as const}};
+   }));
    setNotice('Ponto registrado (precisão ±'+Math.round(point.accuracy)+' m). Salve o mapa para publicar.');
    setCalibrationBusy(false);
   },e=>{setError('Não foi possível calibrar: '+e.message);setCalibrationBusy(false);},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
@@ -234,13 +240,13 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   </div>
   {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/85 p-3"><div className="w-full max-w-xl space-y-4 rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
    <div className="flex items-center justify-between"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button className={button} onClick={()=>setCalibrationOpen(false)}>Fechar</button></div>
-   <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>
+   <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração automática de demonstração ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
    <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
     {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
     {([['tl','top-1 left-1'],['tr','top-1 right-1'],['bl','bottom-1 left-1'],['br','bottom-1 right-1']] as const).map(([key,pos],i)=><div key={key} className={'absolute z-10 rounded-full border px-2 py-1 text-xs font-bold '+pos+' '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] bg-[#c4ff40] text-black':'border-purple-400 bg-[#21132d] text-white')}>{calibrationArea?.gps?.[key]?'✓':i+1}</div>)}
     {calibrationPosition&&<div className="absolute bottom-1/2 left-1/2 rounded bg-blue-500 px-2 py-1 text-[10px] font-bold">GPS capturado ±{Math.round(calibrationPosition.accuracy)} m</div>}
    </div>
-   <div className="grid grid-cols-2 gap-2">{calibrationKeys.map((key,i)=><button key={key} disabled={calibrationBusy||!calibrationArea} onClick={()=>void capture(key)} className={button+' flex-col text-xs '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] text-[#c4ff40]':'')}><span>{calibrationArea?.gps?.[key]?'✓ ':'○ '}{calibrationLabels[i]}</span><span className="text-[10px] opacity-65">{calibrationArea?.gps?.[key]?'Recalibrar · ±'+Math.round(calibrationArea.gps[key].accuracy)+' m':'Registrar ponto'}</span></button>)}</div>
+   <div className="grid grid-cols-2 gap-2">{calibrationKeys.map((key,i)=><button key={key} disabled={calibrationBusy||!calibrationArea} onClick={()=>void capture(key)} className={button+' flex-col text-xs '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] text-[#c4ff40]':'')}><span>{calibrationArea?.gps?.[key]?'✓ ':'○ '}{calibrationLabels[i]}</span><span className="text-[10px] opacity-65">{calibrationArea?.gps?.[key]?'Recalibrar · ±'+Math.round(calibrationArea.gps[key]?.accuracy??0)+' m':'Registrar ponto'}</span></button>)}</div>
    <p className="text-xs text-white/60">{calibrationKeys.filter(k=>calibrationArea?.gps?.[k]).length}/4 pontos calibrados. Após salvar, a localização será projetada usando esses quatro pontos. Confira sua posição na aba Mapa.</p>
    {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
    <button disabled={saving||dirty===false||!calibrationKeys.every(k=>calibrationArea?.gps?.[k])} onClick={async()=>{await save();setCalibrationOpen(false);}} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-40">Salvar calibração global</button>
