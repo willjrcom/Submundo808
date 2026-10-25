@@ -24,20 +24,35 @@ test('shared border cannot shrink a room below minimum size',()=>{
  assert.equal(resizeShared([left,right],'pista','right',38)[0].width,60);
  assert.equal(resizeShared([left,right],'pista','left',-58)[0].width,60);
 });
-test('moving a connected zone moves its neighbors together',()=>{
+test('moving one environment does not move its neighbors',()=>{
  const moved=moveArea([{...left,x:10,width:40,height:40},{...right,x:50,width:30,height:40}],'pista',20,10,false);
- assert.deepEqual(moved.map(x=>[x.x,x.y]),[[20,10],[60,10]]);
- assert.equal(sharesBorder(moved[0],moved[1]),true);
+ assert.deepEqual(moved.map(x=>[x.x,x.y]),[[20,10],[50,0]]);
 });
-test('connected room group cannot move outside canvas',()=>{
- const moved=moveArea([{...left,x:0,width:60},{...right,x:60,width:40}],'pista',50,50,false);
- assert.deepEqual(moved.map(x=>x.x),[0,60]);
+test('room can be parked outside original canvas and returned later',()=>{
+ const original=[{id:'a',x:10,y:10,width:20,height:20},{id:'b',x:30,y:10,width:20,height:20}];
+ const outside=moveArea(original,'a',-25,-25,false);
+ assert.deepEqual([outside[0].x,outside[0].y,outside[1].x],[-25,-25,30]);
+ const returned=moveArea(outside,'a',10,10,true);
+ assert.deepEqual([returned[0].x,returned[0].y],[10,10]);
+ assert.equal(sharesBorder(returned[0],returned[1]),true);
 });
-test('an isolated room cannot overlap another room',()=>{
+test('dragging inside a neighbor is allowed while rearranging layout',()=>{
  const a={id:'a',x:0,y:0,width:20,height:20};
  const b={id:'b',x:45,y:45,width:20,height:20};
  const result=moveArea([a,b],'a',50,50,false);
- assert.equal(result[0].x,0);
+ assert.equal(result[0].x,50);
+ assert.equal(intersects(result[0],result[1]),true);
+});
+test('area outside map can be resized and later returned',()=>{
+ const rooms=[{id:'a',x:-20,y:5,width:20,height:20}];
+ const resized=resizeShared(rooms,'a','right',10);
+ assert.equal(resized[0].width,30);
+ assert.equal(moveArea(resized,'a',15,5,false)[0].x,15);
+});
+test('pasteboard prevents rooms being lost far offscreen',()=>{
+ const a={id:'a',x:10,y:10,width:20,height:20};
+ const result=moveArea([a],'a',-100,200,false);
+ assert.deepEqual([result[0].x,result[0].y],[-35,115]);
 });
 test('new area is positioned next to existing boundaries',()=>{
  const p=freeAreaPosition([{id:'a',x:10,y:10,width:30,height:30}],20,20);
