@@ -3,6 +3,7 @@ import { MapPin, Plus, Pencil, Check, RotateCcw, Trash2, Download, Info, Navigat
 
 type Kind = 'palco' | 'pista' | 'cerveja' | 'agua' | 'drink' | 'masculino' | 'feminino' | 'escada' | 'entrada' | 'saida' | 'alimentacao';
 type Point = { id: string; kind: Kind; x: number; y: number };
+type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
 const catalog: { kind: Kind; label: string; symbol: string; color: string }[] = [
   { kind: 'palco', label: 'Palco', symbol: '♫', color: '#c4ff40' },
   { kind: 'pista', label: 'Pista', symbol: '◉', color: '#ba9dfb' },
@@ -70,15 +71,26 @@ export default function VenueMap() {
   const [location,setLocation]=useState<{lat:number;lng:number;accuracy:number}|null>(null);
   const [geoError,setGeoError]=useState('');
   const [tracking,setTracking]=useState(false);
+  const [sharing,setSharing]=useState(false);
+  const [friends,setFriends]=useState<FriendLocation[]>([]);
+  const sharingRef=useRef(false);
+  const lastSend=useRef(0);
+  const sendBusy=useRef(false);
+  const shareEpoch=useRef(0);
+  const [authRequired,setAuthRequired]=useState(false);
+  const [friendError,setFriendError]=useState('');
+  const requestLocation=async(route:string,body?:object)=>{const response=await fetch('/api/location/'+route,{method:body?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===401){setAuthRequired(true);throw Error('Entre na sua conta para compartilhar ou ver seus amigos.');}const data=await response.json();if(!response.ok)throw Error(data.error||'Falha na localização.');return data;};
   const watch=useRef<number|null>(null);
-  useEffect(()=>()=>{if(watch.current!==null)navigator.geolocation.clearWatch(watch.current);},[]);
+  useEffect(()=>{let alive=true;const refresh=async()=>{try{const data=await requestLocation('friends');if(alive){setFriends(data.friends);setAuthRequired(false);setFriendError('');}}catch(e){if(alive)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}};void refresh();const timer=window.setInterval(()=>void refresh(),15000);return()=>{alive=false;window.clearInterval(timer);shareEpoch.current++;sharingRef.current=false;if(watch.current!==null)navigator.geolocation.clearWatch(watch.current);if(lastSend.current>0)void fetch('/api/location/stop',{method:'POST',credentials:'same-origin',keepalive:true});};},[]);
   const mapped=location&&bounds?gpsToMap(location,bounds):null;
   const scale=bounds?mapScale(bounds):null;
   const uncertainty=location&&scale?Math.max(location.accuracy/Math.max(scale.width,1)*100,location.accuracy/Math.max(scale.height,1)*100):null;
   const reliable=!!mapped&&!!location&&location.accuracy<=10&&!!scale&&scale.width>10&&scale.height>10&&uncertainty!==null&&uncertainty<15;
   const saveGeo=()=>{const keys=['tl','tr','br','bl'] as const;const parsed={} as Bounds;for(const k of keys){const lat=Number(geoDraft[k+'Lat']),lng=Number(geoDraft[k+'Lng']);if(!geoDraft[k+'Lat']?.trim()||!geoDraft[k+'Lng']?.trim()||!validGeo({lat,lng})){setGeoError('Preencha as oito coordenadas válidas.');return;}parsed[k]={lat,lng};}const dimensions=mapScale(parsed);if(dimensions.width<3||dimensions.height<3){setGeoError('Os cantos não formam uma área válida.');return;}setBounds(parsed);localStorage.setItem(geoKey,JSON.stringify(parsed));setGeoError('Coordenadas salvas neste aparelho.');};
-  const startGps=()=>{if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}setGeoError('');watch.current=navigator.geolocation.watchPosition(p=>{setLocation({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});setTracking(true);},e=>{setGeoError('Não foi possível obter a localização: '+e.message);setTracking(false);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});setTracking(true);};
-  const stopGps=()=>{if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}setTracking(false);setLocation(null);};
+  const startGps=()=>{if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}setGeoError('');watch.current=navigator.geolocation.watchPosition(p=>{setLocation({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});setTracking(true);if(sharingRef.current&&!sendBusy.current&&Date.now()-lastSend.current>=10000){sendBusy.current=true;const epoch=shareEpoch.current;void requestLocation('update',{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}).then(()=>{if(epoch===shareEpoch.current)lastSend.current=Date.now();}).catch(e=>{if(epoch===shareEpoch.current)setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');}).finally(()=>{sendBusy.current=false;});}},e=>{setGeoError('Não foi possível obter a localização: '+e.message);setTracking(false);},{enableHighAccuracy:true,maximumAge:3000,timeout:15000});setTracking(true);};
+  const stopSharing=async()=>{shareEpoch.current++;sharingRef.current=false;setSharing(false);lastSend.current=0;try{await requestLocation('stop',{});}catch(e){setFriendError(e instanceof Error?e.message:'Não foi possível parar o compartilhamento.');}};
+  const startSharing=async()=>{setFriendError('');try{const me=await fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json());if(!me.user){setAuthRequired(true);setFriendError('Entre na sua conta antes de compartilhar sua localização.');return;}if(!navigator.geolocation){setFriendError('GPS indisponível.');return;}if(!tracking)startGps();shareEpoch.current++;sharingRef.current=true;setSharing(true);lastSend.current=0;}catch{setFriendError('Não foi possível verificar sua conta.');}};
+  const stopGps=()=>{if(sharingRef.current)void stopSharing();if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}setTracking(false);setLocation(null);};
   const board = useRef<HTMLDivElement>(null);
   const dragging = useRef<string | null>(null);
   useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(points)); } catch {} }, [points]);
@@ -125,6 +137,7 @@ export default function VenueMap() {
         <div className="pointer-events-none absolute bottom-[4%] left-[37%] h-[9%] w-[26%] rounded-t-lg border-x border-t border-[#c4ff40]/30 bg-[#c4ff40]/[.055]" />
         <div className="pointer-events-none absolute bottom-[17%] left-[6%] right-[6%] border-t border-dashed border-white/15"/>
         {mapped&&mapped.x>=0&&mapped.x<=100&&mapped.y>=0&&mapped.y<=100&&<div aria-label="Sua localização aproximada" className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2" style={{left:mapped.x+'%',top:mapped.y+'%'}}><span className="block h-5 w-5 rounded-full border-[3px] border-white bg-[#33aaff] shadow-[0_0_0_7px_#33aaff55]"/></div>}
+        {bounds&&friends.map(f=>{const pos=gpsToMap({lat:f.lat,lng:f.lng},bounds);if(!pos||!pos.inside)return null;return <div key={'friend-'+f.id} className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1" style={{left:pos.x+'%',top:pos.y+'%'}}><span className="rounded-full border-2 border-white bg-[#ff98d0] px-2 py-1 text-[10px] font-black text-black shadow-lg">{f.name.slice(0,18)}</span><span className="rounded-full bg-black/80 px-1.5 py-0.5 text-[9px] text-white">±{Math.round(f.accuracy)}m</span></div>;})}
         {points.map(p => {
           const item = catalog.find(c => c.kind === p.kind)!;
           const isSelected = selected === p.id;
@@ -140,6 +153,16 @@ export default function VenueMap() {
       <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="text-sm font-black uppercase">Minha localização no evento</h3></div>
       <p className="mt-2 text-xs leading-relaxed text-white/55">Permita o GPS para mostrar sua posição aproximada no mapa. As coordenadas ficam somente neste aparelho e não são enviadas ao servidor.</p>
       <button onClick={tracking?stopGps:startGps} className="mt-3 w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black">{tracking?'Parar localização':'Ativar minha localização'}</button>
+      <div className="mt-3 rounded-xl border border-white/10 p-3">
+        <p className="text-xs font-bold">Compartilhar minha localização com amigos</p>
+        <p className="mt-1 text-xs text-white/50">Desativado por padrão. Somente amigos adicionados podem consultar sua posição. O envio funciona enquanto o mapa estiver aberto e o navegador permitir GPS.</p>
+        <button onClick={()=>void(sharing?stopSharing():startSharing())} className={`mt-3 w-full rounded-xl px-3 py-3 text-xs font-black ${sharing?'border border-rose-400/50 text-rose-200':'bg-[#c4ff40] text-black'}`}>{sharing?'Parar de compartilhar':'Compartilhar com meus amigos'}</button>
+        {sharing&&<p className="mt-2 text-xs text-[#c4ff40]">Compartilhamento ativado. Aguardando posição GPS para atualizar os amigos.</p>}
+        {authRequired&&<p className="mt-2 text-xs text-amber-300">Faça login no Perfil para usar a localização dos amigos.</p>}
+        {friendError&&<p role="status" className="mt-2 text-xs text-amber-300">{friendError}</p>}
+        <p className="mt-3 text-xs font-bold">Amigos com localização recente ({friends.length})</p>
+        {friends.length===0?<p className="mt-1 text-xs text-white/50">Nenhum amigo compartilhando no momento.</p>:<div className="mt-2 space-y-1">{friends.map(f=><p key={f.id} className="text-xs text-white/70">{f.name} · ±{Math.round(f.accuracy)} m · atualizado há {Math.max(0,Math.floor((Date.now()-f.updatedAt)/1000))} s</p>)}</div>}
+      </div>
       {location&&<p className="mt-3 text-xs text-white/70">Precisão estimada: ±{Math.round(location.accuracy)} m. {!bounds?'Configure os quatro cantos da planta para mostrar sua posição.':!mapped?'Não foi possível posicionar no mapa.':!reliable?'Posição incerta; não é seguro identificar o ambiente.':mapped.inside?'Você está provavelmente dentro do perímetro cadastrado.':'Você está provavelmente fora do perímetro cadastrado.'}</p>}
       {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
       <details className="mt-4 border-t border-white/10 pt-3"><summary className="cursor-pointer text-xs font-bold text-white/80">Configurar limites geográficos da planta</summary>
@@ -157,6 +180,6 @@ export default function VenueMap() {
       {status && <p role="status" className="mt-3 text-xs text-[#c4ff40]">{status}</p>}
     </div>}
     <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.04] p-4"><div className="flex items-start gap-3"><Info size={19} className="shrink-0 text-[#c4ff40]"/><p className="text-xs leading-relaxed text-white/55">Layout fictício para teste. O editor é local, sem publicação para outros visitantes. Para uma festa real, a organização deverá configurar a planta oficial e publicá-la por um backend com acesso restrito.</p></div></div>
-    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[.04] p-4"><div className="flex items-start gap-3"><Navigation size={20} className="shrink-0 text-[#c4ff40]"/><div><p className="text-sm font-bold">Localização dos amigos</p><p className="mt-1 text-xs text-white/50">Indisponível neste protótipo. Compartilhamento real requer autenticação e consentimento.</p></div></div></div>
+
   </section>;
 }
