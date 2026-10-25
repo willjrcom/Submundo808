@@ -1,5 +1,6 @@
 import FriendQR from './friend-qr';
 import { useEffect, useState } from 'react';
+import PageLoading from './page-loading';
 import { UserRound, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
 type User = { id:string; name:string; email:string; isAdmin?:boolean };
 type Mode = 'login'|'register'|'forgot'|'password'|'reset';
@@ -41,7 +42,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   }
   async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
   async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
-  if(loading)return <p className="text-sm text-white/50">Carregando seu perfil...</p>;
+  if(loading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu passaporte digital."/>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
       <div className="mb-10 flex items-center justify-between"><span className="rounded-full border border-[#c4ff40]/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#c4ff40]">Passaporte digital</span><Ticket className="text-[#c4ff40]"/></div>
