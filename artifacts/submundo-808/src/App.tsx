@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
+import AdminShell from './components/admin-shell';
 import Account from './components/account';
 import Friends from './components/friends';
 import { Instagram, ExternalLink } from 'lucide-react';
@@ -40,6 +41,10 @@ function tabFromUrl():Tab {
   return tabs.some(t=>t.id===segment)?segment as Tab:'inicio';
 }
 export default function App() {
+  if(window.location.hostname==='admin.submundo.menudevendas.com.br')return <AdminShell/>;
+  return <ParticipantApp/>;
+}
+function ParticipantApp() {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{setTab(tabFromUrl());window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
