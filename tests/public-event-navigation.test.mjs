@@ -16,7 +16,7 @@ test('a aba Cardápio permanece visível mesmo sem evento selecionado',()=>{
 });
 test('programação é uma rota com URL própria e botão de retorno à agenda',()=>{
  assert.match(app,/if\(segment==='programacao'\)return 'inicio'/);
- assert.match(home,/changeUrl\('\/programacao\/\+encodeURIComponent\(id\)\)/);
+ assert.match(home,/changeUrl\('\/programacao\/'\+encodeURIComponent\(id\)\)/);
  assert.match(home,/Voltar à agenda/);
  assert.match(home,/if\(!event\)return/);
 });
