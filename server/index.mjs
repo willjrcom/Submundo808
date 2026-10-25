@@ -299,7 +299,21 @@ http.createServer(async (req,res)=>{
         }
         return json(res,404,{error:'Operação administrativa não encontrada.'});
       }
-      if (url.pathname==='/api/auth/me' && req.method==='GET') {const user=getUser(req);return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null});}
+      if (url.pathname==='/api/auth/me' && req.method==='GET') {
+        const token=cookie(req,'sid');
+        const claims=verifyJwt(token,JWT_SECRET);
+        const user=getUser(req);
+        let authStatus='authenticated';
+        if(!user){
+          if(!token)authStatus='cookie_missing';
+          else if(!claims)authStatus='token_invalid';
+          else {
+            const row=db.prepare('SELECT token_version FROM users WHERE id=?').get(claims.sub);
+            authStatus=!row?'user_missing':row.token_version!==claims.ver?'token_revoked':'unknown';
+          }
+        }
+        return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null,authStatus});
+      }
       if (url.pathname==='/api/auth/demo-admin' && req.method==='POST') {
         if(process.env.ENABLE_DEMO_USERS!=='true' || process.env.ENABLE_DEMO_ADMIN!=='true')return json(res,403,{error:'Criação de administrador de teste desativada. Configure ENABLE_DEMO_USERS e ENABLE_DEMO_ADMIN.'});
         const id=randomUUID(),suffix=randomBytes(6).toString('hex');
