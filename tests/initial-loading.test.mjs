@@ -39,6 +39,17 @@ test('painel administrativo só mostra dados depois de carregar autenticação e
  assert.match(source,/return <div className="flex min-h-dvh items-center justify-center bg-\[#0b090f\]/);
  assert.match(source,/if\(user\?\.isAdmin&&loadFailed\)/);
 });
+test('editor de mapas aguarda ambientes e pontos antes de mostrar o canvas',()=>{
+ const source=component('admin-map-workspace');
+ assert.match(source,/if\(loading\)return <div className="space-y-4"/);
+ assert.match(source,/if\(initialLoadError\)return <div role="alert"/);
+});
+test('catálogo e preços por evento não exibem listas vazias enquanto buscam dados',()=>{
+ const source=component('admin-products');
+ assert.match(source,/if\(!initialReady\)return <PageLoading/);
+ assert.match(source,/if\(initialFailed\)return <div role="alert"/);
+ assert.match(source,/loadedAssignmentsFor!==eventId\?<PageLoading compact/);
+});
 test('barra de navegação não muda após montar e mapa não fica um frame vazio',()=>{
  assert.match(app,/useState\(\(\)=>!!localStorage\.getItem\('submundo-event-id'\)\)/);
  assert.match(app,/if\(next==='mapa'\)setMapMounted\(true\);setTab\(next\)/);
