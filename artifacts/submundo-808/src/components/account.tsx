@@ -1,6 +1,7 @@
 import FriendQR from './friend-qr';
 import { useEffect, useState } from 'react';
 import PageLoading from './page-loading';
+import useMinimumLoading from './use-minimum-loading';
 import { UserRound, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
 type User = { id:string; name:string; email:string; isAdmin?:boolean };
 type Mode = 'login'|'register'|'forgot'|'password'|'reset';
@@ -51,7 +52,8 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   }
   async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
   async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
-  if(loading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu passaporte digital."/>;
+  const showLoading=useMinimumLoading(loading);
+  if(showLoading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu passaporte digital."/>;
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
