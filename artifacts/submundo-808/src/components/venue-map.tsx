@@ -27,6 +27,7 @@ export default function VenueMap(){
   const rawGpsTimestamp=useRef(0);
   const lastGpsFixAt=useRef(0);
   const [geoError,setGeoError]=useState('');
+  const [gpsPermissionRequired,setGpsPermissionRequired]=useState(false);
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
   const [prefsReady,setPrefsReady]=useState(false);
@@ -44,36 +45,63 @@ export default function VenueMap(){
   const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean)=>{setPrefsSaving(true);try{await requestLocation('preferences',{gpsEnabled,shareEnabled});}catch(e){setFriendError(e instanceof Error?e.message:'Falha ao salvar preferências.');throw e;}finally{setPrefsSaving(false);}};
   useEffect(()=>{
    let alive=true;
+   let permissionStatus:PermissionStatus|null=null;
+   const checkPermission=async()=>{
+    if(!navigator.geolocation||!navigator.permissions?.query){
+     // Não abrir um prompt automaticamente em navegadores sem Permissions API.
+     if(alive)setGpsPermissionRequired(true);
+     return;
+    }
+    try{
+     const status=await navigator.permissions.query({name:'geolocation'});
+     if(!alive)return;
+     permissionStatus=status;
+     const apply=()=>{
+      if(!alive||!sharingRef.current)return;
+      if(status.state==='granted'){
+       setGpsPermissionRequired(false);setGeoError('');
+       if(watch.current===null)startGps();
+      }else{
+       setGpsPermissionRequired(true);
+       if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+       setTracking(false);trackingRef.current=false;
+       if(status.state==='denied')setGeoError('Localização bloqueada. Libere a permissão nas configurações do navegador.');
+      }
+     };
+     status.onchange=apply;
+     apply();
+    }catch{
+     if(alive)setGpsPermissionRequired(true);
+    }
+   };
    void requestLocation('preferences').then(p=>{
     if(!alive)return;
     setPrefsReady(true);
-    if(p.shareEnabled){sharingRef.current=true;setSharing(true);startGps();}
+    if(p.shareEnabled){
+     sharingRef.current=true;setSharing(true);
+     void checkPermission();
+    }
    }).catch(()=>{if(alive)setPrefsReady(true);});
    const refresh=async()=>{
-    try{const data=await requestLocation('friends');if(alive){setFriends(data.friends);setAuthRequired(false);}}
-    catch(e){if(alive)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
+    try{
+     const data=await requestLocation('friends');
+     if(alive){setFriends(data.friends);setAuthRequired(false);}
+    }catch(e){if(alive)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
    };
    void refresh();
    const refreshTimer=window.setInterval(()=>void refresh(),10000);
-   // Um GPS parado pode não disparar eventos: mantenha o último ponto válido
-   // vivo no servidor, desde que o usuário ainda esteja compartilhando.
+   // Não solicitar a localização novamente: o watchPosition já monitora
+   // o GPS, e chamadas adicionais abriam prompts em alguns Androids.
    const heartbeat=window.setInterval(()=>{
-    if(!sharingRef.current)return;
-    if(navigator.geolocation&&Date.now()-lastGpsFixAt.current>17000){
-     // Revalidar a posição ao ficar parado, sem republicar coordenadas antigas
-     // como se fossem novas leituras de GPS.
-     navigator.geolocation.getCurrentPosition(consumeGpsPosition,()=>{
-      trackingRef.current=false;
-      setGeoError('Sem atualização recente do GPS. Compartilhamento aguardando uma nova leitura.');
-     },{enableHighAccuracy:true,maximumAge:5000,timeout:12000});
-    }else sendLatestLocation(true);
+    if(!sharingRef.current||watch.current===null)return;
+    if(Date.now()-lastGpsFixAt.current<=90000)sendLatestLocation(true);
+    else setGeoError('GPS sem leituras recentes. Confira a permissão do navegador.');
    },20000);
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
+    if(permissionStatus)permissionStatus.onchange=null;
     shareEpoch.current++;sharingRef.current=false;
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
-    // Sair da tela não equivale a clicar em "Desativar compartilhamento".
-    // O servidor deixa um GPS sem atualizações expirar naturalmente.
    };
   },[]);
   const sendLatestLocation=(heartbeat=false)=>{
@@ -92,6 +120,7 @@ export default function VenueMap(){
    if(p.timestamp<rawGpsTimestamp.current)return;
    rawGpsTimestamp.current=p.timestamp;
    lastGpsFixAt.current=Date.now();
+   setGpsPermissionRequired(false);
    const next=stableGps(locationRef.current,{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});
    locationRef.current=next;
    setLocation(next);setTracking(true);trackingRef.current=true;setGeoError('');
@@ -102,14 +131,15 @@ export default function VenueMap(){
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
    setGeoError('');
    watch.current=navigator.geolocation.watchPosition(consumeGpsPosition,e=>{
+    if(e.code===1)setGpsPermissionRequired(true);
     setGeoError(e.code===1?'Permissão de localização negada. Autorize a localização nas configurações do navegador para atualizar o GPS.':'Não foi possível obter a localização: '+e.message);
     setTracking(false);trackingRef.current=false;
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    },{enableHighAccuracy:true,maximumAge:3000,timeout:15000});
    setTracking(true);trackingRef.current=true;
   };
-  const stopSharing=async()=>{try{await savePrefs(false,false);shareEpoch.current++;sharingRef.current=false;setSharing(false);lastSend.current=0;if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}trackingRef.current=false;setTracking(false);setLocation(null);locationRef.current=null;await requestLocation('stop',{});}catch{}};
-  const startSharing=async()=>{setFriendError('');try{const me=await fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json());if(!me.user){setAuthRequired(true);setFriendError('Entre na sua conta antes de compartilhar sua localização.');return;}if(!navigator.geolocation){setFriendError('GPS indisponível.');return;}await savePrefs(true,true);shareEpoch.current++;sharingRef.current=true;setSharing(true);lastSend.current=0;startGps();}catch{}};
+  const stopSharing=async()=>{try{await savePrefs(false,false);shareEpoch.current++;sharingRef.current=false;setSharing(false);setGpsPermissionRequired(false);lastSend.current=0;if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}trackingRef.current=false;setTracking(false);setLocation(null);locationRef.current=null;await requestLocation('stop',{});}catch{}};
+  const startSharing=async()=>{setFriendError('');try{const me=await fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json());if(!me.user){setAuthRequired(true);setFriendError('Entre na sua conta antes de compartilhar sua localização.');return;}if(!navigator.geolocation){setFriendError('GPS indisponível.');return;}await savePrefs(true,true);shareEpoch.current++;sharingRef.current=true;setSharing(true);setGpsPermissionRequired(false);lastSend.current=0;startGps();}catch{}};
 
 
  const mapped=location&&bounds?gpsToMap(location,bounds):null;
@@ -138,7 +168,7 @@ export default function VenueMap(){
  {outsideFriends.map(f=><span key={f.id} title={f.name+' fora da área de referência, a aproximadamente '+Math.round(f.edge!.outsideMeters)+' m do limite · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg border border-amber-300 bg-[#231b13] px-1.5 py-1 text-[10px] font-bold text-amber-100" style={{left:f.edge!.edgeX+'%',top:f.edge!.edgeY+'%'}}><Navigation size={13}/> {f.name.slice(0,12)} · {f.edge!.outsideMeters<=f.accuracy?'perto do limite':'~'+(f.edge!.outsideMeters>=1000?(f.edge!.outsideMeters/1000).toFixed(1)+' km':Math.round(f.edge!.outsideMeters)+' m')+' fora'}</span>)}
  </div>{selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&<div className="mt-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 p-3 text-xs"><p className="font-bold text-[#c4ff40]">{data.markers.find(m=>m.id===selectedMarkerId)?.name}</p><p className="mt-1 text-white/70">{data.markers.find(m=>m.id===selectedMarkerId)?.description||'Ponto de referência no mapa.'}</p></div>}</div>}
  {mapError&&<p role="alert" className="text-sm text-red-300">{mapError}</p>}
- <div className="rounded-2xl border border-white/10 bg-white/5 p-5"><div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização com amigos</h3></div><p className="mt-2 text-xs text-white/60">Ao ativar, você permite que seus amigos vejam sua localização no mapa. Sua escolha fica salva na conta e será restaurada quando você voltar. O GPS só atualiza enquanto o navegador permitir.</p><button disabled={!prefsReady||prefsSaving} onClick={()=>void(sharing?stopSharing():startSharing())} className={'mt-4 w-full rounded-xl p-3 text-sm font-bold disabled:opacity-50 '+(sharing?'border border-red-400/50 text-red-200':'bg-[#c4ff40] text-black')}>{sharing?'Desativar localização e compartilhamento':'Ativar localização e compartilhar com amigos'}</button><p className="mt-3 text-xs text-white/50">Amigos compartilhando agora: {friends.length}{bounds?' · dentro: '+visibleFriends.length+' · fora: '+outsideFriends.length:''}</p>{friends.map(f=>{const friend=friendMarkers.find(p=>p.id===f.id);const edge=friend?.edge;return <p key={f.id} className="mt-2 text-xs">{f.name} · precisão ±{Math.round(f.accuracy)} m{friend?.point?.inside?' · dentro do mapa':edge?' · fora do mapa ('+(edge.outsideMeters<=f.accuracy?'perto do limite':Math.round(edge.outsideMeters)+' m do limite')+')':''}</p>;})}{location&&<p className="mt-3 text-xs text-white/60">Precisão do GPS: ±{Math.round(location.accuracy)} m{!bounds?' · mapa sem calibração GPS publicada':''}</p>}{authRequired&&<p className="mt-2 text-xs text-amber-300">Faça login no Perfil para compartilhar sua localização.</p>}{geoError&&<p className="mt-2 text-xs text-amber-300">{geoError}</p>}{friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}</div>
+ <div className="rounded-2xl border border-white/10 bg-white/5 p-5"><div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização com amigos</h3></div><p className="mt-2 text-xs text-white/60">Ao ativar, você permite que seus amigos vejam sua localização no mapa. Sua escolha fica salva na conta e será restaurada quando você voltar. O GPS só atualiza enquanto o navegador permitir.</p><button disabled={!prefsReady||prefsSaving} onClick={()=>void(sharing?stopSharing():startSharing())} className={'mt-4 w-full rounded-xl p-3 text-sm font-bold disabled:opacity-50 '+(sharing?'border border-red-400/50 text-red-200':'bg-[#c4ff40] text-black')}>{sharing?'Desativar localização e compartilhamento':'Ativar localização e compartilhar com amigos'}</button>{sharing&&gpsPermissionRequired&&<div role="status" className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-3 text-xs text-amber-100"><p>O compartilhamento está ativado na conta, mas este navegador ainda precisa permitir o GPS.</p><button type="button" onClick={()=>{setGpsPermissionRequired(false);startGps();}} className="mt-2 rounded-lg bg-[#c4ff40] px-3 py-2 font-bold text-black">Permitir localização neste dispositivo</button><p className="mt-2 text-white/60">No Android, escolha “Permitir durante o uso” em vez de “Permitir desta vez” nas configurações de localização do site.</p></div>}<p className="mt-3 text-xs text-white/50">Amigos compartilhando agora: {friends.length}{bounds?' · dentro: '+visibleFriends.length+' · fora: '+outsideFriends.length:''}</p>{friends.map(f=>{const friend=friendMarkers.find(p=>p.id===f.id);const edge=friend?.edge;return <p key={f.id} className="mt-2 text-xs">{f.name} · precisão ±{Math.round(f.accuracy)} m{friend?.point?.inside?' · dentro do mapa':edge?' · fora do mapa ('+(edge.outsideMeters<=f.accuracy?'perto do limite':Math.round(edge.outsideMeters)+' m do limite')+')':''}</p>;})}{location&&<p className="mt-3 text-xs text-white/60">Precisão do GPS: ±{Math.round(location.accuracy)} m{!bounds?' · mapa sem calibração GPS publicada':''}</p>}{authRequired&&<p className="mt-2 text-xs text-amber-300">Faça login no Perfil para compartilhar sua localização.</p>}{geoError&&<p className="mt-2 text-xs text-amber-300">{geoError}</p>}{friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}</div>
  <p className="flex items-start gap-2 text-xs text-white/45"><Info size={16} className="shrink-0"/>O GPS pode oscilar mesmo com você parado. A posição é suavizada; usuários fora do mapa aparecem na borda como indicadores, não como posições dentro do evento.</p>
  </section>;
 }
