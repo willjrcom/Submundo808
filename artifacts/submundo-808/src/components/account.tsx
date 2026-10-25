@@ -1,7 +1,7 @@
 import FriendQR from './friend-qr';
 import { useEffect, useState } from 'react';
 import { UserRound, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
-type User = { id:string; name:string; email:string };
+type User = { id:string; name:string; email:string; isAdmin?:boolean };
 type Mode = 'login'|'register'|'forgot'|'password'|'reset';
 async function request(path:string, payload?:object) {
   const res=await fetch('/api/auth/'+path,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
@@ -23,7 +23,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password});setUser(data.user);onUser?.(data.user);setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password});const me=await request('me');setUser(me.user);onUser?.(me.user);setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'',window.location.pathname);change('login');setSuccess('Senha redefinida. Faça login.');}
@@ -37,6 +37,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       <p className="text-xs uppercase tracking-widest text-white/50">Bem-vindo(a)</p><h3 className="mt-2 break-words font-display text-2xl font-black uppercase">{user.name}</h3><p className="mt-1 text-sm text-white/50">{user.email}</p>
       <div className="mt-7 border-t border-white/15 pt-4 text-[11px] text-white/40">ID: {user.id.slice(0,8).toUpperCase()} · Não é ingresso</div>
     </div>
+    {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
     <FriendQR/>
     {demoCredentials&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta de teste — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials.email}</p><p className="mt-1 break-all">Senha: {demoCredentials.password}</p><button onClick={()=>void navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`)} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">Copiar credenciais</button></div>}
     <div className="space-y-3"><button onClick={()=>change('password')} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><KeyRound size={19} className="text-[#c4ff40]"/> Alterar minha senha</button><button onClick={async()=>{try{await request('logout',{});setUser(null);onUser?.(null);change('login');}catch(e){setError(String(e));}}} className="flex w-full items-center gap-3 rounded-xl border border-white/15 px-4 py-4 text-sm font-bold"><LogOut size={19}/> Sair da conta</button></div>
