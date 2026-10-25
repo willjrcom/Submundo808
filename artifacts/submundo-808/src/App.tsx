@@ -56,8 +56,8 @@ function ParticipantApp() {
   // não apareça/desapareça depois de carregar o componente.
   const [eventSelected,setEventSelected]=useState(()=>!!localStorage.getItem('submundo-event-id'));
   useEffect(()=>{const refresh=()=>setEventSelected(!!localStorage.getItem('submundo-event-id'));refresh();window.addEventListener('submundo-event-selected',refresh);return()=>window.removeEventListener('submundo-event-selected',refresh);},[]);
-  const navigate=(next:Tab)=>{if(next==='cardapio'&&!eventSelected)return;const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
-  useEffect(()=>{const onPop=()=>{setTab(tabFromUrl());window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+  const navigate=(next:Tab)=>{if(next==='cardapio'&&!eventSelected)return;const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);setNotice('');window.scrollTo(0,0);};
+  useEffect(()=>{const onPop=()=>{const next=tabFromUrl();if(next==='mapa')setMapMounted(true);setTab(next);window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
