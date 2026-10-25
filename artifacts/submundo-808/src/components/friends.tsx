@@ -1,13 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
+import PageLoading from './page-loading';
 type Friend={id:string;name:string};
-async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw new Error(data.error||'Falha na operação.');return data;}
+async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
 export default function Friends(){
-  const [friends,setFriends]=useState<Friend[]>([]);const [logged,setLogged]=useState<boolean|null>(null);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
+  const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
   const video=useRef<HTMLVideoElement>(null);const stream=useRef<MediaStream|null>(null);const scanning=useRef(false);const locked=useRef(false);
-  async function load(){try{const data=await api('');setFriends(data.friends);setLogged(true);}catch{setLogged(false);}}
+  async function load(){
+    try{
+      const data=await api('');
+      setFriends(data.friends||[]);setAccess('authenticated');setError('');
+    }catch(e){
+      if((e as {status?:number}).status===401)setAccess('guest');
+      else {setAccess('error');setError(e instanceof Error?e.message:'Não foi possível carregar os amigos.');}
+    }
+  }
   useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
   function stop(){scanning.current=false;locked.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
   async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
@@ -74,9 +83,11 @@ export default function Friends(){
       setError(e instanceof Error?e.message:'Não foi possível abrir a câmera. Verifique a permissão do navegador.');
     }
   }
+  if(access==='loading')return <PageLoading label="Carregando amigos" description="Verificando seu acesso e preparando sua lista de amigos."/>;
+  if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
     <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
-    {logged===false?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:<>
+    {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:<>
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/[.04] p-5">
         <h3 className="mb-2 flex items-center gap-2 font-bold"><UserPlus className="text-[#c4ff40]" size={19}/> Adicionar amigo</h3>
         <p className="mb-4 text-xs text-white/55">Escaneie o QR Code permanente de alguém. A amizade será criada nos dois perfis, sem aprovação.</p>
