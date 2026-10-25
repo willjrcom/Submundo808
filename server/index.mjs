@@ -1,5 +1,6 @@
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {seedDemoProducts} from './demo-products.mjs';
+import {DEMO_MARKERS,validateDemoLocation,applyDemoCalibration} from './demo-geolocation.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -278,7 +279,11 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='gps'){
           const b=await body(req),area=db.prepare('SELECT gps_json FROM map_areas WHERE id=?').get(String(b.id||'')),corner=String(b.corner||''),lat=Number(b.lat),lng=Number(b.lng),accuracy=Number(b.accuracy);
           if(!area||!['tl','tr','br','bl'].includes(corner)||!Number.isFinite(lat)||Math.abs(lat)>90||!Number.isFinite(lng)||Math.abs(lng)>180||!Number.isFinite(accuracy)||accuracy<0)return json(res,400,{error:'GPS inválido.'});
-          const gps=JSON.parse(area.gps_json);gps[corner]={lat,lng,accuracy};db.prepare('UPDATE map_areas SET gps_json=? WHERE id=?').run(JSON.stringify(gps),b.id);return json(res,200,{gps});
+          const previous=JSON.parse(area.gps_json||'{}');
+          const gps=previous.mode==='demo-auto'?{}:{...previous};
+          gps[corner]={lat,lng,accuracy};gps.mode='manual';
+          delete gps.spacingMeters;delete gps.widthMeters;delete gps.heightMeters;delete gps.accuracyMeters;delete gps.generatedAt;
+          db.prepare('UPDATE map_areas SET gps_json=? WHERE id=?').run(JSON.stringify(gps),b.id);return json(res,200,{gps});
         }
         if(req.method==='POST'&&key==='events'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
@@ -292,6 +297,9 @@ http.createServer(async (req,res)=>{
           return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='seed-demo'){
+          const request=await body(req);
+          let location;
+          try{location=validateDemoLocation(request.location);}catch(e){return json(res,400,{error:e.message});}
           const existing=db.prepare("SELECT id FROM events WHERE name='SUBMUNDO 808 — Edição Demo'").get();
           if(existing){
             // Completa o catálogo de eventos já criados, preservando DJs, mapas
@@ -299,8 +307,10 @@ http.createServer(async (req,res)=>{
             db.exec('BEGIN');
             try{
               const products=seedDemoProducts(db,existing.id);
+              const demoMap=db.prepare("SELECT vm.id FROM event_maps em JOIN venue_maps vm ON vm.id=em.map_id WHERE em.event_id=? AND vm.name='Pista principal — DEMO' ORDER BY vm.created_at LIMIT 1").get(existing.id);
+              const gps=demoMap?applyDemoCalibration(db,demoMap.id,location):{gpsStatus:'no-demo-map',markersRepositioned:false};
               db.exec('COMMIT');
-              return json(res,200,{id:existing.id,created:false,...products});
+              return json(res,200,{id:existing.id,created:false,...products,...gps});
             }catch(e){db.exec('ROLLBACK');throw e;}
           }
           const venueId=randomUUID(),mapId=randomUUID(),eventId=randomUUID(),now=Date.now();
@@ -308,18 +318,19 @@ http.createServer(async (req,res)=>{
           const local=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
           const slots=['DJ NØX','LUNA BASS','KAYO 808','VEXX','MAYA VOLT','DJ SUB 808'];
           const lineup=slots.map((nome,i)=>({nome,instagram:'dj_demo_'+(i+1),inicio:local(new Date(start.getTime()+i*55*60000)),fim:local(new Date(start.getTime()+(i+1)*55*60000))}));
-          let products;
+          let products,gps;
           db.exec('BEGIN');try{
             db.prepare('INSERT INTO venues VALUES(?,?,?,?,?)').run(venueId,'Espaço Submundo — DEMO','Endereço fictício para testes','São Paulo',now);
             db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(mapId,venueId,'Pista principal — DEMO',now);
             db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),mapId,'Pista principal','principal',8,10,75,75);
-            db.prepare('INSERT INTO map_markers VALUES(?,?)').run(mapId,JSON.stringify([{id:randomUUID(),name:'Bar principal',type:'bar',x:20,y:25},{id:randomUUID(),name:'Banheiros',type:'banheiro',x:78,y:30},{id:randomUUID(),name:'Palco',type:'palco',x:45,y:12},{id:randomUUID(),name:'Entrada',type:'entrada',x:45,y:90}]));
+            db.prepare('INSERT INTO map_markers VALUES(?,?)').run(mapId,JSON.stringify(DEMO_MARKERS.map(marker=>({...marker,id:randomUUID()}))));
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(eventId,venueId,'SUBMUNDO 808 — Edição Demo','Evento demonstrativo completo para testar a experiência do participante. DJs, local e horários são fictícios.',local(start),local(new Date(start.getTime()+6*55*60000)),'','','',JSON.stringify(lineup),now);
             db.prepare('INSERT INTO event_maps VALUES(?,?)').run(eventId,mapId);
             products=seedDemoProducts(db,eventId,now);
+            gps=applyDemoCalibration(db,mapId,location,now);
             db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
-          return json(res,201,{id:eventId,venue_id:venueId,map_id:mapId,created:true,...products});
+          return json(res,201,{id:eventId,venue_id:venueId,map_id:mapId,created:true,...products,...gps});
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
