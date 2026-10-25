@@ -1,4 +1,4 @@
-import {loadJwtSecret,signJwt,verifyJwt,authCookie} from './auth.mjs';
+import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,7 +42,7 @@ const passwordHash = pass => { const salt = randomBytes(16).toString('hex'); ret
 const validPassword = (pass, stored) => { const [salt, expected] = stored.split(':'); if (!salt || !expected) return false; const actual = scryptSync(pass, salt, 64); const wanted = Buffer.from(expected, 'hex'); return actual.length === wanted.length && timingSafeEqual(actual, wanted); };
 const cookie = (req, key) => (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(key + '='))?.slice(key.length + 1);
 const getUser = req => {
-  const claims=verifyJwt(cookie(req,'sid'),JWT_SECRET);
+  const claims=verifyJwt(cookie(req,JWT_COOKIE_NAME),JWT_SECRET);
   if(!claims)return null;
   const user=db.prepare('SELECT id,name,email,token_version FROM users WHERE id=?').get(claims.sub);
   if(!user||user.token_version!==claims.ver)return null;
@@ -300,7 +300,7 @@ http.createServer(async (req,res)=>{
         return json(res,404,{error:'Operação administrativa não encontrada.'});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') {
-        const token=cookie(req,'sid');
+        const token=cookie(req,JWT_COOKIE_NAME);
         const claims=verifyJwt(token,JWT_SECRET);
         const user=getUser(req);
         let authStatus='authenticated';
