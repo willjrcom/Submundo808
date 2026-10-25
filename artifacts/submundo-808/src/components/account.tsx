@@ -3,6 +3,15 @@ import { useEffect, useState } from 'react';
 import { UserRound, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
 type User = { id:string; name:string; email:string; isAdmin?:boolean };
 type Mode = 'login'|'register'|'forgot'|'password'|'reset';
+function authError(status?:string) {
+  switch(status){
+    case 'cookie_missing': return 'O cookie de login não chegou ao servidor. Verifique o domínio e o bloqueio de cookies no navegador.';
+    case 'token_invalid': return 'O cookie chegou ao servidor, mas o JWT foi rejeitado. Verifique a chave JWT_SECRET e a persistência do volume /data.';
+    case 'token_revoked': return 'O cookie chegou ao servidor, mas o token foi revogado.';
+    case 'user_missing': return 'O JWT é válido, mas o usuário não foi encontrado no banco de dados.';
+    default: return 'Não foi possível confirmar a autenticação após o login.';
+  }
+}
 async function request(path:string, payload?:object) {
   const res=await fetch('/api/auth/'+path,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'Não foi possível continuar.');return data;
@@ -24,14 +33,14 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password});const me=await request('me');if(!me.user)throw new Error('O navegador não manteve o cookie de autenticação. Confira o domínio e as configurações de cookies.');setUser(me.user);onUser?.(me.user);setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'',window.location.pathname);change('login');setSuccess('Senha redefinida. Faça login.');}
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
-  async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada, mas o cookie de autenticação não foi mantido pelo navegador.');setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
-  async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada, mas o cookie de autenticação não foi mantido pelo navegador.');setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
+  async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
+  async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
   if(loading)return <p className="text-sm text-white/50">Carregando seu perfil...</p>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
