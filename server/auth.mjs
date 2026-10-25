@@ -3,6 +3,7 @@ import path from 'node:path';
 import {createHmac,randomBytes,timingSafeEqual} from 'node:crypto';
 
 export const JWT_TTL_SECONDS=30*24*60*60;
+export const JWT_COOKIE_NAME='submundo_jwt';
 const ISSUER='submundo-808';
 const AUDIENCE='submundo-808-web';
 const b64=data=>Buffer.from(JSON.stringify(data)).toString('base64url');
@@ -41,5 +42,5 @@ export function authCookie(token,maxAge=JWT_TTL_SECONDS,req){
   const shared=hostname==='submundo.menudevendas.com.br'||hostname.endsWith('.submundo.menudevendas.com.br');
   const domain=shared?'; Domain=submundo.menudevendas.com.br':'';
   const secure=hostname!=='localhost'&&hostname!=='127.0.0.1'?'; Secure':'';
-  return 'sid='+token+'; HttpOnly'+secure+'; SameSite=Lax'+domain+'; Path=/; Max-Age='+maxAge;
+  return JWT_COOKIE_NAME+'='+token+'; HttpOnly'+secure+'; SameSite=Lax'+domain+'; Path=/; Max-Age='+maxAge;
 }
