@@ -36,6 +36,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const active=areas.find(a=>a.id===selected);
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
+ const areasOutside=areas.filter(a=>a.x<0||a.y<0||a.x+a.width>100||a.y+a.height>100).length;
+ const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
   let alive=true;setLoading(true);
   Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id))]).then(([a,m])=>{
@@ -166,6 +168,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
        style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:chosen?'#c4ff40':color,backgroundColor:color+'33'}}>
        <Icon size={Math.max(13,Math.min(27,a.width/2+9))} style={{color}} className="pointer-events-none mb-1 shrink-0"/>
        <span className="pointer-events-none max-w-full overflow-hidden text-ellipsis text-[10px] font-black leading-tight sm:text-xs">{a.name}</span>
+       {chosen&&!editing&&<button type="button" aria-label={'Redimensionar '+a.name} title="Redimensionar este ambiente"
+        onPointerDown={e=>e.stopPropagation()}
+        onClick={e=>{e.stopPropagation();setSelected(a.id);setEditLayout(true);setResizeId(a.id);}}
+        className="absolute right-1 top-1 z-30 rounded-md border border-[#c4ff40]/60 bg-[#17101e] p-1.5 text-[#c4ff40] shadow-lg"><Maximize2 size={12}/></button>}
        {chosen&&editing&&resizeId===a.id&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
         onPointerDown={e=>startDrag(e,a.id,'resize',edge)}
         className={'absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+((edge==='left'||edge==='right')?'cursor-ew-resize':'cursor-ns-resize')}
@@ -183,6 +189,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       </button>;
      })}
     </div></div>}
+    {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
     <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{editing?'Arraste qualquer ambiente, inclusive para a área externa ao quadro, e depois encaixe novamente. Selecione o ambiente e clique em Redimensionar; bordas em comum alteram os dois ambientes.':'Selecione qualquer ambiente, inclusive os já salvos. Use Editar layout ou os botões do painel lateral para movê-lo ou redimensioná-lo.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({areas.length})</h3><div className="flex flex-wrap gap-2">{areas.map(a=><button key={a.id} onClick={()=>{setSelected(a.id);setResizeId(null);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
