@@ -1,6 +1,6 @@
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
-import {seedDemoProducts} from './demo-products.mjs';
-import {DEMO_MARKERS,validateDemoLocation,applyDemoCalibration} from './demo-geolocation.mjs';
+import {validateDemoLocation} from './demo-geolocation.mjs';
+import {ensureDemoData} from './demo-seed.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,6 +70,17 @@ async function sendReset(email, link) {
   return true;
 }
 const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.webmanifest':'application/manifest+json','.woff2':'font/woff2'};
+// Durante o desenvolvimento, mantenha os dados de exemplo disponíveis sem
+// precisar clicar no botão do admin. É idempotente, não altera dados editados
+// e pode ser desligado quando a plataforma entrar em produção.
+if(process.env.AUTO_SEED_DEMO!=='false'){
+ try{
+  const initial=ensureDemoData(db);
+  console.log('Sample catalog ready:',initial.created?'created':'reused',initial.id);
+ }catch(error){
+  console.error('Could not initialize sample data:',error);
+ }
+}
 http.createServer(async (req,res)=>{
   const url = new URL(req.url || '/', 'http://localhost');
   try {
@@ -300,38 +311,9 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='seed-demo'){
           const request=await body(req);
           let location;
-          try{location=validateDemoLocation(request.location);}catch(e){return json(res,400,{error:e.message});}
-          const existing=db.prepare("SELECT id FROM events WHERE name='SUBMUNDO 808 — Edição Demo'").get();
-          if(existing){
-            // Completa o catálogo de eventos já criados, preservando DJs, mapas
-            // e os preços de produtos que o administrador personalizou.
-            db.exec('BEGIN');
-            try{
-              const products=seedDemoProducts(db,existing.id);
-              const demoMap=db.prepare("SELECT vm.id FROM event_maps em JOIN venue_maps vm ON vm.id=em.map_id WHERE em.event_id=? AND vm.name='Pista principal — DEMO' ORDER BY vm.created_at LIMIT 1").get(existing.id);
-              const gps=demoMap?applyDemoCalibration(db,demoMap.id,location):{gpsStatus:'no-demo-map',markersRepositioned:false};
-              db.exec('COMMIT');
-              return json(res,200,{id:existing.id,created:false,...products,...gps});
-            }catch(e){db.exec('ROLLBACK');throw e;}
-          }
-          const venueId=randomUUID(),mapId=randomUUID(),eventId=randomUUID(),now=Date.now();
-          const start=new Date(now+7*86400000);start.setHours(21,0,0,0);
-          const local=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
-          const slots=['DJ NØX','LUNA BASS','KAYO 808','VEXX','MAYA VOLT','DJ SUB 808'];
-          const lineup=slots.map((nome,i)=>({nome,instagram:'dj_demo_'+(i+1),inicio:local(new Date(start.getTime()+i*55*60000)),fim:local(new Date(start.getTime()+(i+1)*55*60000))}));
-          let products,gps;
-          db.exec('BEGIN');try{
-            db.prepare('INSERT INTO venues VALUES(?,?,?,?,?)').run(venueId,'Espaço Submundo — DEMO','Endereço fictício para testes','São Paulo',now);
-            db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(mapId,venueId,'Pista principal — DEMO',now);
-            db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),mapId,'Pista principal','principal',8,10,75,75);
-            db.prepare('INSERT INTO map_markers VALUES(?,?)').run(mapId,JSON.stringify(DEMO_MARKERS.map(marker=>({...marker,id:randomUUID()}))));
-            db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(eventId,venueId,'SUBMUNDO 808 — Edição Demo','Evento demonstrativo completo para testar a experiência do participante. DJs, local e horários são fictícios.',local(start),local(new Date(start.getTime()+6*55*60000)),'','','',JSON.stringify(lineup),now);
-            db.prepare('INSERT INTO event_maps VALUES(?,?)').run(eventId,mapId);
-            products=seedDemoProducts(db,eventId,now);
-            gps=applyDemoCalibration(db,mapId,location,now);
-            db.exec('COMMIT');
-          }catch(e){db.exec('ROLLBACK');throw e;}
-          return json(res,201,{id:eventId,venue_id:venueId,map_id:mapId,created:true,...products,...gps});
+          try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}
+          const result=ensureDemoData(db,{location});
+          return json(res,result.created?201:200,result);
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
