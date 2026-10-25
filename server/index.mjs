@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT N
 CREATE TABLE IF NOT EXISTS resets (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS friend_codes (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS friendships (user_a TEXT NOT NULL, user_b TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_a,user_b));
-CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE);`);
+CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE);
+CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
 const json = (res, status, body, headers={}) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(body)); };
 const hashToken = value => createHash('sha256').update(value).digest('hex');
 const passwordHash = pass => { const salt = randomBytes(16).toString('hex'); return salt + ':' + scryptSync(pass, salt, 64).toString('hex'); };
@@ -81,6 +82,29 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const id=String(b.id||'');
         const [a,bId]=[user.id,id].sort();db.prepare('DELETE FROM friendships WHERE user_a=? AND user_b=?').run(a,bId);
         return json(res,200,{ok:true});
+      }
+      if (url.pathname==='/api/location/me' && req.method==='GET') {
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const row=db.prepare('SELECT updated_at FROM live_locations WHERE user_id=? AND updated_at>?').get(user.id,Date.now()-90000);
+        return json(res,200,{sharing:!!row});
+      }
+      if (url.pathname==='/api/location/update' && req.method==='POST') {
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const b=await body(req);const lat=b.lat,lng=b.lng,accuracy=b.accuracy;
+        if(typeof lat!=='number'||!Number.isFinite(lat)||Math.abs(lat)>90||typeof lng!=='number'||!Number.isFinite(lng)||Math.abs(lng)>180||typeof accuracy!=='number'||!Number.isFinite(accuracy)||accuracy<0||accuracy>10000)return json(res,400,{error:'Coordenadas inválidas.'});
+        db.prepare('INSERT INTO live_locations(user_id,lat,lng,accuracy,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET lat=excluded.lat,lng=excluded.lng,accuracy=excluded.accuracy,updated_at=excluded.updated_at').run(user.id,lat,lng,accuracy,Date.now());
+        return json(res,200,{ok:true});
+      }
+      if (url.pathname==='/api/location/stop' && req.method==='POST') {
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
+        return json(res,200,{ok:true});
+      }
+      if (url.pathname==='/api/location/friends' && req.method==='GET') {
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        db.prepare('DELETE FROM live_locations WHERE updated_at<?').run(Date.now()-90000);
+        const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? ORDER BY u.name').all(user.id,user.id,user.id,Date.now()-90000);
+        return json(res,200,{friends:rows});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') return json(res,200,{user:getUser(req)});
       if (url.pathname==='/api/auth/demo' && req.method==='POST') {
