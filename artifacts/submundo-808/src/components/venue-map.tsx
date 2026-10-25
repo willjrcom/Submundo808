@@ -208,6 +208,7 @@ export default function VenueMap(){
  const distanceToVenue=myOutside?.outsideMeters??null;
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
  const scale=bounds?mapSize(bounds):null;
+ const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired;
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
  const showLoading=useMinimumLoading(!mapsReady||!mapResolved||!prefsReady||!friendsReady);
  if(showLoading){
@@ -218,12 +219,13 @@ export default function VenueMap(){
  <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-4">
   <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização</h3></div>
   <button
-   disabled={!prefsReady||prefsSaving}
-   onClick={()=>void(sharing?stopSharing():startSharing())}
-   className={'mt-3 w-full rounded-xl px-4 py-3.5 text-sm font-black disabled:opacity-50 '+(sharing?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
-  >{sharing?'Desativar localização':'Ativar localização'}</button>
-  <p className="mt-2 text-xs text-white/55">{sharing?'Compartilhamento com amigos ativado.':'Ao ativar, seus amigos poderão ver sua posição.'}</p>
-  {sharing&&gpsPermissionRequired&&<div role="status" className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-3 text-xs text-amber-100"><p>Permita a localização neste navegador para aparecer no mapa.</p><button type="button" onClick={()=>{setGpsPermissionRequired(false);startGps();}} className="mt-2 rounded-lg bg-[#c4ff40] px-3 py-2 font-bold text-black">Permitir localização</button></div>}
+   disabled={!prefsReady||prefsSaving||gpsStarting}
+   aria-busy={gpsStarting}
+   onClick={()=>void(gpsActive?stopSharing():startSharing())}
+   className={'mt-3 w-full rounded-xl px-4 py-3.5 text-sm font-black disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
+  >{gpsStarting?'Obtendo localização...':gpsActive?'Desativar localização':'Ativar localização'}</button>
+  <p className="mt-2 text-xs text-white/55">{gpsStarting?'Aguardando o GPS do aparelho...':gpsActive?'Sua posição está visível para seus amigos.':sharing?'O GPS deste aparelho ainda não está ativo.':'Seus amigos poderão ver sua posição.'}</p>
+  {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
   {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
   {geoError&&<p className="mt-2 text-xs text-amber-300">{geoError}</p>}
   {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
@@ -232,7 +234,7 @@ export default function VenueMap(){
  <div><h2 className="text-2xl font-black uppercase">Mapa do evento</h2></div>
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
-  <p className="mt-1 text-white/65">{!location?'Ative a localização para aparecer no mapa.':!bounds?'Aguardando calibração do mapa.':mapped?.inside?'Você está no mapa.':positionUncertain?'Você está perto do limite; GPS impreciso.':'Você está a cerca de '+Math.round(distanceToVenue||0)+' m do mapa.'}</p>
+  <p className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':mapped?.inside?'Você está no mapa.':positionUncertain?'Você está perto do limite; GPS impreciso.':'Você está a cerca de '+Math.round(distanceToVenue||0)+' m do mapa.'}</p>
   {location&&<p className="mt-1 text-white/40">Precisão do GPS: ±{Math.round(location.accuracy)} m</p>}
  </div>
  {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
