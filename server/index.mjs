@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS resets (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS friend_codes (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS friendships (user_a TEXT NOT NULL, user_b TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_a,user_b));`);
+CREATE TABLE IF NOT EXISTS friendships (user_a TEXT NOT NULL, user_b TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_a,user_b));
+CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE);`);
 const json = (res, status, body, headers={}) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(body)); };
 const hashToken = value => createHash('sha256').update(value).digest('hex');
 const passwordHash = pass => { const salt = randomBytes(16).toString('hex'); return salt + ':' + scryptSync(pass, salt, 64).toString('hex'); };
@@ -45,22 +46,27 @@ http.createServer(async (req,res)=>{
       }
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
-        db.prepare('DELETE FROM friend_codes WHERE user_id=? OR expires_at<?').run(user.id,Date.now());
-        const token=randomBytes(24).toString('hex');
-        db.prepare('INSERT INTO friend_codes VALUES(?,?,?)').run(hashToken(token),user.id,Date.now()+60000);
-        return json(res,200,{token,expiresAt:Date.now()+60000});
+        let invite=db.prepare('SELECT token_hash FROM friend_invites WHERE user_id=?').get(user.id);
+        // A token is stored encrypted at rest so we cannot return it later; instead issue
+        // a deterministic opaque signed token derived from a server secret.
+        const secret=process.env.FRIEND_INVITE_SECRET;
+        if(!secret || secret.length<32)return json(res,503,{error:'Configure FRIEND_INVITE_SECRET (mínimo 32 caracteres) no Dokploy.'});
+        const token=createHash('sha256').update('friend-v1:'+user.id+':'+secret).digest('hex');
+        if(!invite || invite.token_hash!==hashToken(token)){
+          db.prepare('INSERT INTO friend_invites(user_id,token_hash) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash').run(user.id,hashToken(token));
+        }
+        return json(res,200,{token});
       }
       if (url.pathname==='/api/friends/add' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req);let token=String(b.token||'');
-        try { if(token.includes('://'))token=new URL(token).searchParams.get('invite')||''; }catch{}
-        if(!/^[a-f0-9]{48}$/.test(token))return json(res,400,{error:'QR Code inválido. Peça um novo código.'});
-        const row=db.prepare('SELECT c.user_id,u.name FROM friend_codes c JOIN users u ON u.id=c.user_id WHERE c.token_hash=? AND c.expires_at>?').get(hashToken(token),Date.now());
-        if(!row)return json(res,410,{error:'QR Code expirado. Peça para atualizar o perfil.'});
+        try {if(token.includes('://'))token=new URL(token).searchParams.get('invite')||'';}catch{}
+        if(!/^[a-f0-9]{64}$/.test(token))return json(res,400,{error:'QR Code ou link inválido. Peça o novo link permanente.'});
+        const row=db.prepare('SELECT i.user_id,u.name FROM friend_invites i JOIN users u ON u.id=i.user_id WHERE i.token_hash=?').get(hashToken(token));
+        if(!row)return json(res,404,{error:'Convite não encontrado. Peça para a pessoa abrir o perfil e gerar seu QR Code.'});
         if(row.user_id===user.id)return json(res,400,{error:'Você não pode adicionar a si mesmo.'});
         const [a,bId]=[user.id,row.user_id].sort();
         db.prepare('INSERT OR IGNORE INTO friendships VALUES(?,?,?)').run(a,bId,Date.now());
-        db.prepare('DELETE FROM friend_codes WHERE token_hash=?').run(hashToken(token));
         return json(res,200,{ok:true,friend:{id:row.user_id,name:row.name}});
       }
       if (url.pathname==='/api/friends' && req.method==='GET') {
