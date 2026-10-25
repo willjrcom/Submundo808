@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import PageLoading from './page-loading';
 import {MapPin,Navigation,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sofa,Utensils,Wine,Bath,Flag,Stethoscope} from 'lucide-react';
 import {gpsToMap,stableGps,offMapInfo,mapSize,type GpsFix} from './map-location-utils';
 type Geo={lat:number;lng:number};
@@ -18,8 +19,31 @@ export default function VenueMap(){
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [data,setData]=useState<MapData|null>(null);
  const [mapError,setMapError]=useState('');
- useEffect(()=>{let active=true;Promise.all([fetch('/api/public/events').then(r=>r.json()),fetch('/api/public/maps').then(r=>r.json())]).then(([events,mapsData])=>{if(!active)return;const event=events.items?.find((e:{id:string})=>e.id===localStorage.getItem('submundo-event-id'))||events.items?.[0];const filtered=(mapsData.items||[]).filter((m:{id:string})=>event?.map_ids?.includes(m.id));setMaps(filtered);setSelectedMap(filtered[0]?.id||'');}).catch(()=>{if(active)setMapError('Não foi possível carregar os mapas.');});return()=>{active=false;};},[]);
- useEffect(()=>{if(!selectedMap){setData(null);return;}let active=true;fetch('/api/public/map-detail?map_id='+encodeURIComponent(selectedMap)).then(async r=>{if(!r.ok)throw Error('Falha ao carregar mapa');return r.json();}).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setMapError(String(e));});return()=>{active=false;};},[selectedMap]);
+ const [mapsReady,setMapsReady]=useState(false),[mapDataReady,setMapDataReady]=useState(false);
+ useEffect(()=>{
+  let active=true;
+  const load=async(url:string)=>{const response=await fetch(url);if(!response.ok)throw Error('Falha ao carregar eventos ou mapas.');return response.json();};
+  Promise.all([load('/api/public/events'),load('/api/public/maps')])
+   .then(([events,mapsData])=>{
+    if(!active)return;
+    const event=events.items?.find((e:{id:string})=>e.id===localStorage.getItem('submundo-event-id'))||events.items?.[0];
+    const filtered=(mapsData.items||[]).filter((m:{id:string})=>event?.map_ids?.includes(m.id));
+    setMaps(filtered);setSelectedMap(filtered[0]?.id||'');
+   })
+   .catch(()=>{if(active)setMapError('Não foi possível carregar os mapas.');})
+   .finally(()=>{if(active)setMapsReady(true);});
+  return()=>{active=false;};
+ },[]);
+ useEffect(()=>{
+  if(!selectedMap){setData(null);setMapDataReady(true);return;}
+  let active=true;setData(null);setMapDataReady(false);setMapError('');
+  fetch('/api/public/map-detail?map_id='+encodeURIComponent(selectedMap))
+   .then(async response=>{if(!response.ok)throw Error('Falha ao carregar mapa');return response.json();})
+   .then(result=>{if(active)setData(result);})
+   .catch(e=>{if(active)setMapError(e instanceof Error?e.message:'Não foi possível carregar o mapa.');})
+   .finally(()=>{if(active)setMapDataReady(true);});
+  return()=>{active=false;};
+ },[selectedMap]);
  const calibrated=data?.areas.find(a=>['tl','tr','br','bl'].every(k=>a.gps?.[k as keyof Bounds]));
  const bounds=calibrated?.gps as Bounds|undefined;
   const [location,setLocation]=useState<GpsFix|null>(null);
@@ -33,6 +57,7 @@ export default function VenueMap(){
   const [prefsReady,setPrefsReady]=useState(false);
   const [prefsSaving,setPrefsSaving]=useState(false);
   const [friends,setFriends]=useState<FriendLocation[]>([]);
+  const [friendsReady,setFriendsReady]=useState(false);
   const sharingRef=useRef(false);
   const lastSend=useRef(0);
   const sendBusy=useRef(false);
@@ -87,6 +112,7 @@ export default function VenueMap(){
      const data=await requestLocation('friends');
      if(alive){setFriends(data.friends);setAuthRequired(false);}
     }catch(e){if(alive)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
+    finally{if(alive)setFriendsReady(true);}
    };
    void refresh();
    const refreshTimer=window.setInterval(()=>void refresh(),10000);
@@ -153,6 +179,10 @@ export default function VenueMap(){
  const distanceToVenue=myOutside?.outsideMeters??null;
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
  const scale=bounds?mapSize(bounds):null;
+ const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
+ if(!mapsReady||!mapResolved||!prefsReady||!friendsReady){
+  return <PageLoading label="Carregando mapa" description="Buscando o mapa do evento, seu acesso e as localizações compartilhadas."/>;
+ }
 
  return <section className="space-y-5"><div><p className="mb-2 text-xs font-bold uppercase tracking-widest text-[#c4ff40]">Explore o espaço</p><h2 className="text-2xl font-black uppercase">Mapa do evento</h2><p className="mt-2 text-xs text-white/50">Mapa oficial somente para consulta. A edição é exclusiva do administrador.</p></div>
  <div className="rounded-xl border border-white/15 bg-white/5 p-3 text-sm"><div className="flex items-center gap-2 font-bold"><Navigation size={16} className="text-[#c4ff40]"/> Sua localização</div><p className="mt-2 text-xs text-white/70">{!location?'Aguardando localização. Ative o GPS abaixo para se localizar.':!bounds?'GPS ativo, mas o mapa ainda não possui os quatro pontos de calibração.':mapped?.inside?'Você está dentro do mapa da festa.':positionUncertain?'Você pode estar próximo da festa; o GPS não tem precisão suficiente para confirmar.':'Você está fora do mapa da festa. A aproximadamente '+Math.round(distanceToVenue||0)+' metros do limite da área de referência.'}</p>{location&&<p className="mt-1 text-[11px] text-white/50">Precisão estimada ±{Math.round(location.accuracy)} m</p>}{bounds&&<p className="mt-2 text-xs text-white/60">Amigos dentro: {visibleFriends.length} · fora do mapa: {outsideFriends.length} · compartilhando: {friends.length}.</p>}</div>
