@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
 type Tab = 'inicio' | 'mapa' | 'cardapio' | 'amigos' | 'perfil';
+type HomeMode = 'proxima' | 'ao-vivo';
 type Friend = { id: number; name: string; status: 'pendente' | 'amigo'; share: boolean };
 const tabs: { id: Tab; title: string; Icon: typeof Music2 }[] = [
   { id: 'inicio', title: 'Início', Icon: Music2 },
@@ -22,6 +23,7 @@ function Tag({ children }: { children: React.ReactNode }) { return <span classNa
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
 export default function App() {
   const [tab, setTab] = useState<Tab>('inicio');
+  const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [selectedSpot, setSelectedSpot] = useState('palco');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
@@ -43,17 +45,41 @@ export default function App() {
       </header>
       <main className="px-5 pt-7">
         {tab === 'inicio' && <>
-          <div className="relative mb-7 overflow-hidden rounded-3xl border border-[#c4ff40]/20 bg-[radial-gradient(circle_at_80%_20%,#51235d,transparent_45%),linear-gradient(145deg,#211129,#0b090f)] p-6">
-            <div className="absolute -right-8 top-6 rotate-[-17deg] font-display text-[100px] font-black leading-none text-white/[.045]">808</div>
-            <Tag>Seu acesso à cena</Tag><h1 className="relative mt-6 font-display text-[34px] font-black uppercase leading-[1.08] tracking-[-.06em]">A NOITE<br/><span className="text-[#c4ff40]">É NOSSA.</span></h1>
-            <p className="relative mt-4 max-w-[260px] text-sm leading-relaxed text-white/60">Line-up, mapa, cardápio e sua galera. Tudo num só lugar.</p>
-            <button onClick={() => setTab('perfil')} className="relative mt-7 flex items-center gap-2 rounded-xl bg-[#c4ff40] px-5 py-3 text-sm font-black text-black">MEU PASSAPORTE <ChevronRight size={17}/></button>
+          {homeMode === 'proxima' ? <>
+            <div className="relative mb-7 overflow-hidden rounded-3xl border border-[#c4ff40]/20 bg-[radial-gradient(circle_at_85%_15%,#51235d,transparent_48%),linear-gradient(145deg,#211129,#0b090f)] p-6">
+              <div className="absolute -right-8 top-6 rotate-[-17deg] font-display text-[100px] font-black leading-none text-white/[.045]">808</div>
+              <Tag>Próxima edição</Tag>
+              <h1 className="relative mt-6 font-display text-[32px] font-black uppercase leading-[1.1] tracking-[-.06em]">A PRÓXIMA<br/><span className="text-[#c4ff40]">FREQUÊNCIA.</span></h1>
+              <p className="relative mt-4 max-w-[270px] text-sm leading-relaxed text-white/60">A próxima noite começa aqui. Acompanhe os anúncios oficiais.</p>
+              <button onClick={() => setTab('perfil')} className="relative mt-7 flex items-center gap-2 rounded-xl bg-[#c4ff40] px-5 py-3 text-sm font-black text-black">MEU PASSAPORTE <ChevronRight size={17}/></button>
+            </div>
+            <Title eyebrow="Anote na agenda">Próxima festa</Title>
+            <Panel className="mb-7 p-5"><div className="flex items-center gap-3"><CalendarDays className="shrink-0 text-[#c4ff40]" size={25}/><div><p className="font-bold">Aguardando anúncio oficial</p><p className="mt-1 text-xs text-white/50">Data, horário e local serão divulgados pela organização.</p></div></div></Panel>
+            <Title eyebrow="Quem vai comandar">DJs confirmados</Title>
+            <Panel className="mb-7 p-5"><div className="flex items-start gap-3"><Music2 className="shrink-0 text-[#c4ff40]" size={24}/><div><p className="font-bold">Line-up em preparação</p><p className="mt-1 text-sm text-white/55">Os artistas confirmados aparecerão aqui, com seus horários quando disponíveis.</p></div></div></Panel>
+            <Title eyebrow="Novidades">Anúncios e informações</Title>
+            <Panel className="p-5"><div className="flex items-start gap-3"><Bell className="shrink-0 text-[#c4ff40]" size={22}/><div><p className="font-bold">Fique por dentro</p><p className="mt-1 text-sm text-white/55">Informações oficiais da próxima edição serão publicadas neste espaço.</p></div></div></Panel>
+          </> : <>
+            <div className="mb-5 flex items-center justify-between gap-3"><div><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Modo dia da festa</p><h1 className="font-display text-[28px] font-black uppercase leading-tight">A PISTA <span className="text-[#c4ff40]">CHAMA.</span></h1></div><span className="rounded-full border border-white/15 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white/60">Prévia</span></div>
+            <Panel className="mb-5 overflow-hidden border-[#c4ff40]/35 bg-[radial-gradient(circle_at_90%_10%,#38204a,transparent_65%),#16101c]">
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-4"><span className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[#c4ff40]"><Radio size={16}/> Tocando agora</span><span className="text-[10px] text-white/40">Sem transmissão ativa</span></div>
+              <div className="px-5 py-7"><p className="font-display text-xl font-black uppercase">DJ a confirmar</p><p className="mt-2 text-sm text-white/55">O artista em apresentação será destacado aqui durante a festa.</p></div>
+              <div className="flex items-center gap-3 border-t border-white/10 px-5 py-4"><Clock3 size={19} className="text-[#c4ff40]"/><div><p className="text-[10px] uppercase tracking-widest text-white/45">A seguir</p><p className="text-sm font-bold">Próximo DJ ainda não informado</p></div></div>
+            </Panel>
+            <Title eyebrow="Informações prioritárias">Comunicados da festa</Title>
+            <Panel className="mb-7 p-5"><div className="flex items-start gap-3"><Bell className="shrink-0 text-[#c4ff40]" size={23}/><div><p className="font-bold">Nenhum alerta oficial</p><p className="mt-1 text-sm text-white/55">Avisos importantes de segurança, acesso e alterações da programação aparecerão primeiro aqui.</p></div></div></Panel>
+            <Title eyebrow="A programação completa">Ordem das apresentações</Title>
+            <Panel className="mb-7 p-5"><div className="flex items-start gap-3"><CalendarDays className="shrink-0 text-[#c4ff40]" size={23}/><div><p className="font-bold">Horários a confirmar</p><p className="mt-1 text-sm text-white/55">A sequência de DJs será exibida em ordem cronológica, com destaque para a apresentação atual.</p></div></div></Panel>
+            <div className="grid grid-cols-2 gap-3"><button onClick={() => setTab('mapa')} className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[.05] px-3 py-4 text-sm font-bold"><MapPinned size={18} className="text-[#c4ff40]"/> Ver mapa</button><button onClick={() => setTab('cardapio')} className="flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[.05] px-3 py-4 text-sm font-bold"><Martini size={18} className="text-[#c4ff40]"/> Cardápio</button></div>
+          </>}
+          <div className="mt-10 border-t border-white/10 pt-6">
+            <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-[.2em] text-white/40">Visualizar outro momento do evento</p>
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[.04] p-1.5" role="group" aria-label="Modo da página inicial">
+              <button aria-pressed={homeMode === 'proxima'} onClick={() => { setHomeMode('proxima'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`rounded-xl px-3 py-3 text-xs font-bold transition ${homeMode === 'proxima' ? 'bg-[#c4ff40] text-black' : 'text-white/60'}`}>Próxima festa</button>
+              <button aria-pressed={homeMode === 'ao-vivo'} onClick={() => { setHomeMode('ao-vivo'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`rounded-xl px-3 py-3 text-xs font-bold transition ${homeMode === 'ao-vivo' ? 'bg-[#c4ff40] text-black' : 'text-white/60'}`}>Dia da festa</button>
+            </div>
+            <p className="mt-3 text-center text-[11px] leading-relaxed text-white/35">Alternância demonstrativa. O modo automático dependerá da programação oficial do evento.</p>
           </div>
-          <Title eyebrow="Próxima edição">O evento</Title>
-          <Panel className="mb-7 p-5"><div className="flex items-center gap-3"><CalendarDays className="text-[#c4ff40]" size={24}/><div><p className="font-bold">Aguardando anúncio oficial</p><p className="text-xs text-white/50">Data e local serão divulgados pela organização.</p></div></div></Panel>
-          <Title eyebrow="Som na pista">Line-up</Title>
-          <Panel className="mb-7 overflow-hidden"><div className="flex items-center gap-3 border-b border-white/10 p-5"><Radio className="text-[#c4ff40]" size={23}/><div><p className="font-bold">Tocando agora</p><p className="text-xs text-white/50">Disponível durante o evento, após atualização oficial.</p></div></div><div className="flex items-center gap-3 p-5"><Clock3 className="text-[#c4ff40]" size={23}/><div><p className="font-bold">Próximo DJ</p><p className="text-xs text-white/50">Programação ainda não cadastrada.</p></div></div></Panel>
-          <Title eyebrow="Fique ligado">Comunicados</Title><Panel className="p-5"><div className="flex gap-3"><Volume2 className="shrink-0 text-[#c4ff40]" size={22}/><div><p className="font-bold">Em preparação</p><p className="mt-1 text-sm text-white/55">Novidades e promoções oficiais aparecerão aqui.</p></div></div></Panel>
         </>}
         {tab === 'mapa' && <>
           <Title eyebrow="Explore o espaço">Mapa do evento</Title>
