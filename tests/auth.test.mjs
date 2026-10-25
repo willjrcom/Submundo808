@@ -24,3 +24,9 @@ test('ambiente local permite cookie sem Secure',()=>{
   const cookie=authCookie('token',JWT_TTL_SECONDS,{headers:{host:'localhost:3000'}});
   assert.doesNotMatch(cookie,/; Secure/);
 });
+
+test('cookie JWT tem nome diferente do cookie de sessão antigo',()=>{
+  const c=authCookie('token',JWT_TTL_SECONDS,{headers:{host:'submundo.menudevendas.com.br'}});
+  assert.match(c,/^submundo_jwt=token;/);
+  assert.doesNotMatch(c,/^sid=/);
+});
