@@ -159,6 +159,24 @@ http.createServer(async (req,res)=>{
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
           return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:row)});
         }
+        if(req.method==='GET'&&key==='products')return json(res,200,{items:db.prepare('SELECT * FROM products ORDER BY category,name').all()});
+        if(req.method==='GET'&&key==='event-products'){const id=String(url.searchParams.get('event_id')||'');return json(res,200,{items:db.prepare('SELECT product_id,price_cents FROM event_products WHERE event_id=?').all(id)});}
+        if(req.method==='POST'&&key==='save-product'){
+          const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim(),category=String(b.category||'').trim(),description=String(b.description||'').trim(),price=b.default_price_cents;
+          if(!name||name.length>120||!category||category.length>60||description.length>500||!Number.isSafeInteger(price)||price<0||price>100000000)return json(res,400,{error:'Produto ou preço inválido.'});
+          if(id){if(!db.prepare('SELECT 1 FROM products WHERE id=?').get(id))return json(res,404,{error:'Produto não encontrado.'});db.prepare('UPDATE products SET name=?,description=?,category=?,default_price_cents=? WHERE id=?').run(name,description,category,price,id);}
+          else db.prepare('INSERT INTO products VALUES(?,?,?,?,?,?)').run(randomUUID(),name,description,category,price,Date.now());
+          return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='delete-product'){
+          const id=String((await body(req)).id||'');db.exec('BEGIN');try{db.prepare('DELETE FROM event_products WHERE product_id=?').run(id);db.prepare('DELETE FROM products WHERE id=?').run(id);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='save-event-products'){
+          const b=await body(req),id=String(b.event_id||''),items=b.items;
+          if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id)||!Array.isArray(items)||items.length>500)return json(res,400,{error:'Evento ou lista inválidos.'});
+          const seen=new Set();for(const p of items){if(!p||typeof p.product_id!=='string'||seen.has(p.product_id)||!db.prepare('SELECT 1 FROM products WHERE id=?').get(p.product_id)||!(p.price_cents===null||(Number.isSafeInteger(p.price_cents)&&p.price_cents>=0&&p.price_cents<=100000000)))return json(res,400,{error:'Produto ou preço inválido.'});seen.add(p.product_id);}
+          db.exec('BEGIN');try{db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);for(const p of items)db.prepare('INSERT INTO event_products VALUES(?,?,?)').run(id,p.product_id,p.price_cents);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return json(res,200,{ok:true});
+        }
         if(req.method==='GET'&&key==='overview'){
           const cutoff=Date.now()-15*60*1000;
           return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(*) n FROM user_activity WHERE last_seen>?').get(cutoff).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
@@ -247,7 +265,7 @@ http.createServer(async (req,res)=>{
           if(entity==='venue'&&(db.prepare('SELECT 1 FROM venue_maps WHERE venue_id=?').get(id)||db.prepare('SELECT 1 FROM events WHERE venue_id=?').get(id)))return json(res,409,{error:'Exclua os mapas e eventos vinculados primeiro.'});
           if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
           db.exec('BEGIN');try{
-            if(entity==='event')db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
+            if(entity==='event'){db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);}
             if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);}
             db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
