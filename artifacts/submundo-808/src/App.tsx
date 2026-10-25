@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import VenueMap from './components/venue-map';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
 type Tab = 'inicio' | 'mapa' | 'cardapio' | 'amigos' | 'perfil';
@@ -18,7 +19,6 @@ const drinks = [
   { section: 'Bebidas', items: [{ name: 'Água mineral', price: 'R$ 6,00' }, { name: 'Refrigerante', price: 'R$ 9,00' }, { name: 'Energético', price: 'R$ 15,00' }, { name: 'Drink da casa', price: 'R$ 28,00' }] },
   { section: 'Comidas', items: [{ name: 'Batata frita', price: 'R$ 22,00' }, { name: 'Hambúrguer', price: 'R$ 32,00' }, { name: 'Opção vegetariana', price: 'R$ 29,00' }] },
 ];
-const spots = [{ id: 'palco', name: 'Palco', x: 50, y: 22, icon: '♫' }, { id: 'bar', name: 'Bar', x: 22, y: 48, icon: '◈' }, { id: 'banheiros', name: 'Banheiros', x: 79, y: 51, icon: 'WC' }, { id: 'entrada', name: 'Entrada', x: 50, y: 83, icon: '↟' }];
 function readFriends(): Friend[] { try { return JSON.parse(localStorage.getItem('submundo-friends') || '[]') as Friend[]; } catch { return []; } }
 function readName(): string { try { return localStorage.getItem('submundo-name') || ''; } catch { return ''; } }
 function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) { return <div className={`rounded-2xl border border-white/10 bg-white/[.045] ${className}`}>{children}</div>; }
@@ -27,7 +27,6 @@ function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNo
 export default function App() {
   const [tab, setTab] = useState<Tab>('inicio');
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
-  const [selectedSpot, setSelectedSpot] = useState('palco');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
   const [name, setName] = useState(readName);
@@ -84,18 +83,7 @@ export default function App() {
             <p className="mt-3 text-center text-[11px] leading-relaxed text-white/35">Alternância demonstrativa. O modo automático dependerá da programação oficial do evento.</p>
           </div>
         </>}
-        {tab === 'mapa' && <>
-          <Title eyebrow="Explore o espaço">Mapa do evento</Title>
-          <Panel className="mb-4 p-4"><div className="mb-4 flex items-center justify-between"><Tag>Mapa ilustrativo</Tag><span className="text-xs text-white/40">Sem GPS indoor</span></div>
-            <div className="relative h-[360px] overflow-hidden rounded-2xl border border-[#c4ff40]/20 bg-[linear-gradient(90deg,transparent_96%,rgba(196,255,64,.08)_100%),linear-gradient(transparent_96%,rgba(196,255,64,.08)_100%),#14101b] bg-[length:32px_32px]">
-              <div className="absolute inset-[12%_10%] rounded-[45%] border border-dashed border-white/15" />
-              <div className="absolute left-[30%] top-[33%] h-[40%] w-[40%] rounded-full bg-[#c4ff40]/[.035] blur-xl" />
-              {spots.map(s => <button key={s.id} onClick={() => setSelectedSpot(s.id)} style={{ left: `${s.x}%`, top: `${s.y}%` }} className={`absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 rounded-xl px-3 py-2 transition ${selectedSpot === s.id ? 'bg-[#c4ff40] text-black shadow-[0_0_25px_#c4ff4050]' : 'border border-white/20 bg-[#221b2a] text-white'}`}><span className="text-xl font-black">{s.icon}</span><span className="text-[10px] font-bold">{s.name}</span></button>)}
-            </div>
-            <div className="mt-4 flex items-start gap-3"><MapPin className="shrink-0 text-[#c4ff40]" size={20}/><div><p className="font-bold">{spots.find(s => s.id === selectedSpot)?.name}</p><p className="text-xs text-white/50">Posição ilustrativa. O mapa real depende da planta oficial do evento.</p></div></div>
-          </Panel>
-          <Panel className="p-5"><div className="flex items-start gap-3"><Navigation className="shrink-0 text-[#c4ff40]" size={22}/><div><p className="font-bold">Localização dos amigos</p><p className="mt-1 text-sm text-white/55">Ainda não disponível. Compartilhamento real exige autenticação, backend e consentimento de cada pessoa.</p><button onClick={() => { setLocationEnabled(false); message('A localização não está ativa neste protótipo.'); }} className="mt-3 rounded-lg border border-white/20 px-3 py-2 text-xs font-bold">Entendi</button></div></div></Panel>
-        </>}
+        {tab === 'mapa' && <VenueMap/>}
         {tab === 'cardapio' && <>
           <Title eyebrow="O que tem por aqui">Cardápio</Title>
           <Panel className="mb-5 flex items-start gap-3 p-4"><Info size={20} className="shrink-0 text-[#c4ff40]"/><p className="text-xs leading-relaxed text-white/60">Itens e valores ilustrativos. O cardápio oficial será publicado pela organização. Não há compras ou pagamentos no aplicativo.</p></Panel>
