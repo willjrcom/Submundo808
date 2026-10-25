@@ -11,6 +11,7 @@ const field='w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text
 const btn='w-full rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black disabled:opacity-50';
 export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [user,setUser]=useState<User|null>(null);
+  const [demoCredentials,setDemoCredentials]=useState<{email:string;password:string}|null>(null);
   const [mode,setMode]=useState<Mode>('login');
   const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [current,setCurrent]=useState('');
   const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(true);
@@ -28,6 +29,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'',window.location.pathname);change('login');setSuccess('Senha redefinida. Faça login.');}
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
+  async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});setUser(data.user);onUser?.(data.user);setDemoCredentials({email:data.user.email,password:data.password});}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
   if(loading)return <p className="text-sm text-white/50">Carregando seu perfil...</p>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
@@ -36,6 +38,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       <div className="mt-7 border-t border-white/15 pt-4 text-[11px] text-white/40">ID: {user.id.slice(0,8).toUpperCase()} · Não é ingresso</div>
     </div>
     <FriendQR/>
+    {demoCredentials&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta de teste — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials.email}</p><p className="mt-1 break-all">Senha: {demoCredentials.password}</p><button onClick={()=>void navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`)} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">Copiar credenciais</button></div>}
     <div className="space-y-3"><button onClick={()=>change('password')} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><KeyRound size={19} className="text-[#c4ff40]"/> Alterar minha senha</button><button onClick={async()=>{try{await request('logout',{});setUser(null);onUser?.(null);change('login');}catch(e){setError(String(e));}}} className="flex w-full items-center gap-3 rounded-xl border border-white/15 px-4 py-4 text-sm font-bold"><LogOut size={19}/> Sair da conta</button></div>
     <div className="mt-5 rounded-xl border border-white/10 p-4 text-xs leading-relaxed text-white/50"><ShieldCheck size={17} className="mb-2 text-[#c4ff40]"/> Sua conta está salva no servidor. Seu QR Code temporário permite adicionar amigos diretamente, sem aprovação. Nenhuma localização é coletada.</div>
     {error&&<p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
@@ -52,6 +55,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       {error&&<p role="alert" className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}
       {success&&<p role="status" className="rounded-lg border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-3 text-xs text-[#c4ff40]">{success}</p>}
       <button disabled={busy} className={btn}>{busy?'Aguarde...':({login:'Entrar',register:'Cadastrar pessoa',forgot:'Enviar link de recuperação',password:'Salvar nova senha',reset:'Redefinir senha'})[mode]}</button>
+      {mode==='login'&&<button type="button" disabled={busy} onClick={()=>void generateDemo()} className="w-full rounded-xl border border-[#c4ff40]/40 bg-[#c4ff40]/10 px-4 py-3 text-sm font-bold text-[#c4ff40] disabled:opacity-50">Gerar usuário de teste aleatório</button>}
       {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2"><button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button><button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastrar pessoa</button></div>}
       {mode!=='login'&&<button type="button" onClick={()=>{if(user){change('login');}else{change('login');}}} className="flex w-full items-center justify-center gap-2 pt-2 text-xs text-white/60"><ArrowLeft size={14}/> {user?'Voltar':'Voltar para login'}</button>}
     </form>
