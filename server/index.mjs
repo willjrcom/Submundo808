@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,na
 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
+db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
@@ -35,7 +36,7 @@ const hashToken = value => createHash('sha256').update(value).digest('hex');
 const passwordHash = pass => { const salt = randomBytes(16).toString('hex'); return salt + ':' + scryptSync(pass, salt, 64).toString('hex'); };
 const validPassword = (pass, stored) => { const [salt, expected] = stored.split(':'); if (!salt || !expected) return false; const actual = scryptSync(pass, salt, 64); const wanted = Buffer.from(expected, 'hex'); return actual.length === wanted.length && timingSafeEqual(actual, wanted); };
 const cookie = (req, key) => (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(key + '='))?.slice(key.length + 1);
-const getUser = req => { const token = cookie(req, 'sid'); if (!token) return null; return db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hashToken(token), Date.now()) || null; };
+const getUser = req => { const token = cookie(req, 'sid'); if (!token) return null; const user=db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hashToken(token), Date.now()) || null; if(user){db.prepare('INSERT INTO user_activity(user_id,last_seen) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen').run(user.id,Date.now());}return user; };
 const sessionCookie = (token, maxAge=604800) => `sid=${token}; HttpOnly; Secure; SameSite=Lax; Domain=.submundo.menudevendas.com.br; Path=/; Max-Age=${maxAge}`;
 const createSession = (res, id) => { const token = randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hashToken(token), id, Date.now()+604800000); res.setHeader('Set-Cookie', sessionCookie(token)); };
 const attempts = new Map();
@@ -127,7 +128,7 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='GET'&&key==='overview'){
           const cutoff=Date.now()-15*60*1000;
-          return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(DISTINCT user_id) n FROM sessions WHERE expires_at>?').get(Date.now()).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
+          return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(*) n FROM user_activity WHERE last_seen>?').get(cutoff).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
         }
         if(req.method==='POST'&&key==='edit-venue'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);
