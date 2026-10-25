@@ -11,7 +11,7 @@ type CallbackOptions={
 };
 export function gpsErrorText(error:GpsAcquisitionError):string{
  switch(error.code){
-  case 1:return 'Localização bloqueada neste navegador. Abra as permissões do site no Chrome e selecione Permitir.';
+  case 1:return 'Localização bloqueada. Abra as permissões deste site no navegador e selecione Permitir. Confira também a permissão de localização do navegador no Android.';
   case 2:return 'O Android não conseguiu determinar sua posição. Confira se a localização do aparelho está ligada e tente em um local com sinal.';
   case 3:return 'O GPS demorou para responder. Confira a localização do Android e toque em Ativar localização para tentar novamente.';
   default:return 'Não foi possível iniciar a localização neste aparelho.';
