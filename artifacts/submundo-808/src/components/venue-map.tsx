@@ -134,9 +134,11 @@ export default function VenueMap(){
    // Não solicitar a localização novamente: o watchPosition já monitora
    // o GPS, e chamadas adicionais abriam prompts em alguns Androids.
    const heartbeat=window.setInterval(()=>{
-    if(!sharingRef.current||watch.current===null)return;
+    // Não mostrar "GPS sem leituras" enquanto a primeira autorização
+    // ou a primeira localização ainda está sendo solicitada.
+    if(!sharingRef.current||watch.current===null||gpsActivatingRef.current||!trackingRef.current||!locationRef.current)return;
     if(Date.now()-lastGpsFixAt.current<=90000)sendLatestLocation(true);
-    else setGeoError('GPS sem leituras recentes. Confira a permissão do navegador.');
+    else setGeoError('O GPS parou de atualizar. Confira a localização do aparelho.');
    },20000);
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
