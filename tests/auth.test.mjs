@@ -9,3 +9,18 @@ test('JWT rejeita expiração',()=>assert.equal(verifyJwt(signJwt('u',0,secret,n
 test('JWT rejeita token malformado',()=>{for(const token of ['','a.b.c','x','x.y.z.a',null])assert.equal(verifyJwt(token,secret,now),null);});
 test('cookie persistente compartilhado com admin',()=>{const cookie=authCookie('abc');assert.match(cookie,/Domain=submundo\.menudevendas\.com\.br/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Lax/);assert.match(cookie,/Max-Age=2592000/);});
 test('logout limpa cookie',()=>assert.match(authCookie('',0),/Max-Age=0/));
+
+test('cookie compartilha login entre site e admin',()=>{
+  for(const host of ['submundo.menudevendas.com.br','admin.submundo.menudevendas.com.br']){
+    assert.match(authCookie('token',JWT_TTL_SECONDS,{headers:{host}}),/Domain=submundo\.menudevendas\.com\.br/);
+  }
+});
+test('domínio alternativo não recebe cookie inválido',()=>{
+  const cookie=authCookie('token',JWT_TTL_SECONDS,{headers:{host:'preview.example.com'}});
+  assert.doesNotMatch(cookie,/Domain=/);
+  assert.match(cookie,/HttpOnly/);
+});
+test('ambiente local permite cookie sem Secure',()=>{
+  const cookie=authCookie('token',JWT_TTL_SECONDS,{headers:{host:'localhost:3000'}});
+  assert.doesNotMatch(cookie,/; Secure/);
+});
