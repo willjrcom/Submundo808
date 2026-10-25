@@ -23,8 +23,15 @@ export default function VenueMap(){
  const [data,setData]=useState<MapData|null>(null);
  const [mapError,setMapError]=useState('');
  const [mapsReady,setMapsReady]=useState(false),[mapDataReady,setMapDataReady]=useState(false);
+ const [eventRevision,setEventRevision]=useState(0);
+ useEffect(()=>{
+  const refresh=()=>setEventRevision(n=>n+1);
+  window.addEventListener('submundo-event-selected',refresh);
+  return()=>window.removeEventListener('submundo-event-selected',refresh);
+ },[]);
  useEffect(()=>{
   let active=true;
+  setMapsReady(false);
   const load=async(url:string)=>{const response=await fetch(url);if(!response.ok)throw Error('Falha ao carregar eventos ou mapas.');return response.json();};
   Promise.all([load('/api/public/events'),load('/api/public/maps')])
    .then(([events,mapsData])=>{
@@ -36,7 +43,7 @@ export default function VenueMap(){
    .catch(()=>{if(active)setMapError('Não foi possível carregar os mapas.');})
    .finally(()=>{if(active)setMapsReady(true);});
   return()=>{active=false;};
- },[]);
+ },[eventRevision]);
  useEffect(()=>{
   if(!selectedMap){setData(null);setMapDataReady(true);return;}
   let active=true;setData(null);setMapDataReady(false);setMapError('');
