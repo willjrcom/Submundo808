@@ -75,6 +75,16 @@ http.createServer(async (req,res)=>{
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') return json(res,200,{user:getUser(req)});
+      if (url.pathname==='/api/auth/demo' && req.method==='POST') {
+        if(process.env.ENABLE_DEMO_USERS!=='true') return json(res,403,{error:'Contas de teste desativadas neste ambiente.'});
+        const id=randomUUID();const suffix=randomBytes(5).toString('hex');
+        const name='Teste '+suffix.slice(0,6).toUpperCase();
+        const email='teste-'+suffix+'@example.invalid';
+        const password=randomBytes(24).toString('base64url');
+        db.prepare('INSERT INTO users VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
+        createSession(res,id);
+        return json(res,201,{user:{id,name,email},password});
+      }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
         const b=await body(req);const name=String(b.name||'').trim().slice(0,60),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||'');
         if(name.length<2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128) return json(res,400,{error:'Informe nome, e-mail válido e senha de 10 a 128 caracteres.'});
