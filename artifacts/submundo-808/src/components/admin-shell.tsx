@@ -1,0 +1,7 @@
+import { useState } from 'react';
+import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft } from 'lucide-react';
+export default function AdminShell(){
+ const [section,setSection]=useState('Visão geral');
+ const sections=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Mapas e ambientes',Icon:Map},{name:'Eventos',Icon:CalendarDays}];
+ return <div className="min-h-dvh bg-[#0b090f] text-white md:flex"><aside className="border-b border-white/10 bg-[#17101e] p-5 md:min-h-dvh md:w-64 md:border-b-0 md:border-r"><h1 className="mb-5 text-xl font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></h1><nav className="flex gap-2 overflow-x-auto md:flex-col">{sections.map(({name,Icon})=><button key={name} onClick={()=>setSection(name)} className={'flex shrink-0 items-center gap-2 rounded-xl px-3 py-3 text-sm '+(section===name?'bg-[#c4ff40] font-bold text-black':'text-white/70')}><Icon size={17}/>{name}</button>)}</nav><a className="mt-6 flex items-center gap-2 text-sm text-white/60" href="https://submundo.menudevendas.com.br/perfil"><ArrowLeft size={16}/> Acessar visão do usuário</a></aside><main className="w-full max-w-5xl p-5 md:p-10"><p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{section}</h2><p className="mt-5 text-sm text-white/60">Estrutura inicial do painel. Os cadastros serão habilitados após a integração segura com a API administrativa.</p></main></div>;
+}
