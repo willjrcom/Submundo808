@@ -157,7 +157,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      ref={canvas} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag}
      className={'absolute left-[22%] top-[22%] h-[56%] w-[56%] border-2 border-dashed border-[#c4ff40]/30 bg-[#23132e]/40 '+(editing?'touch-none':'')}
      style={{backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
-     onClick={e=>{if(e.target===e.currentTarget){setSelected('');setResizeId(null);}}}
+     onPointerDown={e=>{if(e.target===e.currentTarget){setSelected('');setResizeId(null);}}}
     ><span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-bold text-[#c4ff40]/60">Área do mapa</span>
      {areas.map(a=>{
       const Icon=iconFor(a.icon||a.kind);const color=areaColor(a);const chosen=selected===a.id;
