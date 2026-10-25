@@ -97,12 +97,18 @@ export default function VenueMap(){
       }else{
        // A consulta de permissões pode terminar durante um watchPosition
        // iniciado pelo clique do usuário. Não cancelar essa tentativa.
-       if(status.state==='prompt'&&(watch.current!==null||gpsActivatingRef.current))return;
-       // "prompt" e "denied" nunca disparam um novo pedido automaticamente.
-       // O único pedido de GPS deve partir do botão principal da tela.
+       if(status.state==='prompt'&&gpsActivatingRef.current)return;
+       // Se o Android revogar o GPS, cancela uma aquisição pendente,
+       // interrompe o monitoramento e retira a posição ativa do servidor.
+       if(status.state==='denied'&&gpsActivatingRef.current){
+        gpsAttemptId.current++;gpsActivatingRef.current=false;
+        gpsInitialCancel.current?.();gpsInitialCancel.current=null;
+       }
+       const hadWatch=watch.current!==null;
        setGpsPermissionRequired(true);
        setGpsStarting(false);
        if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+       if(hadWatch&&sharingRef.current)void requestLocation('stop',{}).catch(()=>{});
        setTracking(false);trackingRef.current=false;
        locationRef.current=null;setLocation(null);
        setGeoError(status.state==='denied'?'Localização bloqueada. Altere a permissão nas configurações do site.':'');
