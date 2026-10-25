@@ -25,7 +25,7 @@ test('shared border cannot shrink a room below minimum size',()=>{
  assert.equal(resizeShared([left,right],'pista','left',-58)[0].width,60);
 });
 test('moving a connected zone moves its neighbors together',()=>{
- const moved=moveArea([{...left,x:10,width:40},{...right,x:50,width:30}],'pista',20,10,false);
+ const moved=moveArea([{...left,x:10,width:40,height:40},{...right,x:50,width:30,height:40}],'pista',20,10,false);
  assert.deepEqual(moved.map(x=>[x.x,x.y]),[[20,10],[60,10]]);
  assert.equal(sharesBorder(moved[0],moved[1]),true);
 });
