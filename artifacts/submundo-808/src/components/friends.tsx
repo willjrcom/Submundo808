@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
+import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
 type Friend={id:string;name:string};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw new Error(data.error||'Falha na operação.');return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
@@ -19,7 +19,7 @@ export default function Friends(){
     try{
       const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
       stream.current=media;setScan(true);scanning.current=true;
-      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+      await new Promise<void>(resolve=>window.setTimeout(resolve,120));
       if(!video.current){stop();return;}video.current.srcObject=media;await video.current.play();
       const detector=new Detector({formats:['qr_code']});
       while(scanning.current){
