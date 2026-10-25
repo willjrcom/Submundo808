@@ -15,10 +15,10 @@ type Drag={id:string;kind:'area'|'marker'|'resize';edge?:Edge;startX:number;star
 const input='w-full rounded-xl border border-white/15 bg-[#1b1624] px-3 py-2.5 text-sm text-white outline-none focus:border-[#c4ff40]';
 const button='inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-3 py-2.5 text-sm font-semibold transition hover:border-white/40 disabled:cursor-not-allowed disabled:opacity-35';
 const colors=['#9747FF','#3B82F6','#00BDD6','#A3E635','#FF9F43','#FF456C','#EAB308'];
-const types=['pista','palco','vip','recepcao','entrada','descanso','cozinha','alimentacao','bar','banheiro','saida','posto-medico','outro'];
-const typeNames:Record<string,string>={pista:'Pista',palco:'Palco',vip:'Área VIP',recepcao:'Recepção',entrada:'Entrada',descanso:'Área de descanso',cozinha:'Cozinha',alimentacao:'Alimentação',bar:'Bar',banheiro:'Banheiro',saida:'Saída','posto-medico':'Posto médico',outro:'Outro'};
+const types=['principal','pista','palco','vip','backstage','recepcao','entrada','descanso','cozinha','alimentacao','bar','banheiro','saida','posto-medico','outro'];
+const typeNames:Record<string,string>={principal:'Área principal',backstage:'Backstage',pista:'Pista',palco:'Palco',vip:'Área VIP',recepcao:'Recepção',entrada:'Entrada',descanso:'Área de descanso',cozinha:'Cozinha',alimentacao:'Alimentação',bar:'Bar',banheiro:'Banheiro',saida:'Saída','posto-medico':'Posto médico',outro:'Outro'};
 const iconFor=(type:string)=>{
- const icons:Record<string,typeof MapPin>={pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope,outro:MapPin};
+ const icons:Record<string,typeof MapPin>={principal:Music2,backstage:Warehouse,pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope,outro:MapPin};
  return icons[type]||MapPin;
 };
 const areaColor=(a:Area)=>/^#[0-9a-fA-F]{6}$/.test(a.color||'')?a.color!:'#9747FF';
@@ -117,6 +117,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    setNotice('Posição GPS capturada. Salve o mapa para publicar.');
   },e=>setError(e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});
  }
+ async function discard(){
+  if(!window.confirm('Descartar alterações não salvas?'))return;
+  setLoading(true);setError('');
+  try{
+   const [a,m]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id))]);
+   setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);
+   setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
+  }catch(e){setError(String(e));}finally{setLoading(false);}
+ }
  function back(){if(dirty&&!window.confirm('Há alterações não salvas. Sair e descartar essas alterações?'))return;onBack();}
  function activateResize(){
   if(!active)return;setEditLayout(true);setResizeId(id=>id===active.id?null:active.id);
@@ -126,7 +135,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <button onClick={back} className="flex items-center gap-2 text-sm text-white/60 hover:text-white"><ArrowLeft size={16}/> Voltar aos mapas</button>
   <div className="flex flex-wrap items-center justify-between gap-3">
    <div><p className="text-xs uppercase tracking-widest text-[#c4ff40]">Editor do mapa</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">{map.name}</h2><p className="mt-1 text-xs text-white/50">{dirty?'● Alterações não salvas':'Mapa salvo'} · {editing?'Modo edição ativo':'Modo de visualização'}</p></div>
-   <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={()=>{if(window.confirm('Descartar alterações?'))window.location.reload();}} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
+   <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={()=>void discard()} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
   </div>
   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2">
    <button onClick={()=>{setEditLayout(v=>!v);setResizeId(null);}} aria-pressed={editing} className={button+' '+(editing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Pencil size={16}/>{editing?'Concluir edição':'Editar layout'}</button>
