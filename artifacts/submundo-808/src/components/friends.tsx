@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
 import PageLoading from './page-loading';
+import useMinimumLoading from './use-minimum-loading';
 type Friend={id:string;name:string};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
@@ -83,7 +84,8 @@ export default function Friends(){
       setError(e instanceof Error?e.message:'Não foi possível abrir a câmera. Verifique a permissão do navegador.');
     }
   }
-  if(access==='loading')return <PageLoading label="Carregando amigos" description="Verificando seu acesso e preparando sua lista de amigos."/>;
+  const showLoading=useMinimumLoading(access==='loading');
+  if(showLoading)return <PageLoading label="Carregando amigos" description="Verificando seu acesso e preparando sua lista de amigos."/>;
   if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
     <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
