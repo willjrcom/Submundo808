@@ -50,10 +50,10 @@ const getUser = req => {
   return {id:user.id,name:user.name,email:user.email};
 };
 const sessionCookie=authCookie;
-const createSession=(res,id)=>{
+const createSession=(req,res,id)=>{
   const user=db.prepare('SELECT token_version FROM users WHERE id=?').get(id);
   if(!user)throw Error('Usuário não encontrado');
-  res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET)));
+  res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET),undefined,req));
 };
 const attempts = new Map();
 function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
@@ -312,7 +312,7 @@ http.createServer(async (req,res)=>{
           db.prepare('INSERT INTO admin_users VALUES(?,?)').run(id,Date.now());
           db.exec('COMMIT');
         }catch(e){db.exec('ROLLBACK');throw e;}
-        createSession(res,id);
+        createSession(req,res,id);
         return json(res,201,{user:{id,name,email,isAdmin:true},password});
       }
       if (url.pathname==='/api/auth/demo' && req.method==='POST') {
@@ -322,28 +322,28 @@ http.createServer(async (req,res)=>{
         const email='teste-'+suffix+'@example.invalid';
         const password=randomBytes(24).toString('base64url');
         db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
-        createSession(res,id);
+        createSession(req,res,id);
         return json(res,201,{user:{id,name,email},password});
       }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
         const b=await body(req);const name=String(b.name||'').trim().slice(0,60),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||'');
         if(name.length<2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128) return json(res,400,{error:'Informe nome, e-mail válido e senha de 10 a 128 caracteres.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
-        const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(pass),Date.now());createSession(res,id);return json(res,201,{user:{id,name,email}});
+        const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(pass),Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
       }
       if (url.pathname==='/api/auth/login' && req.method==='POST') {
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const pass=String(b.password||'');const user=db.prepare('SELECT * FROM users WHERE email=?').get(email);
         if(!user || !validPassword(pass,user.password)) return json(res,401,{error:'E-mail ou senha incorretos.'});
-        createSession(res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
+        createSession(req,res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
       }
-      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user)db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);res.setHeader('Set-Cookie',sessionCookie('',0));return json(res,200,{ok:true}); }
+      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user)db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
       if (url.pathname==='/api/auth/password' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login primeiro.'});
         const b=await body(req);const stored=db.prepare('SELECT password FROM users WHERE id=?').get(user.id);
         if(!validPassword(String(b.current||''),stored.password))return json(res,400,{error:'Senha atual incorreta.'});
         const pass=String(b.password||'');if(pass.length<10 || pass.length>128)return json(res,400,{error:'A nova senha precisa ter entre 10 e 128 caracteres.'});
         db.prepare('UPDATE users SET password=? WHERE id=?').run(passwordHash(pass),user.id);
-        db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);createSession(res,user.id);
+        db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);createSession(req,res,user.id);
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/forgot' && req.method==='POST') {
