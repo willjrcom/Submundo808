@@ -1,3 +1,4 @@
+import {loadJwtSecret,signJwt,verifyJwt,authCookie} from './auth.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +13,7 @@ const secretFile=path.join(DATA,'friend-invite-secret');
 if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,randomBytes(32).toString('hex'),{mode:0o600});
 const FRIEND_SECRET=process.env.FRIEND_INVITE_SECRET||fs.readFileSync(secretFile,'utf8').trim();
 const db = new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
+const JWT_SECRET=loadJwtSecret(DATA);
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -31,6 +33,7 @@ db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_
 db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)');
 db.exec("CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',category TEXT NOT NULL,default_price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL)");
 db.exec('CREATE TABLE IF NOT EXISTS event_products(event_id TEXT NOT NULL,product_id TEXT NOT NULL,price_cents INTEGER,PRIMARY KEY(event_id,product_id))');
+if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
@@ -39,9 +42,20 @@ const hashToken = value => createHash('sha256').update(value).digest('hex');
 const passwordHash = pass => { const salt = randomBytes(16).toString('hex'); return salt + ':' + scryptSync(pass, salt, 64).toString('hex'); };
 const validPassword = (pass, stored) => { const [salt, expected] = stored.split(':'); if (!salt || !expected) return false; const actual = scryptSync(pass, salt, 64); const wanted = Buffer.from(expected, 'hex'); return actual.length === wanted.length && timingSafeEqual(actual, wanted); };
 const cookie = (req, key) => (req.headers.cookie || '').split(';').map(x => x.trim()).find(x => x.startsWith(key + '='))?.slice(key.length + 1);
-const getUser = req => { const token = cookie(req, 'sid'); if (!token) return null; const user=db.prepare('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?').get(hashToken(token), Date.now()) || null; if(user){db.prepare('INSERT INTO user_activity(user_id,last_seen) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen').run(user.id,Date.now());}return user; };
-const sessionCookie = (token, maxAge=2592000) => `sid=${token}; HttpOnly; Secure; SameSite=Lax; Domain=.submundo.menudevendas.com.br; Path=/; Max-Age=${maxAge}`;
-const createSession = (res, id) => { const token = randomBytes(32).toString('hex'); db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hashToken(token), id, Date.now()+2592000000); res.setHeader('Set-Cookie', sessionCookie(token)); };
+const getUser = req => {
+  const claims=verifyJwt(cookie(req,'sid'),JWT_SECRET);
+  if(!claims)return null;
+  const user=db.prepare('SELECT id,name,email,token_version FROM users WHERE id=?').get(claims.sub);
+  if(!user||user.token_version!==claims.ver)return null;
+  db.prepare('INSERT INTO user_activity(user_id,last_seen) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen').run(user.id,Date.now());
+  return {id:user.id,name:user.name,email:user.email};
+};
+const sessionCookie=authCookie;
+const createSession=(res,id)=>{
+  const user=db.prepare('SELECT token_version FROM users WHERE id=?').get(id);
+  if(!user)throw Error('Usuário não encontrado');
+  res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET)));
+};
 const attempts = new Map();
 function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
 async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>12000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
@@ -323,14 +337,14 @@ http.createServer(async (req,res)=>{
         if(!user || !validPassword(pass,user.password)) return json(res,401,{error:'E-mail ou senha incorretos.'});
         createSession(res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
       }
-      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const token=cookie(req,'sid');if(token) db.prepare('DELETE FROM sessions WHERE token_hash=?').run(hashToken(token));res.setHeader('Set-Cookie',sessionCookie('',0));return json(res,200,{ok:true}); }
+      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user)db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);res.setHeader('Set-Cookie',sessionCookie('',0));return json(res,200,{ok:true}); }
       if (url.pathname==='/api/auth/password' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login primeiro.'});
         const b=await body(req);const stored=db.prepare('SELECT password FROM users WHERE id=?').get(user.id);
         if(!validPassword(String(b.current||''),stored.password))return json(res,400,{error:'Senha atual incorreta.'});
         const pass=String(b.password||'');if(pass.length<10 || pass.length>128)return json(res,400,{error:'A nova senha precisa ter entre 10 e 128 caracteres.'});
         db.prepare('UPDATE users SET password=? WHERE id=?').run(passwordHash(pass),user.id);
-        db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id);createSession(res,user.id);
+        db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);createSession(res,user.id);
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/forgot' && req.method==='POST') {
@@ -349,7 +363,7 @@ http.createServer(async (req,res)=>{
         if(!row)return json(res,400,{error:'Link inválido ou expirado.'});
         db.prepare('UPDATE users SET password=? WHERE id=?').run(passwordHash(pass),row.user_id);
         db.prepare('DELETE FROM resets WHERE user_id=?').run(row.user_id);
-        db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.user_id);
+        db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(row.user_id);
         return json(res,200,{ok:true});
       }
       return json(res,404,{error:'Rota não encontrada'});
