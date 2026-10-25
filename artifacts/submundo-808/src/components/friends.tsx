@@ -17,14 +17,14 @@ export default function Friends(){
     const Detector=(window as unknown as {BarcodeDetector?:new (options:{formats:string[]})=>{detect:(source:HTMLVideoElement)=>Promise<Array<{rawValue:string}>>}}).BarcodeDetector;
     type JsQr=(pixels:Uint8ClampedArray,width:number,height:number,options?:object)=>{data:string}|null;
     let jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
-    if(!Detector && !jsQR){
+    if(!jsQR){
       try{
         await new Promise<void>((resolve,reject)=>{
           const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
           script.onload=()=>resolve();script.onerror=()=>reject(Error('Falha ao carregar leitor de QR'));document.head.appendChild(script);
         });
         jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
-      }catch{setError('Não foi possível carregar o leitor de QR. Verifique sua conexão ou cole o link.');return;}
+      }catch{if(!Detector){setError('Não foi possível carregar o leitor de QR. Verifique sua conexão ou cole o link.');return;}}
     }
     try{
       const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
