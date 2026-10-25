@@ -10,21 +10,42 @@ export default function Friends(){
   async function load(){try{const data=await api('');setFriends(data.friends);setLogged(true);}catch{setLogged(false);}}
   useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
   function stop(){scanning.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
-  async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{48}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
+  async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
   async function start(){
     setError('');setStatus('');
     if(!navigator.mediaDevices?.getUserMedia){setError('A câmera exige HTTPS e um navegador compatível. Você pode colar o link abaixo.');return;}
     const Detector=(window as unknown as {BarcodeDetector?:new (options:{formats:string[]})=>{detect:(source:HTMLVideoElement)=>Promise<Array<{rawValue:string}>>}}).BarcodeDetector;
-    if(!Detector){setError('Leitura automática indisponível neste navegador. Use o link compartilhado.');return;}
+    type JsQr=(pixels:Uint8ClampedArray,width:number,height:number,options?:object)=>{data:string}|null;
+    let jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
+    if(!Detector && !jsQR){
+      try{
+        await new Promise<void>((resolve,reject)=>{
+          const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+          script.onload=()=>resolve();script.onerror=()=>reject(Error('Falha ao carregar leitor de QR'));document.head.appendChild(script);
+        });
+        jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
+      }catch{setError('Não foi possível carregar o leitor de QR. Verifique sua conexão ou cole o link.');return;}
+    }
     try{
       const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
       stream.current=media;setScan(true);scanning.current=true;
       await new Promise<void>(resolve=>window.setTimeout(resolve,120));
       if(!video.current){stop();return;}video.current.srcObject=media;await video.current.play();
-      const detector=new Detector({formats:['qr_code']});
+      const detector=Detector?new Detector({formats:['qr_code']}):null;
+      const canvas=document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});
       while(scanning.current){
-        try{const results=await detector.detect(video.current);if(results.length&&!locked.current){locked.current=true;await add(results[0].rawValue);break;}}catch{}
-        await new Promise(resolve=>setTimeout(resolve,250));
+        try{
+          let value='';
+          if(detector){const results=await detector.detect(video.current);value=results[0]?.rawValue||'';}
+          if(!value && jsQR && context && video.current.videoWidth>0){
+            canvas.width=video.current.videoWidth;canvas.height=video.current.videoHeight;
+            context.drawImage(video.current,0,0,canvas.width,canvas.height);
+            const pixels=context.getImageData(0,0,canvas.width,canvas.height);
+            value=jsQR(pixels.data,canvas.width,canvas.height,{inversionAttempts:'attemptBoth'})?.data||'';
+          }
+          if(value&&!locked.current){locked.current=true;await add(value);break;}
+        }catch{}
+        await new Promise(resolve=>setTimeout(resolve,200));
       }
     }catch(e){stop();setError('Não foi possível abrir a câmera. Verifique a permissão do navegador.');}
   }
@@ -33,7 +54,7 @@ export default function Friends(){
     {logged===false?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:<>
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/[.04] p-5">
         <h3 className="mb-2 flex items-center gap-2 font-bold"><UserPlus className="text-[#c4ff40]" size={19}/> Adicionar amigo</h3>
-        <p className="mb-4 text-xs text-white/55">Escaneie o QR Code temporário de alguém. A amizade será criada nos dois perfis, sem aprovação.</p>
+        <p className="mb-4 text-xs text-white/55">Escaneie o QR Code permanente de alguém. A amizade será criada nos dois perfis, sem aprovação.</p>
         {!scan?<button onClick={()=>void start()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black"><ScanLine size={19}/> Abrir câmera</button>:<><video ref={video} autoPlay muted playsInline className="aspect-square w-full rounded-xl bg-black object-cover"/><button onClick={stop} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-sm"><CameraOff size={17}/> Fechar câmera</button></>}
         <div className="mt-5 border-t border-white/10 pt-4"><label className="mb-2 block text-xs font-bold text-white/70"><Link2 size={14} className="mr-1 inline"/> Ou cole o link recebido</label><div className="flex gap-2"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="Link do amigo" className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-3 py-3 text-xs outline-none focus:border-[#c4ff40]"/><button disabled={busy||!link.trim()} onClick={()=>void add(link)} className="rounded-xl bg-[#c4ff40] px-4 text-xs font-black text-black disabled:opacity-40">Adicionar</button></div></div>
         {error&&<p role="alert" className="mt-3 text-xs text-red-300">{error}</p>}{status&&<p role="status" className="mt-3 text-xs text-[#c4ff40]">{status}</p>}
