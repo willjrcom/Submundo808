@@ -9,45 +9,70 @@ export default function Friends(){
   const video=useRef<HTMLVideoElement>(null);const stream=useRef<MediaStream|null>(null);const scanning=useRef(false);const locked=useRef(false);
   async function load(){try{const data=await api('');setFriends(data.friends);setLogged(true);}catch{setLogged(false);}}
   useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
-  function stop(){scanning.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
+  function stop(){scanning.current=false;locked.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
   async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
   async function start(){
+    if(scanning.current)return;
     setError('');setStatus('');
-    if(!navigator.mediaDevices?.getUserMedia){setError('A câmera exige HTTPS e um navegador compatível. Você pode colar o link abaixo.');return;}
-    const Detector=(window as unknown as {BarcodeDetector?:new (options:{formats:string[]})=>{detect:(source:HTMLVideoElement)=>Promise<Array<{rawValue:string}>>}}).BarcodeDetector;
-    type JsQr=(pixels:Uint8ClampedArray,width:number,height:number,options?:object)=>{data:string}|null;
-    let jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
-    if(!jsQR){
-      try{
-        await new Promise<void>((resolve,reject)=>{
-          const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
-          script.onload=()=>resolve();script.onerror=()=>reject(Error('Falha ao carregar leitor de QR'));document.head.appendChild(script);
-        });
-        jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
-      }catch{if(!Detector){setError('Não foi possível carregar o leitor de QR. Verifique sua conexão ou cole o link.');return;}}
-    }
+    if(!navigator.mediaDevices?.getUserMedia){setError('A câmera exige HTTPS e um navegador compatível. Use o link do convite como alternativa.');return;}
+    scanning.current=true;
     try{
-      const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
-      stream.current=media;setScan(true);scanning.current=true;
-      await new Promise<void>(resolve=>window.setTimeout(resolve,120));
-      if(!video.current){stop();return;}video.current.srcObject=media;await video.current.play();
-      const detector=Detector?new Detector({formats:['qr_code']}):null;
-      const canvas=document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});
+      const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      if(!scanning.current){media.getTracks().forEach(t=>t.stop());return;}
+      stream.current=media;
+      setScan(true);
+      // React must mount the video after setScan before srcObject can be assigned.
+      let element:HTMLVideoElement|null=null;
+      for(let i=0;i<30&&scanning.current;i++){
+        element=video.current;
+        if(element)break;
+        await new Promise<void>(resolve=>window.setTimeout(resolve,50));
+      }
+      if(!element){throw Error('Não foi possível iniciar a visualização da câmera.');}
+      element.srcObject=media;
+      await element.play();
+      const Detector=(window as unknown as {BarcodeDetector?:new (options:{formats:string[]})=>{detect:(source:HTMLVideoElement)=>Promise<Array<{rawValue:string}>>}}).BarcodeDetector;
+      let detector:InstanceType<NonNullable<typeof Detector>>|null=null;
+      try{if(Detector)detector=new Detector({formats:['qr_code']});}catch{}
+      type JsQr=(pixels:Uint8ClampedArray,width:number,height:number,options?:object)=>{data:string}|null;
+      let jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
+      // Android implementations may expose BarcodeDetector but fail at runtime.
+      // Always prepare the canvas fallback rather than trusting API presence.
+      if(!jsQR){
+        try{
+          await new Promise<void>((resolve,reject)=>{
+            const script=document.createElement('script');
+            script.src='https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+            script.onload=()=>resolve();script.onerror=()=>reject(Error('Falha ao carregar leitor QR'));
+            document.head.appendChild(script);
+          });
+          jsQR=(window as unknown as {jsQR?:JsQr}).jsQR;
+        }catch{if(!detector)throw Error('Não foi possível carregar o leitor QR. Cole o link do convite.');}
+      }
+      const canvas=document.createElement('canvas');
+      const context=canvas.getContext('2d',{willReadFrequently:true});
       while(scanning.current){
         try{
           let value='';
-          if(detector){const results=await detector.detect(video.current);value=results[0]?.rawValue||'';}
-          if(!value && jsQR && context && video.current.videoWidth>0){
-            canvas.width=video.current.videoWidth;canvas.height=video.current.videoHeight;
-            context.drawImage(video.current,0,0,canvas.width,canvas.height);
+          if(detector){try{const found=await detector.detect(element);value=found[0]?.rawValue||'';}catch{detector=null;}}
+          if(!value&&jsQR&&context&&element.readyState>=2&&element.videoWidth>0){
+            const max=720,ratio=Math.min(1,max/Math.max(element.videoWidth,element.videoHeight));
+            canvas.width=Math.round(element.videoWidth*ratio);canvas.height=Math.round(element.videoHeight*ratio);
+            context.drawImage(element,0,0,canvas.width,canvas.height);
             const pixels=context.getImageData(0,0,canvas.width,canvas.height);
             value=jsQR(pixels.data,canvas.width,canvas.height,{inversionAttempts:'attemptBoth'})?.data||'';
           }
-          if(value&&!locked.current){locked.current=true;await add(value);break;}
+          if(value&&!locked.current){
+            if(!/^[a-f0-9]{64}$/.test(parseToken(value))){setError('O QR detectado não é um convite do Submundo 808.');}
+            else{locked.current=true;await add(value);break;}
+          }
         }catch{}
-        await new Promise(resolve=>setTimeout(resolve,200));
+        await new Promise<void>(resolve=>window.setTimeout(resolve,250));
       }
-    }catch(e){stop();setError('Não foi possível abrir a câmera. Verifique a permissão do navegador.');}
+    }catch(e){
+      stop();
+      setError(e instanceof Error?e.message:'Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+    }
   }
   return <div>
     <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
