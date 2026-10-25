@@ -8,6 +8,13 @@ import {startInitialGps,gpsErrorText} from './gps-acquisition';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
+type ShareMode='event'|'4h'|'1h';
+type EventChoice={id:string;name:string;ends_at:string};
+const formatDeadline=(dateValue:number)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(dateValue));
+const eventEndLabel=(value:string)=>{
+ const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+ return match?match[3]+'/'+match[2]+' às '+match[4]+':'+match[5]:'horário a definir';
+};
 type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number};color?:string;icon?:string;description?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;shape?:'square'|'circle';size?:number;color?:string;description?:string};
 type MapData={map:{id:string;name:string};areas:Area[];markers:Marker[]};
@@ -19,6 +26,8 @@ const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.
 export default function VenueMap(){
  const [maps,setMaps]=useState<{id:string;name:string}[]>([]);
  const [selectedMap,setSelectedMap]=useState('');
+ const [eventChoices,setEventChoices]=useState<EventChoice[]>([]);
+ const [selectedEventId,setSelectedEventId]=useState('');
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [data,setData]=useState<MapData|null>(null);
  const [mapError,setMapError]=useState('');
@@ -36,7 +45,10 @@ export default function VenueMap(){
   Promise.all([load('/api/public/events'),load('/api/public/maps')])
    .then(([events,mapsData])=>{
     if(!active)return;
-    const event=events.items?.find((e:{id:string})=>e.id===localStorage.getItem('submundo-event-id'))||events.items?.[0];
+    const available:EventChoice[]=events.items||[];
+    setEventChoices(available);
+    const event=available.find(e=>e.id===localStorage.getItem('submundo-event-id'))||available[0];
+    setSelectedEventId(event?.id||'');
     const filtered=(mapsData.items||[]).filter((m:{id:string})=>event?.map_ids?.includes(m.id));
     setMaps(filtered);setSelectedMap(filtered[0]?.id||'');
    })
@@ -69,6 +81,9 @@ export default function VenueMap(){
   const [gpsStarting,setGpsStarting]=useState(false);
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
+  const [shareMode,setShareMode]=useState<ShareMode>('event');
+  const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
+  const [sharingEventId,setSharingEventId]=useState<string|null>(null);
   const [prefsReady,setPrefsReady]=useState(false);
   const [prefsSaving,setPrefsSaving]=useState(false);
   const [friends,setFriends]=useState<FriendLocation[]>([]);
@@ -79,10 +94,19 @@ export default function VenueMap(){
   const shareEpoch=useRef(0);
   const [authRequired,setAuthRequired]=useState(false);
   const [friendError,setFriendError]=useState('');
-  const requestLocation=async(route:string,body?:object)=>{const response=await fetch('/api/location/'+route,{method:body?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===401){setAuthRequired(true);throw Error('Entre na sua conta para compartilhar ou ver seus amigos.');}const data=await response.json();if(!response.ok)throw Error(data.error||'Falha na localização.');return data;};
+  const requestLocation=async(route:string,body?:object)=>{const response=await fetch('/api/location/'+route,{method:body?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===401){setAuthRequired(true);throw Error('Entre na sua conta para compartilhar ou ver seus amigos.');}const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Falha na localização.'),{status:response.status});return data;};
   const watch=useRef<number|null>(null);
   const trackingRef=useRef(false);
-  const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean)=>{setPrefsSaving(true);try{await requestLocation('preferences',{gpsEnabled,shareEnabled});}catch(e){setFriendError(e instanceof Error?e.message:'Falha ao salvar preferências.');throw e;}finally{setPrefsSaving(false);}};
+  const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
+   setPrefsSaving(true);
+   try{
+    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId});
+    setSharingExpiresAt(result.expiresAt||null);
+    setSharingEventId(result.eventId||null);
+    return result;
+   }catch(e){setFriendError(e instanceof Error?e.message:'Falha ao salvar preferências.');throw e;}
+   finally{setPrefsSaving(false);}
+  };
   useEffect(()=>{
    let alive=true;
    let permissionStatus:PermissionStatus|null=null;
@@ -130,6 +154,9 @@ export default function VenueMap(){
    void requestLocation('preferences').then(p=>{
     if(!alive)return;
     setPrefsReady(true);
+    setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
+    setSharingExpiresAt(p.expiresAt||null);
+    setSharingEventId(p.eventId||null);
     if(p.shareEnabled){
      sharingRef.current=true;setSharing(true);
      void checkPermission();
@@ -173,7 +200,10 @@ export default function VenueMap(){
    void requestLocation('update',position).then(()=>{
     if(epoch===shareEpoch.current){lastSend.current=Date.now();setFriendError('');}
    }).catch(e=>{
-    if(epoch===shareEpoch.current)setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');
+    if(epoch!==shareEpoch.current)return;
+    if((e as {status?:number}).status===410||(e as {status?:number}).status===403){
+     endLocalSharing('O prazo de compartilhamento terminou ou foi desativado.');
+    }else setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');
    }).finally(()=>{sendBusy.current=false;});
   };
   const consumeGpsPosition=(p:GeolocationPosition)=>{
@@ -220,6 +250,27 @@ export default function VenueMap(){
     },24000);
    }
   };
+  const endLocalSharing=(message:string)=>{
+   gpsAttemptId.current++;
+   gpsActivatingRef.current=false;
+   gpsInitialCancel.current?.();gpsInitialCancel.current=null;
+   if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
+   if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+   shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
+   setTracking(false);setSharing(false);setGpsStarting(false);
+   setLocation(null);locationRef.current=null;
+   setSharingExpiresAt(null);setSharingEventId(null);
+   setGeoError(message);
+  };
+  useEffect(()=>{
+   if(!sharingExpiresAt)return;
+   const check=()=>{
+    if(Date.now()>=sharingExpiresAt)endLocalSharing('O compartilhamento terminou no horário escolhido.');
+   };
+   check();
+   const timer=window.setInterval(check,5000);
+   return()=>window.clearInterval(timer);
+  },[sharingExpiresAt]);
   const cancelGpsStartup=()=>{
    gpsAttemptId.current++;
    gpsActivatingRef.current=false;
@@ -235,6 +286,7 @@ export default function VenueMap(){
     await savePrefs(false,false);
     shareEpoch.current++;sharingRef.current=false;setSharing(false);
     setGpsPermissionRequired(false);lastSend.current=0;
+    setSharingExpiresAt(null);setSharingEventId(null);
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
     trackingRef.current=false;setTracking(false);
     setLocation(null);locationRef.current=null;setGeoError('');
@@ -251,6 +303,9 @@ export default function VenueMap(){
    if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
    if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
+   if(!sharingRef.current&&shareMode==='event'&&!selectedEventId){
+    setGeoError('Selecione uma festa para compartilhar até o encerramento.');return;
+   }
    gpsActivatingRef.current=true;
    setGpsStarting(true);setGeoError('');
    const attempt=++gpsAttemptId.current;
@@ -262,7 +317,7 @@ export default function VenueMap(){
      try{
       // Só registra o compartilhamento no servidor depois que temos GPS real.
       if(!sharingRef.current){
-       await savePrefs(true,true);
+       await savePrefs(true,true,shareMode,shareMode==='event'?selectedEventId:null);
        if(cancelled())return;
        shareEpoch.current++;
        sharingRef.current=true;setSharing(true);
@@ -306,6 +361,8 @@ export default function VenueMap(){
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
  const scale=bounds?mapSize(bounds):null;
  const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired;
+ const eventForSharing=eventChoices.find(event=>event.id===(sharingEventId||selectedEventId));
+ const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
  const showLoading=useMinimumLoading(!mapsReady||!mapResolved||!prefsReady||!friendsReady);
  if(showLoading){
@@ -315,13 +372,25 @@ export default function VenueMap(){
  return <section className="space-y-4">
  <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-4">
   <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização</h3></div>
+  <fieldset disabled={sharing||gpsStarting||prefsSaving} className="mt-4 space-y-2 disabled:opacity-70">
+   <legend className="mb-2 text-xs font-semibold text-white/70">Compartilhar por</legend>
+   {([
+    {value:'event',title:'Até o fim da festa',hint:eventForSharing?.ends_at?'Encerra em '+eventEndLabel(eventForSharing.ends_at):'Encerra automaticamente no horário do evento'},
+    {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
+    {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
+   ] as const).map(option=><label key={option.value} className={'flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition '+(shareMode===option.value?'border-[#c4ff40]/60 bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}>
+    <input type="radio" name="sharing-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} value={option.value} className="h-4 w-4 shrink-0 accent-[#c4ff40]"/>
+    <span className="min-w-0"><span className="block text-sm font-bold">{option.title}</span><span className="mt-0.5 block text-[11px] text-white/50">{option.hint}</span></span>
+   </label>)}
+  </fieldset>
+  {sharing&&sharingExpiresAt&&<p className="mt-3 text-xs font-semibold text-[#c4ff40]">Compartilhamento ativo até {sharingDeadline}.</p>}
   <button
    disabled={!prefsReady||prefsSaving}
    aria-busy={gpsStarting}
    onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else startSharing();}}
    className={'mt-3 w-full rounded-xl px-4 py-3.5 text-sm font-black disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
   >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':'Ativar localização'}</button>
-  <p className="mt-2 text-xs text-white/55">{gpsStarting?'Aguardando o GPS do aparelho...':gpsActive?'Sua posição está visível para seus amigos.':sharing?'O GPS deste aparelho ainda não está ativo.':'Seus amigos poderão ver sua posição.'}</p>
+  <p className="mt-2 text-xs text-white/55">{gpsStarting?'Aguardando o GPS do aparelho...':gpsActive?'Sua posição está visível para seus amigos.':sharing?'O GPS deste aparelho ainda não está ativo.':'Seus amigos poderão ver sua posição enquanto o aplicativo estiver aberto.'}</p>
   {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
   {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
   {geoError&&<p className="mt-2 text-xs text-amber-300">{geoError}</p>}
