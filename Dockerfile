@@ -1,5 +1,4 @@
-# Submundo808 — React/Vite (pnpm monorepo)
-# Debian/glibc ensures Rollup's linux-x64-gnu native package can run.
+# Submundo808: Vite frontend + Node.js API with persistent SQLite
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
@@ -10,8 +9,15 @@ ENV PORT=3000
 ENV BASE_PATH=/
 RUN pnpm --filter @workspace/submundo-808 build
 
-FROM nginx:1.27-alpine AS runner
-COPY --from=builder /app/artifacts/submundo-808/dist/public/ /usr/share/nginx/html/
-RUN printf 'server { listen 80; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }\n' > /etc/nginx/conf.d/default.conf
+FROM node:22-bookworm-slim AS runner
+ENV NODE_ENV=production
+ENV PORT=80
+ENV DATA_DIR=/data
+WORKDIR /app
+COPY --from=builder /app/artifacts/submundo-808/dist/public/ /app/public/
+COPY server/index.mjs /app/server/index.mjs
+RUN mkdir -p /data && chown -R node:node /data /app
+USER node
+VOLUME ["/data"]
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "/app/server/index.mjs"]
