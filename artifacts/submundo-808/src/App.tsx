@@ -40,6 +40,7 @@ function tabFromUrl():Tab {
   const params=new URLSearchParams(window.location.search);
   if(params.has('invite'))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
+  if(segment==='programacao')return 'inicio';
   return tabs.some(t=>t.id===segment)?segment as Tab:'inicio';
 }
 export default function App() {
@@ -52,11 +53,7 @@ function ParticipantApp() {
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  // Lê a seleção antes da primeira renderização para que a aba Cardápio
-  // não apareça/desapareça depois de carregar o componente.
-  const [eventSelected,setEventSelected]=useState(()=>!!localStorage.getItem('submundo-event-id'));
-  useEffect(()=>{const refresh=()=>setEventSelected(!!localStorage.getItem('submundo-event-id'));refresh();window.addEventListener('submundo-event-selected',refresh);return()=>window.removeEventListener('submundo-event-selected',refresh);},[]);
-  const navigate=(next:Tab)=>{if(next==='cardapio'&&!eventSelected)return;const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);setNotice('');window.scrollTo(0,0);};
+  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{const next=tabFromUrl();if(next==='mapa')setMapMounted(true);setTab(next);window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
@@ -80,12 +77,12 @@ function ParticipantApp() {
       <main className="px-5 pt-7">
         {tab === 'inicio' && <PublicEvents/>}
         {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap/></div>}
-        {tab === 'cardapio' && eventSelected && <EventMenu/>}
+        {tab === 'cardapio' && <EventMenu/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
       </main>
     </div>
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
-    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.filter(t=>t.id!=='cardapio'||eventSelected).map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
+    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;
 }
