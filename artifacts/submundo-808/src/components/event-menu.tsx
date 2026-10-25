@@ -12,6 +12,7 @@ export default function EventMenu(){
  const [events,setEvents]=useState<EventItem[]>([]);
  const [eventId,setEventId]=useState('');
  const [items,setItems]=useState<Product[]>([]);
+ const [loadedEventId,setLoadedEventId]=useState('');
  const [loadingEvents,setLoadingEvents]=useState(true);
  const [loadingMenu,setLoadingMenu]=useState(false);
  const [error,setError]=useState('');
@@ -35,7 +36,7 @@ export default function EventMenu(){
  },[]);
 
  useEffect(()=>{
-  if(!eventId){setItems([]);setLoadingMenu(false);return;}
+  if(!eventId){setItems([]);setLoadedEventId('');setLoadingMenu(false);return;}
   let active=true;
   setLoadingMenu(true);setError('');
   fetch('/api/public/menu?event_id='+encodeURIComponent(eventId))
@@ -43,8 +44,8 @@ export default function EventMenu(){
     if(!response.ok)throw Error('Não foi possível carregar o cardápio.');
     return response.json();
    })
-   .then(result=>{if(active)setItems(result.items||[]);})
-   .catch(e=>{if(active){setItems([]);setError(e instanceof Error?e.message:'Erro ao carregar cardápio.');}})
+   .then(result=>{if(active){setItems(result.items||[]);setLoadedEventId(eventId);}})
+   .catch(e=>{if(active){setItems([]);setLoadedEventId(eventId);setError(e instanceof Error?e.message:'Erro ao carregar cardápio.');}})
    .finally(()=>{if(active)setLoadingMenu(false);});
   return()=>{active=false;};
  },[eventId]);
@@ -59,12 +60,13 @@ export default function EventMenu(){
  },[events]);
 
  function chooseEvent(id:string){
+  setLoadingMenu(true);
   setEventId(id);
   localStorage.setItem('submundo-event-id',id);
   window.dispatchEvent(new Event('submundo-event-selected'));
  }
  const showLoading=useMinimumLoading(loadingEvents);
- const showMenuLoading=useMinimumLoading(loadingEvents||loadingMenu);
+ const showMenuLoading=useMinimumLoading(loadingEvents||loadingMenu|| (!!eventId&&loadedEventId!==eventId));
  if(showLoading)return <PageLoading label="Carregando cardápio" description="Buscando os eventos e produtos disponíveis."/>;
  const categories=[...new Set(items.map(p=>p.category))];
  return <section className="space-y-5">
