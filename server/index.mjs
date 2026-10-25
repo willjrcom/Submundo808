@@ -187,6 +187,20 @@ http.createServer(async (req,res)=>{
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,201,{id});
         }
+        if(req.method==='POST'&&key==='delete'){
+          const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
+          const table={venue:'venues',map:'venue_maps',area:'map_areas',event:'events'}[entity];
+          if(!table)return json(res,400,{error:'Entidade inválida.'});
+          if(!db.prepare('SELECT 1 FROM '+table+' WHERE id=?').get(id))return json(res,404,{error:'Registro não encontrado.'});
+          if(entity==='venue'&&(db.prepare('SELECT 1 FROM venue_maps WHERE venue_id=?').get(id)||db.prepare('SELECT 1 FROM events WHERE venue_id=?').get(id)))return json(res,409,{error:'Exclua os mapas e eventos vinculados primeiro.'});
+          if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
+          db.exec('BEGIN');try{
+            if(entity==='event')db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
+            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);}
+            db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
+          }catch(e){db.exec('ROLLBACK');throw e;}
+          return json(res,200,{ok:true});
+        }
         return json(res,404,{error:'Operação administrativa não encontrada.'});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') {const user=getUser(req);return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null});}
