@@ -90,6 +90,9 @@ export default function VenueMap(){
        setGpsPermissionRequired(false);setGeoError('');
        if(watch.current===null)startGps();
       }else{
+       // A consulta de permissões pode terminar durante um watchPosition
+       // iniciado pelo clique do usuário. Não cancelar essa tentativa.
+       if(status.state==='prompt'&&watch.current!==null)return;
        // "prompt" e "denied" nunca disparam um novo pedido automaticamente.
        // O único pedido de GPS deve partir do botão principal da tela.
        setGpsPermissionRequired(true);
