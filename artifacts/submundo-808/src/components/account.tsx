@@ -30,6 +30,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
   async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});setUser(data.user);onUser?.(data.user);setDemoCredentials({email:data.user.email,password:data.password});}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
+  async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});setUser(data.user);onUser?.(data.user);setDemoCredentials({email:data.user.email,password:data.password});}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
   if(loading)return <p className="text-sm text-white/50">Carregando seu perfil...</p>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#c4ff40]/30 bg-[radial-gradient(circle_at_100%_0%,#46215b,transparent_50%),#17101e] p-6">
@@ -57,6 +58,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       {success&&<p role="status" className="rounded-lg border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-3 text-xs text-[#c4ff40]">{success}</p>}
       <button disabled={busy} className={btn}>{busy?'Aguarde...':({login:'Entrar',register:'Cadastrar pessoa',forgot:'Enviar link de recuperação',password:'Salvar nova senha',reset:'Redefinir senha'})[mode]}</button>
       {mode==='login'&&<button type="button" disabled={busy} onClick={()=>void generateDemo()} className="w-full rounded-xl border border-[#c4ff40]/40 bg-[#c4ff40]/10 px-4 py-3 text-sm font-bold text-[#c4ff40] disabled:opacity-50">Gerar usuário de teste aleatório</button>}
+      {mode==='login'&&<button type="button" disabled={busy} onClick={()=>void generateDemoAdmin()} className="w-full rounded-xl border border-violet-400/40 bg-violet-400/10 px-4 py-3 text-sm font-bold text-violet-200 disabled:opacity-50">Gerar usuário admin de teste</button>}
       {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2"><button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button><button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastrar pessoa</button></div>}
       {mode!=='login'&&<button type="button" onClick={()=>{if(user){change('login');}else{change('login');}}} className="flex w-full items-center justify-center gap-2 pt-2 text-xs text-white/60"><ArrowLeft size={14}/> {user?'Voltar':'Voltar para login'}</button>}
     </form>
