@@ -1,9 +1,12 @@
-// Geometry is expressed as percentages of the canvas (0..100).
+// Geometry is expressed in percentages of the map. A surrounding editing pasteboard
+// allows items to temporarily sit outside the published map (0..100).
 // Keeping the logic independent of React makes shared-border behavior testable.
 export type MapRect = {id:string;x:number;y:number;width:number;height:number};
 export type Edge = 'left'|'right'|'top'|'bottom';
 const EPS=0.15;
 const MIN=3;
+export const PASTEBOARD_MIN=-35;
+export const PASTEBOARD_MAX=135;
 export const limit=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
 const overlap=(a:number,b:number,c:number,d:number)=>Math.min(b,d)-Math.max(a,c);
 export const intersects=(a:MapRect,b:MapRect)=>overlap(a.x,a.x+a.width,b.x,b.x+b.width)>EPS&&overlap(a.y,a.y+a.height,b.y,b.y+b.height)>EPS;
@@ -12,7 +15,7 @@ export function sharesBorder(a:MapRect,b:MapRect){
  const horizontal=overlap(a.x,a.x+a.width,b.x,b.x+b.width)>EPS&&(Math.abs(a.y+a.height-b.y)<EPS||Math.abs(b.y+b.height-a.y)<EPS);
  return vertical||horizontal;
 }
-function valid(a:MapRect){return a.x>=-EPS&&a.y>=-EPS&&a.width>=MIN-EPS&&a.height>=MIN-EPS&&a.x+a.width<=100+EPS&&a.y+a.height<=100+EPS;}
+function valid(a:MapRect){return a.x>=PASTEBOARD_MIN-EPS&&a.y>=PASTEBOARD_MIN-EPS&&a.width>=MIN-EPS&&a.height>=MIN-EPS&&a.x+a.width<=PASTEBOARD_MAX+EPS&&a.y+a.height<=PASTEBOARD_MAX+EPS;}
 // Dragging a shared edge adjusts the adjacent rectangles in the same operation,
 // so a resize does not create a gap or overlap at the shared partition.
 export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,delta:number):T[]{
@@ -44,34 +47,32 @@ export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,de
  }
  return result;
 }
-// Moving a connected floorplan translates the entire touching group. This keeps
-// its borders joined; internal partitions are changed only by resizeShared().
+// An environment is moved independently: it can be parked in the pasteboard,
+// then dropped against the edge of another environment. Snapping is optional.
 export function moveArea<T extends MapRect>(areas:T[],id:string,x:number,y:number,snap=true):T[]{
  const selected=areas.find(a=>a.id===id);if(!selected)return areas;
- const ids=new Set([id]);let changed=true;
- while(changed){changed=false;for(const a of areas)if(!ids.has(a.id)&&areas.some(b=>ids.has(b.id)&&sharesBorder(a,b))){ids.add(a.id);changed=true;}}
- const group=areas.filter(a=>ids.has(a.id)),outside=areas.filter(a=>!ids.has(a.id));
- const minX=Math.min(...group.map(a=>a.x)),maxX=Math.max(...group.map(a=>a.x+a.width));
- const minY=Math.min(...group.map(a=>a.y)),maxY=Math.max(...group.map(a=>a.y+a.height));
- let dx=limit(x-selected.x,-minX,100-maxX),dy=limit(y-selected.y,-minY,100-maxY);
- if(snap&&outside.length){
-  const xDeltas:number[]=[],yDeltas:number[]=[];
-  for(const a of group)for(const b of outside){
-   if(overlap(a.y+dy,a.y+a.height+dy,b.y,b.y+b.height)>EPS)
-    xDeltas.push((b.x+b.width)-(a.x+dx),b.x-(a.x+a.width+dx));
-   if(overlap(a.x+dx,a.x+a.width+dx,b.x,b.x+b.width)>EPS)
-    yDeltas.push((b.y+b.height)-(a.y+dy),b.y-(a.y+a.height+dy));
+ let px=limit(x,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.width);
+ let py=limit(y,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.height);
+ if(snap){
+  const xCandidates=[0,100-selected.width];
+  const yCandidates=[0,100-selected.height];
+  for(const other of areas){
+   if(other.id===id)continue;
+   if(overlap(py,py+selected.height,other.y,other.y+other.height)>EPS){
+    xCandidates.push(other.x+other.width,other.x-selected.width);
+   }
+   if(overlap(px,px+selected.width,other.x,other.x+other.width)>EPS){
+    yCandidates.push(other.y+other.height,other.y-selected.height);
+   }
   }
-  const closest=(deltas:number[])=>deltas.filter(d=>Math.abs(d)<=2).sort((a,b)=>Math.abs(a)-Math.abs(b))[0];
-  const sx=closest(xDeltas),sy=closest(yDeltas);
-  if(sx!==undefined)dx=limit(dx+sx,-minX,100-maxX);
-  if(sy!==undefined)dy=limit(dy+sy,-minY,100-maxY);
+  const nearest=(value:number,candidates:number[])=>candidates
+    .filter(v=>v>=PASTEBOARD_MIN&&v<=PASTEBOARD_MAX)
+    .sort((a,b)=>Math.abs(value-a)-Math.abs(value-b))[0];
+  const snapX=nearest(px,xCandidates),snapY=nearest(py,yCandidates);
+  if(snapX!==undefined&&Math.abs(snapX-px)<=1.5)px=snapX;
+  if(snapY!==undefined&&Math.abs(snapY-py)<=1.5)py=snapY;
  }
- const candidate=areas.map(a=>ids.has(a.id)?{...a,x:a.x+dx,y:a.y+dy}:a);
- for(let i=0;i<candidate.length;i++)for(let j=i+1;j<candidate.length;j++){
-  if(!intersects(areas[i],areas[j])&&intersects(candidate[i],candidate[j]))return areas;
- }
- return candidate;
+ return areas.map(a=>a.id===id?{...a,x:px,y:py}:a);
 }
 export function freeAreaPosition<T extends MapRect>(areas:T[],width=22,height=18){
  if(!areas.length)return {x:8,y:8,width,height};
@@ -79,9 +80,9 @@ export function freeAreaPosition<T extends MapRect>(areas:T[],width=22,height=18
   {x:a.x+a.width,y:a.y},{x:a.x-width,y:a.y},
   {x:a.x,y:a.y+a.height},{x:a.x,y:a.y-height}
  ]);
- for(let y=0;y<=100-height;y+=2)for(let x=0;x<=100-width;x+=2)candidates.push({x,y});
+ for(let y=PASTEBOARD_MIN;y<=PASTEBOARD_MAX-height;y+=3)for(let x=PASTEBOARD_MIN;x<=PASTEBOARD_MAX-width;x+=3)candidates.push({x,y});
  for(const c of candidates){
-  if(c.x<0||c.y<0||c.x+width>100||c.y+height>100)continue;
+  if(c.x<PASTEBOARD_MIN||c.y<PASTEBOARD_MIN||c.x+width>PASTEBOARD_MAX||c.y+height>PASTEBOARD_MAX)continue;
   if(!areas.some(a=>intersects({...c,width,height,id:'new'},a)))return {...c,width,height};
  }
  return null;
