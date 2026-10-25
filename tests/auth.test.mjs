@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {signJwt,verifyJwt,authCookie,JWT_TTL_SECONDS} from '../server/auth.mjs';
+const secret='a'.repeat(64),now=Date.UTC(2026,9,25);
+test('JWT válido identifica usuário e versão',()=>{const token=signJwt('user-1',2,secret,now);const c=verifyJwt(token,secret,now+1000);assert.equal(c.sub,'user-1');assert.equal(c.ver,2);});
+test('JWT rejeita alteração de payload',()=>{const token=signJwt('user-1',0,secret,now);const [h,p,s]=token.split('.');const changed=Buffer.from(JSON.stringify({...JSON.parse(Buffer.from(p,'base64url').toString()),sub:'admin'})).toString('base64url');assert.equal(verifyJwt(h+'.'+changed+'.'+s,secret,now),null);});
+test('JWT rejeita assinatura de outro servidor',()=>assert.equal(verifyJwt(signJwt('u',0,secret,now),'b'.repeat(64),now),null));
+test('JWT rejeita expiração',()=>assert.equal(verifyJwt(signJwt('u',0,secret,now),secret,now+JWT_TTL_SECONDS*1000),null));
+test('JWT rejeita token malformado',()=>{for(const token of ['','a.b.c','x','x.y.z.a',null])assert.equal(verifyJwt(token,secret,now),null);});
+test('cookie persistente compartilhado com admin',()=>{const cookie=authCookie('abc');assert.match(cookie,/Domain=submundo\.menudevendas\.com\.br/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Lax/);assert.match(cookie,/Max-Age=2592000/);});
+test('logout limpa cookie',()=>assert.match(authCookie('',0),/Max-Age=0/));
