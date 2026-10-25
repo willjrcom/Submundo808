@@ -81,7 +81,11 @@ test('o botão principal ativa geolocalização antes de qualquer await/fetch',(
  assert.ok(from>=0&&until>from);
  const handler=source.slice(from,until);
  assert.ok(handler.indexOf('startInitialGps(navigator.geolocation')>0);
- assert.ok(handler.indexOf('startInitialGps(navigator.geolocation')<handler.indexOf('await savePrefs(true,true)') );
+ // A persistência acontece no callback onGpsSuccess, não antes do pedido GPS.
+ const callbackStart=handler.indexOf('const onGpsSuccess=');
+ assert.ok(callbackStart>0);
+ assert.doesNotMatch(handler.slice(0,callbackStart),/await\s|fetch\(/);
+ assert.match(handler.slice(callbackStart),/await savePrefs\(true,true\)/);
  assert.match(source,/Cancelar busca de localização/);
  assert.match(source,/gpsActivatingRef\.current/);
 });
