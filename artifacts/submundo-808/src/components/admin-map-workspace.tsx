@@ -31,6 +31,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
+ const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
+ const calibrationArea=areas.find(a=>['tl','tr','br','bl'].some(k=>a.gps?.[k]))||areas[0];
+ const calibrationKeys=['tl','tr','bl','br'] as const;
+ const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const canvas=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
  const active=areas.find(a=>a.id===selected);
@@ -114,13 +118,16 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   finally{setSaving(false);}
  }
  async function capture(corner:string){
-  if(!active)return;
-  setNotice('Aguardando GPS...');
+  if(!calibrationArea){setError('Crie um ambiente antes de calibrar o mapa.');return;}
+  if(!navigator.geolocation){setError('GPS indisponível neste navegador.');return;}
+  setCalibrationBusy(true);setError('');
   navigator.geolocation.getCurrentPosition(p=>{
-   checkpoint();
-   setAreas(v=>v.map(a=>a.id===active.id?{...a,gps:{...a.gps,[corner]:{lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}}}:a));
-   setNotice('Posição GPS capturada. Salve o mapa para publicar.');
-  },e=>setError(e.message),{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+   const point={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
+   checkpoint();setCalibrationPosition(point);
+   setAreas(v=>v.map(a=>a.id===calibrationArea.id?{...a,gps:{...a.gps,[corner]:point}}:{...a,gps:{}}));
+   setNotice('Ponto registrado (precisão ±'+Math.round(point.accuracy)+' m). Salve o mapa para publicar.');
+   setCalibrationBusy(false);
+  },e=>{setError('Não foi possível calibrar: '+e.message);setCalibrationBusy(false);},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
  }
  async function discard(){
   if(!window.confirm('Descartar alterações não salvas?'))return;
@@ -145,7 +152,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2">
    <button onClick={()=>{setEditLayout(v=>!v);setResizeId(null);}} aria-pressed={editing} className={button+' '+(editing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Pencil size={16}/>{editing?'Concluir edição':'Editar layout'}</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
-   <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
+   <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button><button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
    <button disabled={!history.length} onClick={undo} title="Desfazer" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
@@ -212,7 +219,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      </div>
      <p className="text-[11px] text-white/45">Ao redimensionar uma borda compartilhada, o vizinho acompanha o ajuste. Arrastar o interior move somente o ambiente selecionado.</p>
      {areas.some(a=>a.id!==active.id&&sharesBorder(a,active))&&<p className="text-[11px] text-[#c4ff40]">Este ambiente compartilha bordas com outros.</p>}
-     <details className="rounded-xl border border-white/10 p-3 text-xs text-white/60"><summary className="cursor-pointer font-semibold">Calibração GPS (avançado)</summary><p className="my-2 text-[11px]">Use apenas se precisar posicionar visitantes pelo GPS.</p><div className="grid grid-cols-2 gap-2">{([['tl','Superior esquerdo'],['tr','Superior direito'],['br','Inferior direito'],['bl','Inferior esquerdo']] as const).map(([key,label])=><button key={key} onClick={()=>void capture(key)} className="rounded-lg border border-white/15 px-2 py-2 text-[11px]">{label} {active.gps?.[key]?'✓':''}</button>)}</div></details>
+
     </div>:selectedMarker?<div className="space-y-4">
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
@@ -225,6 +232,19 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
   </div>
+  {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/85 p-3"><div className="w-full max-w-xl space-y-4 rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
+   <div className="flex items-center justify-between"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button className={button} onClick={()=>setCalibrationOpen(false)}>Fechar</button></div>
+   <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>
+   <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+    {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
+    {([['tl','top-1 left-1'],['tr','top-1 right-1'],['bl','bottom-1 left-1'],['br','bottom-1 right-1']] as const).map(([key,pos],i)=><div key={key} className={'absolute z-10 rounded-full border px-2 py-1 text-xs font-bold '+pos+' '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] bg-[#c4ff40] text-black':'border-purple-400 bg-[#21132d] text-white')}>{calibrationArea?.gps?.[key]?'✓':i+1}</div>)}
+    {calibrationPosition&&<div className="absolute bottom-1/2 left-1/2 rounded bg-blue-500 px-2 py-1 text-[10px] font-bold">GPS capturado ±{Math.round(calibrationPosition.accuracy)} m</div>}
+   </div>
+   <div className="grid grid-cols-2 gap-2">{calibrationKeys.map((key,i)=><button key={key} disabled={calibrationBusy||!calibrationArea} onClick={()=>void capture(key)} className={button+' flex-col text-xs '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] text-[#c4ff40]':'')}><span>{calibrationArea?.gps?.[key]?'✓ ':'○ '}{calibrationLabels[i]}</span><span className="text-[10px] opacity-65">{calibrationArea?.gps?.[key]?'Recalibrar · ±'+Math.round(calibrationArea.gps[key].accuracy)+' m':'Registrar ponto'}</span></button>)}</div>
+   <p className="text-xs text-white/60">{calibrationKeys.filter(k=>calibrationArea?.gps?.[k]).length}/4 pontos calibrados. Após salvar, a localização será projetada usando esses quatro pontos. Confira sua posição na aba Mapa.</p>
+   {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
+   <button disabled={saving||dirty===false||!calibrationKeys.every(k=>calibrationArea?.gps?.[k])} onClick={async()=>{await save();setCalibrationOpen(false);}} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-40">Salvar calibração global</button>
+  </div></div>}
   {notice&&<p role="status" className="rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-sm text-[#c4ff40]">{notice}</p>}
   {error&&<p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
  </div>;
