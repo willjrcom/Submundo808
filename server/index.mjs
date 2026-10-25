@@ -137,6 +137,7 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req);const lat=b.lat,lng=b.lng,accuracy=b.accuracy;
         if(typeof lat!=='number'||!Number.isFinite(lat)||Math.abs(lat)>90||typeof lng!=='number'||!Number.isFinite(lng)||Math.abs(lng)>180||typeof accuracy!=='number'||!Number.isFinite(accuracy)||accuracy<0||accuracy>10000)return json(res,400,{error:'Coordenadas inválidas.'});
+        if(!db.prepare('SELECT 1 FROM location_preferences WHERE user_id=? AND share_enabled=1').get(user.id))return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
         db.prepare('INSERT INTO live_locations(user_id,lat,lng,accuracy,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET lat=excluded.lat,lng=excluded.lng,accuracy=excluded.accuracy,updated_at=excluded.updated_at').run(user.id,lat,lng,accuracy,Date.now());
         return json(res,200,{ok:true});
       }
@@ -412,7 +413,7 @@ http.createServer(async (req,res)=>{
         if(!user || !validPassword(pass,user.password)) return json(res,401,{error:'E-mail ou senha incorretos.'});
         createSession(req,res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
       }
-      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user)db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
+      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user){db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);}res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
       if (url.pathname==='/api/auth/password' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login primeiro.'});
         const b=await body(req);const stored=db.prepare('SELECT password FROM users WHERE id=?').get(user.id);
