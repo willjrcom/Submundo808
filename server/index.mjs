@@ -201,6 +201,19 @@ http.createServer(async (req,res)=>{
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,200,{ok:true});
         }
+        if(req.method==='POST'&&key==='edit-event'){
+          const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
+          if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||!ids.length||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
+          if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120))return json(res,400,{error:'Lineup inválido.'});
+          db.exec('BEGIN');try{
+            db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
+            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
+            for(const mid of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mid);
+            db.exec('COMMIT');
+          }catch(e){db.exec('ROLLBACK');throw e;}
+          return json(res,200,{ok:true});
+        }
         return json(res,404,{error:'Operação administrativa não encontrada.'});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') {const user=getUser(req);return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null});}
