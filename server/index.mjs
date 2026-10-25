@@ -32,6 +32,9 @@ db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_
 db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)');
 db.exec("CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',category TEXT NOT NULL,default_price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL)");
 db.exec('CREATE TABLE IF NOT EXISTS event_products(event_id TEXT NOT NULL,product_id TEXT NOT NULL,price_cents INTEGER,PRIMARY KEY(event_id,product_id))');
+for(const [column,definition] of [['description',"TEXT NOT NULL DEFAULT ''"],['color',"TEXT NOT NULL DEFAULT '#9747FF'"],['icon',"TEXT NOT NULL DEFAULT ''"]]){
+ if(!db.prepare('PRAGMA table_info(map_areas)').all().some(c=>c.name===column))db.exec('ALTER TABLE map_areas ADD COLUMN '+column+' '+definition);
+}
 if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
@@ -57,7 +60,7 @@ const createSession=(req,res,id)=>{
 };
 const attempts = new Map();
 function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
-async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>12000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
+async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>200000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
 async function sendReset(email, link) {
   if (!process.env.RESEND_API_KEY || !process.env.RESET_FROM_EMAIL) return false;
   const result = await fetch('https://api.resend.com/emails', { method:'POST', headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'}, body:JSON.stringify({from:process.env.RESET_FROM_EMAIL,to:[email],subject:'Redefinir senha — Submundo 808',text:'Para redefinir sua senha, abra este link (válido por 30 minutos): '+link}) });
@@ -159,7 +162,7 @@ http.createServer(async (req,res)=>{
         const id=String(url.searchParams.get('map_id')||'');
         const map=db.prepare('SELECT id,name,venue_id FROM venue_maps WHERE id=?').get(id);
         if(!map)return json(res,404,{error:'Mapa não encontrado.'});
-        const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),gps_json:undefined}));
+        const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json,description,color,icon FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),gps_json:undefined}));
         const markers=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(id);
         return json(res,200,{map,areas,markers:JSON.parse(markers?.markers_json||'[]')});
       }
@@ -203,6 +206,42 @@ http.createServer(async (req,res)=>{
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
           if(!name||!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(id)||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId))return json(res,400,{error:'Mapa inválido.'});
           db.prepare('UPDATE venue_maps SET name=?,venue_id=? WHERE id=?').run(name,venueId,id);return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='save-layout'){
+          const b=await body(req),mapId=String(b.map_id||''),areas=b.areas,markers=b.markers;
+          if(!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(mapId))return json(res,404,{error:'Mapa não encontrado.'});
+          if(!Array.isArray(areas)||areas.length>150||!Array.isArray(markers)||markers.length>250)return json(res,400,{error:'Limite de ambientes ou pontos excedido.'});
+          const ids=new Set();
+          const validColor=c=>c===undefined||/^#[0-9a-fA-F]{6}$/.test(c);
+          for(const a of areas){
+            if(!a||typeof a.id!=='string'||a.id.length>100||!a.id||ids.has(a.id)||typeof a.name!=='string'||!a.name.trim()||a.name.length>100||
+              typeof a.kind!=='string'||a.kind.length>30||![a.x,a.y,a.width,a.height].every(n=>typeof n==='number'&&Number.isFinite(n))||
+              a.x<0||a.y<0||a.width<3||a.height<3||a.x+a.width>100.001||a.y+a.height>100.001||
+              !validColor(a.color)||typeof(a.description||'')!=='string'||String(a.description||'').length>500||
+              typeof(a.icon||'')!=='string'||String(a.icon||'').length>40||!a.gps||typeof a.gps!=='object'||JSON.stringify(a.gps).length>3000
+            )return json(res,400,{error:'Ambiente inválido: verifique nome, formato e limites do mapa.'});
+            ids.add(a.id);
+            const existing=db.prepare('SELECT map_id FROM map_areas WHERE id=?').get(a.id);
+            if(existing&&existing.map_id!==mapId)return json(res,400,{error:'Ambiente pertence a outro mapa.'});
+          }
+          const markerIds=new Set();
+          for(const m of markers){
+            if(!m||typeof m.id!=='string'||!m.id||m.id.length>100||markerIds.has(m.id)||typeof m.name!=='string'||!m.name.trim()||m.name.length>100||
+              typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100)||
+              !['square','circle',undefined].includes(m.shape)||!(m.size===undefined||(Number.isFinite(m.size)&&m.size>=24&&m.size<=72))||
+              !validColor(m.color)||typeof(m.description||'')!=='string'||String(m.description||'').length>500
+            )return json(res,400,{error:'Ponto inválido: verifique nome, formato, tamanho e posição.'});
+            markerIds.add(m.id);
+          }
+          db.exec('BEGIN');
+          try{
+            db.prepare('DELETE FROM map_areas WHERE map_id=?').run(mapId);
+            const insert=db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height,gps_json,description,color,icon) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
+            for(const a of areas)insert.run(a.id,mapId,a.name.trim(),a.kind,a.x,a.y,a.width,a.height,JSON.stringify(a.gps),String(a.description||''),String(a.color||'#9747FF'),String(a.icon||''));
+            db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?) ON CONFLICT(map_id) DO UPDATE SET markers_json=excluded.markers_json').run(mapId,JSON.stringify(markers));
+            db.exec('COMMIT');
+          }catch(e){db.exec('ROLLBACK');throw e;}
+          return json(res,200,{ok:true,areas:areas.length,markers:markers.length});
         }
         if(req.method==='POST'&&key==='edit-area'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),nums=[b.x,b.y,b.width,b.height].map(Number);
