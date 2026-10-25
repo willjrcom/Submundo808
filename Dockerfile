@@ -1,5 +1,6 @@
 # Submundo808 — React/Vite (pnpm monorepo)
-FROM node:22-alpine AS builder
+# Debian/glibc ensures Rollup's linux-x64-gnu native package can run.
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
 COPY . .
