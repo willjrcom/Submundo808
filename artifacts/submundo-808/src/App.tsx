@@ -48,6 +48,10 @@ export default function App() {
 }
 function ParticipantApp() {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
+  // Preserva o rastreador GPS ao navegar entre Perfil, Amigos e Mapa.
+  // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
+  const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
+  useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
   const [eventSelected,setEventSelected]=useState(false);
   useEffect(()=>{const refresh=()=>setEventSelected(!!localStorage.getItem('submundo-event-id'));refresh();window.addEventListener('submundo-event-selected',refresh);return()=>window.removeEventListener('submundo-event-selected',refresh);},[]);
   const navigate=(next:Tab)=>{if(next==='cardapio'&&!eventSelected)return;const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
@@ -73,7 +77,7 @@ function ParticipantApp() {
       </header>
       <main className="px-5 pt-7">
         {tab === 'inicio' && <PublicEvents/>}
-        {tab === 'mapa' && <VenueMap/>}
+        {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap/></div>}
         {tab === 'cardapio' && eventSelected && <EventMenu/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
