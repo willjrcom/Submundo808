@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
 import Account from './components/account';
+import Friends from './components/friends';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
@@ -33,7 +34,7 @@ function Panel({ children, className = '' }: { children: React.ReactNode; classN
 function Tag({ children }: { children: React.ReactNode }) { return <span className="inline-flex rounded-full border border-[#c4ff40]/30 bg-[#c4ff40]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#c4ff40]">{children}</span>; }
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
 export default function App() {
-  const [tab, setTab] = useState<Tab>('inicio');
+  const [tab, setTab] = useState<Tab>(new URLSearchParams(window.location.search).has('invite') ? 'amigos' : 'inicio');
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
@@ -98,13 +99,7 @@ export default function App() {
           <div className="mb-5 flex gap-2">{['Todos','Bebidas','Comidas'].map(x => <button key={x} onClick={() => setFilter(x)} className={`rounded-full px-4 py-2 text-xs font-bold ${filter === x ? 'bg-[#c4ff40] text-black' : 'border border-white/15 text-white/60'}`}>{x}</button>)}</div>
           {drinks.filter(x => filter === 'Todos' || filter === x.section).map(group => <section key={group.section} className="mb-6"><h3 className="mb-3 font-display text-sm font-bold uppercase">{group.section}</h3><Panel className="divide-y divide-white/10">{group.items.map(item => <div key={item.name} className="flex items-center justify-between gap-3 p-4"><span className="text-sm font-medium">{item.name}</span><span className="whitespace-nowrap font-mono text-sm font-bold text-[#c4ff40]">{item.price}</span></div>)}</Panel></section>)}
         </>}
-        {tab === 'amigos' && <>
-          <Title eyebrow="Sua galera">Amigos</Title>
-          <Panel className="mb-5 p-5"><p className="mb-2 font-bold">Adicionar amigo</p><p className="mb-4 text-xs text-white/50">Demonstração local: os convites ainda não são enviados a outras pessoas.</p><div className="flex gap-2"><input aria-label="Nome do amigo" value={friendName} onChange={e => setFriendName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addFriend(); }} placeholder="Nome do amigo" maxLength={50} className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-[#c4ff40]"/><button aria-label="Adicionar" onClick={addFriend} className="rounded-xl bg-[#c4ff40] px-4 text-black"><UserPlus size={20}/></button></div></Panel>
-          <div className="mb-3 flex items-center justify-between"><h3 className="font-display text-sm font-bold uppercase">Minha lista</h3><span className="text-xs text-white/45">{friends.length} cadastrados</span></div>
-          {friends.length === 0 ? <Panel className="p-8 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]" size={35}/><p className="font-bold">Sua lista está vazia</p><p className="mt-2 text-sm text-white/50">Adicione nomes para experimentar a interface.</p></Panel> : <div className="space-y-3">{friends.map(f => <Panel key={f.id} className="p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#c4ff40]/15 font-bold text-[#c4ff40]">{f.name.slice(0,1).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate font-bold">{f.name}</p><p className="text-xs text-white/45">{f.status === 'pendente' ? 'Convite local pendente' : 'Amigo demonstrativo'}</p></div><button aria-label="Remover amigo" onClick={() => setFriends(v => v.filter(x => x.id !== f.id))} className="p-2 text-white/40"><X size={18}/></button></div><div className="mt-3 flex items-center justify-between border-t border-white/10 pt-3"><span className="text-xs text-white/55">Permissão de localização (prévia)</span><button onClick={() => { changeFriend(f.id, { share: !f.share }); message('Preferência salva apenas neste dispositivo. Nenhuma localização é enviada.'); }} className={`rounded-full px-3 py-1.5 text-xs font-bold ${f.share ? 'bg-[#c4ff40] text-black' : 'bg-white/10 text-white/60'}`}>{f.share ? 'Permitida' : 'Desativada'}</button></div></Panel>)}</div>}
-          <p className="mt-4 text-xs leading-relaxed text-white/40"><LockKeyhole size={13} className="mr-1 inline"/> Nenhuma localização ou convite é transmitido. Integração entre usuários requer um serviço de contas e dados.</p>
-        </>}
+        {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
       </main>
     </div>
