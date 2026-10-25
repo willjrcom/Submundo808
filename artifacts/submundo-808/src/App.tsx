@@ -1,3 +1,4 @@
+import EventMenu from './components/event-menu';
 import PublicEvents from './components/public-events';
 import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
@@ -47,7 +48,9 @@ export default function App() {
 }
 function ParticipantApp() {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
-  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
+  const [eventSelected,setEventSelected]=useState(false);
+  useEffect(()=>{const refresh=()=>setEventSelected(!!localStorage.getItem('submundo-event-id'));refresh();window.addEventListener('submundo-event-selected',refresh);return()=>window.removeEventListener('submundo-event-selected',refresh);},[]);
+  const navigate=(next:Tab)=>{if(next==='cardapio'&&!eventSelected)return;const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);setTab(next);setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{setTab(tabFromUrl());window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
@@ -71,17 +74,12 @@ function ParticipantApp() {
       <main className="px-5 pt-7">
         {tab === 'inicio' && <PublicEvents/>}
         {tab === 'mapa' && <VenueMap/>}
-        {tab === 'cardapio' && <>
-          <Title eyebrow="O que tem por aqui">Cardápio</Title>
-          <Panel className="mb-5 flex items-start gap-3 p-4"><Info size={20} className="shrink-0 text-[#c4ff40]"/><p className="text-xs leading-relaxed text-white/60">Itens e valores ilustrativos. O cardápio oficial será publicado pela organização. Não há compras ou pagamentos no aplicativo.</p></Panel>
-          <div className="mb-5 flex gap-2">{['Todos','Bebidas','Comidas'].map(x => <button key={x} onClick={() => setFilter(x)} className={`rounded-full px-4 py-2 text-xs font-bold ${filter === x ? 'bg-[#c4ff40] text-black' : 'border border-white/15 text-white/60'}`}>{x}</button>)}</div>
-          {drinks.filter(x => filter === 'Todos' || filter === x.section).map(group => <section key={group.section} className="mb-6"><h3 className="mb-3 font-display text-sm font-bold uppercase">{group.section}</h3><Panel className="divide-y divide-white/10">{group.items.map(item => <div key={item.name} className="flex items-center justify-between gap-3 p-4"><span className="text-sm font-medium">{item.name}</span><span className="whitespace-nowrap font-mono text-sm font-bold text-[#c4ff40]">{item.price}</span></div>)}</Panel></section>)}
-        </>}
+        {tab === 'cardapio' && eventSelected && <EventMenu/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
       </main>
     </div>
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
-    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-cols-5">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
+    <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.filter(t=>t.id!=='cardapio'||eventSelected).map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;
 }
