@@ -134,6 +134,27 @@ http.createServer(async (req,res)=>{
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venue))return json(res,400,{error:'Estabelecimento e nome obrigatórios.'});
           const id=randomUUID();db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(id,venue,name,Date.now());return json(res,201,{id});
         }
+        if(req.method==='POST'&&key==='areas'){
+          const b=await body(req),name=String(b.name||'').trim().slice(0,100),mapId=String(b.map_id||''),nums=[b.x,b.y,b.width,b.height].map(Number);
+          if(!name||!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(mapId)||nums.some(x=>!Number.isFinite(x))||nums[0]<0||nums[1]<0||nums[2]<=0||nums[3]<=0||nums[0]+nums[2]>100||nums[1]+nums[3]>100)return json(res,400,{error:'Nome, mapa ou dimensões inválidos.'});
+          const id=randomUUID();db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)').run(id,mapId,name,String(b.kind||'principal'),...nums);return json(res,201,{id});
+        }
+        if(req.method==='POST'&&key==='gps'){
+          const b=await body(req),area=db.prepare('SELECT gps_json FROM map_areas WHERE id=?').get(String(b.id||'')),corner=String(b.corner||''),lat=Number(b.lat),lng=Number(b.lng),accuracy=Number(b.accuracy);
+          if(!area||!['tl','tr','br','bl'].includes(corner)||!Number.isFinite(lat)||Math.abs(lat)>90||!Number.isFinite(lng)||Math.abs(lng)>180||!Number.isFinite(accuracy)||accuracy<0)return json(res,400,{error:'GPS inválido.'});
+          const gps=JSON.parse(area.gps_json);gps[corner]={lat,lng,accuracy};db.prepare('UPDATE map_areas SET gps_json=? WHERE id=?').run(JSON.stringify(gps),b.id);return json(res,200,{gps});
+        }
+        if(req.method==='POST'&&key==='events'){
+          const b=await body(req),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||!ids.length||ids.some(id=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(id,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos. Todos os mapas devem pertencer ao mesmo estabelecimento.'});
+          const id=randomUUID();db.exec('BEGIN');
+          try{
+            db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
+            for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
+            db.exec('COMMIT');
+          }catch(e){db.exec('ROLLBACK');throw e;}
+          return json(res,201,{id});
+        }
         return json(res,404,{error:'Operação administrativa não encontrada.'});
       }
       if (url.pathname==='/api/auth/me' && req.method==='GET') {const user=getUser(req);return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null});}
