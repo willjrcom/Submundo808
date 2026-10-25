@@ -115,6 +115,27 @@ http.createServer(async (req,res)=>{
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? ORDER BY u.name').all(user.id,user.id,user.id,Date.now()-90000);
         return json(res,200,{friends:rows});
       }
+      if(url.pathname.startsWith('/api/admin/')){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
+        if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
+        const key=url.pathname.slice('/api/admin/'.length);
+        const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
+        if(req.method==='GET'&&tables[key]){
+          const rows=db.prepare('SELECT * FROM '+tables[key]).all();
+          return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:row)});
+        }
+        if(req.method==='POST'&&key==='venues'){
+          const b=await body(req),name=String(b.name||'').trim().slice(0,100);
+          if(!name)return json(res,400,{error:'Nome obrigatório.'});
+          const id=randomUUID();db.prepare('INSERT INTO venues VALUES(?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now());return json(res,201,{id});
+        }
+        if(req.method==='POST'&&key==='maps'){
+          const b=await body(req),name=String(b.name||'').trim().slice(0,100),venue=String(b.venue_id||'');
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venue))return json(res,400,{error:'Estabelecimento e nome obrigatórios.'});
+          const id=randomUUID();db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(id,venue,name,Date.now());return json(res,201,{id});
+        }
+        return json(res,404,{error:'Operação administrativa não encontrada.'});
+      }
       if (url.pathname==='/api/auth/me' && req.method==='GET') {const user=getUser(req);return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null});}
       if (url.pathname==='/api/auth/demo' && req.method==='POST') {
         if(process.env.ENABLE_DEMO_USERS!=='true') return json(res,403,{error:'Contas de teste desativadas neste ambiente.'});
