@@ -22,7 +22,7 @@ test('não exibe dois botões para autorizar a mesma localização',()=>{
  assert.match(source,/sharing&&!gpsActive&&!gpsStarting/);
 });
 test('uma permissão em andamento não é cancelada pela consulta tardia ao navegador',()=>{
- assert.match(source,/status\.state==='prompt'&&watch\.current!==null\)return/);
+ assert.match(source,/status\.state==='prompt'&&\(watch\.current!==null\|\|gpsActivatingRef\.current\)\)return/);
  assert.match(source,/if\(watch\.current!==null\)return;/);
 });
 test('não anuncia GPS ativo antes de receber coordenadas reais',()=>{
@@ -34,4 +34,11 @@ test('não anuncia GPS ativo antes de receber coordenadas reais',()=>{
 test('mantém o envio do GPS ativo no servidor apenas se o watch está ativo',()=>{
  assert.match(source,/sharingRef\.current\|\|watch\.current===null/);
  assert.match(source,/Date\.now\(\)-lastGpsFixAt\.current<=90000/);
+});
+
+test('a primeira solicitação do Android começa imediatamente no clique do usuário',()=>{
+ assert.match(source,/const startSharing=\(\)=>\{/);
+ assert.match(source,/startInitialGps\(navigator\.geolocation/);
+ assert.match(source,/gpsInitialCancel\.current=startInitialGps/);
+ assert.match(source,/Cancelar busca de localização/);
 });
