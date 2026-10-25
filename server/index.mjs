@@ -8,6 +8,9 @@ const PORT = Number(process.env.PORT || 80);
 const DATA = process.env.DATA_DIR || '/data';
 const PUBLIC = '/app/public';
 fs.mkdirSync(DATA, { recursive: true });
+const secretFile=path.join(DATA,'friend-invite-secret');
+if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,randomBytes(32).toString('hex'),{mode:0o600});
+const FRIEND_SECRET=process.env.FRIEND_INVITE_SECRET||fs.readFileSync(secretFile,'utf8').trim();
 const db = new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, created_at INTEGER NOT NULL);
@@ -49,8 +52,7 @@ http.createServer(async (req,res)=>{
         let invite=db.prepare('SELECT token_hash FROM friend_invites WHERE user_id=?').get(user.id);
         // A token is stored encrypted at rest so we cannot return it later; instead issue
         // a deterministic opaque signed token derived from a server secret.
-        const secret=process.env.FRIEND_INVITE_SECRET;
-        if(!secret || secret.length<32)return json(res,503,{error:'Configure FRIEND_INVITE_SECRET (mínimo 32 caracteres) no Dokploy.'});
+        const secret=FRIEND_SECRET;
         const token=createHash('sha256').update('friend-v1:'+user.id+':'+secret).digest('hex');
         if(!invite || invite.token_hash!==hashToken(token)){
           db.prepare('INSERT INTO friend_invites(user_id,token_hash) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash').run(user.id,hashToken(token));
