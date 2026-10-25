@@ -44,27 +44,34 @@ export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,de
  }
  return result;
 }
+// Moving a connected floorplan translates the entire touching group. This keeps
+// its borders joined; internal partitions are changed only by resizeShared().
 export function moveArea<T extends MapRect>(areas:T[],id:string,x:number,y:number,snap=true):T[]{
  const selected=areas.find(a=>a.id===id);if(!selected)return areas;
- let px=limit(x,0,100-selected.width),py=limit(y,0,100-selected.height);
- if(snap){
-  const sx:number[]=[];const sy:number[]=[];
-  for(const other of areas){
-   if(other.id===id)continue;
-   if(overlap(py,py+selected.height,other.y,other.y+other.height)>EPS){
-    sx.push(other.x+other.width,other.x-selected.width);
-   }
-   if(overlap(px,px+selected.width,other.x,other.x+other.width)>EPS){
-    sy.push(other.y+other.height,other.y-selected.height);
-   }
+ const ids=new Set([id]);let changed=true;
+ while(changed){changed=false;for(const a of areas)if(!ids.has(a.id)&&areas.some(b=>ids.has(b.id)&&sharesBorder(a,b))){ids.add(a.id);changed=true;}}
+ const group=areas.filter(a=>ids.has(a.id)),outside=areas.filter(a=>!ids.has(a.id));
+ const minX=Math.min(...group.map(a=>a.x)),maxX=Math.max(...group.map(a=>a.x+a.width));
+ const minY=Math.min(...group.map(a=>a.y)),maxY=Math.max(...group.map(a=>a.y+a.height));
+ let dx=limit(x-selected.x,-minX,100-maxX),dy=limit(y-selected.y,-minY,100-maxY);
+ if(snap&&outside.length){
+  const xDeltas:number[]=[],yDeltas:number[]=[];
+  for(const a of group)for(const b of outside){
+   if(overlap(a.y+dy,a.y+a.height+dy,b.y,b.y+b.height)>EPS)
+    xDeltas.push((b.x+b.width)-(a.x+dx),b.x-(a.x+a.width+dx));
+   if(overlap(a.x+dx,a.x+a.width+dx,b.x,b.x+b.width)>EPS)
+    yDeltas.push((b.y+b.height)-(a.y+dy),b.y-(a.y+a.height+dy));
   }
-  const nearest=(v:number,values:number[])=>values.reduce((best,n)=>Math.abs(n-v)<Math.abs(best-v)?n:best,v);
-  const nx=nearest(px,sx);if(Math.abs(nx-px)<=2)px=limit(nx,0,100-selected.width);
-  const ny=nearest(py,sy);if(Math.abs(ny-py)<=2)py=limit(ny,0,100-selected.height);
+  const closest=(deltas:number[])=>deltas.filter(d=>Math.abs(d)<=2).sort((a,b)=>Math.abs(a)-Math.abs(b))[0];
+  const sx=closest(xDeltas),sy=closest(yDeltas);
+  if(sx!==undefined)dx=limit(dx+sx,-minX,100-maxX);
+  if(sy!==undefined)dy=limit(dy+sy,-minY,100-maxY);
  }
- const candidate={...selected,x:px,y:py};
- if(areas.some(a=>a.id!==id&&intersects(candidate,a)))return areas;
- return areas.map(a=>a.id===id?candidate:a);
+ const candidate=areas.map(a=>ids.has(a.id)?{...a,x:a.x+dx,y:a.y+dy}:a);
+ for(let i=0;i<candidate.length;i++)for(let j=i+1;j<candidate.length;j++){
+  if(!intersects(areas[i],areas[j])&&intersects(candidate[i],candidate[j]))return areas;
+ }
+ return candidate;
 }
 export function freeAreaPosition<T extends MapRect>(areas:T[],width=22,height=18){
  if(!areas.length)return {x:8,y:8,width,height};
