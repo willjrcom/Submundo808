@@ -55,6 +55,7 @@ export default function VenueMap(){
   const lastGpsFixAt=useRef(0);
   const gpsAttemptId=useRef(0);
   const gpsInitialCancel=useRef<(()=>void)|null>(null);
+  const gpsActivatingRef=useRef(false);
   const watchStartupTimeout=useRef<number|null>(null);
   const [geoError,setGeoError]=useState('');
   const [gpsPermissionRequired,setGpsPermissionRequired]=useState(false);
@@ -92,11 +93,11 @@ export default function VenueMap(){
       if(!alive||!sharingRef.current)return;
       if(status.state==='granted'){
        setGpsPermissionRequired(false);setGeoError('');
-       if(watch.current===null&&gpsInitialCancel.current===null)startGps();
+       if(watch.current===null&&!gpsActivatingRef.current)startGps();
       }else{
        // A consulta de permissões pode terminar durante um watchPosition
        // iniciado pelo clique do usuário. Não cancelar essa tentativa.
-       if(status.state==='prompt'&&(watch.current!==null||gpsInitialCancel.current!==null))return;
+       if(status.state==='prompt'&&(watch.current!==null||gpsActivatingRef.current))return;
        // "prompt" e "denied" nunca disparam um novo pedido automaticamente.
        // O único pedido de GPS deve partir do botão principal da tela.
        setGpsPermissionRequired(true);
@@ -141,6 +142,7 @@ export default function VenueMap(){
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
     if(permissionStatus)permissionStatus.onchange=null;
     gpsAttemptId.current++;
+    gpsActivatingRef.current=false;
     gpsInitialCancel.current?.();gpsInitialCancel.current=null;
     if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
     shareEpoch.current++;sharingRef.current=false;
@@ -181,6 +183,12 @@ export default function VenueMap(){
    watch.current=navigator.geolocation.watchPosition(consumeGpsPosition,error=>{
     if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
     setGpsStarting(false);
+    if(error.code!==1&&locationRef.current){
+     // Falhas temporárias após um primeiro GPS válido não descartam o ponto
+     // nem interrompem o rastreamento. A próxima leitura limpa o aviso.
+     setGeoError('O GPS está demorando para atualizar a posição.');
+     return;
+    }
     setGpsPermissionRequired(error.code===1);
     setGeoError(gpsErrorText(error));
     setTracking(false);trackingRef.current=false;
@@ -199,6 +207,7 @@ export default function VenueMap(){
   };
   const cancelGpsStartup=()=>{
    gpsAttemptId.current++;
+   gpsActivatingRef.current=false;
    gpsInitialCancel.current?.();gpsInitialCancel.current=null;
    if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
    if(watch.current!==null&&!locationRef.current){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
@@ -222,11 +231,12 @@ export default function VenueMap(){
   // Isso permite que o Android apresente seu diálogo de permissão quando
   // o site estiver no estado "perguntar".
   const startSharing=()=>{
-   if(gpsStarting||gpsInitialCancel.current||watch.current!==null)return;
+   if(gpsActivatingRef.current||watch.current!==null)return;
    setFriendError('');
    if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
    if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
+   gpsActivatingRef.current=true;
    setGpsStarting(true);setGeoError('');
    const attempt=++gpsAttemptId.current;
    const cancelled=()=>attempt!==gpsAttemptId.current;
@@ -245,10 +255,12 @@ export default function VenueMap(){
       if(cancelled())return;
       lastSend.current=0;
       rawGpsTimestamp.current=0;
+      gpsActivatingRef.current=false;
       consumeGpsPosition(position);
       startGps();
      }catch(error){
       if(cancelled())return;
+      gpsActivatingRef.current=false;
       setGpsStarting(false);
       setGeoError(error instanceof Error?error.message:'Não foi possível ativar a localização.');
      }
@@ -259,6 +271,7 @@ export default function VenueMap(){
     onError:error=>{
      if(cancelled())return;
      gpsInitialCancel.current=null;
+     gpsActivatingRef.current=false;
      setGpsStarting(false);setTracking(false);trackingRef.current=false;
      setGpsPermissionRequired(error.code===1);
      setGeoError(gpsErrorText(error));
@@ -288,11 +301,11 @@ export default function VenueMap(){
  <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-4">
   <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização</h3></div>
   <button
-   disabled={!prefsReady||prefsSaving||gpsStarting}
+   disabled={!prefsReady||prefsSaving}
    aria-busy={gpsStarting}
-   onClick={()=>void(gpsActive?stopSharing():startSharing())}
+   onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else startSharing();}}
    className={'mt-3 w-full rounded-xl px-4 py-3.5 text-sm font-black disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
-  >{gpsStarting?'Obtendo localização...':gpsActive?'Desativar localização':'Ativar localização'}</button>
+  >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':'Ativar localização'}</button>
   <p className="mt-2 text-xs text-white/55">{gpsStarting?'Aguardando o GPS do aparelho...':gpsActive?'Sua posição está visível para seus amigos.':sharing?'O GPS deste aparelho ainda não está ativo.':'Seus amigos poderão ver sua posição.'}</p>
   {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
   {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
