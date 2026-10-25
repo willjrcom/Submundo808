@@ -8,10 +8,10 @@ RUN pnpm install --frozen-lockfile
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV BASE_PATH=/
-RUN pnpm --filter @workspace/mockup-sandbox build
+RUN pnpm --filter @workspace/submundo-808 build
 
 FROM nginx:1.27-alpine AS runner
-COPY --from=builder /app/artifacts/mockup-sandbox/dist/ /usr/share/nginx/html/
+COPY --from=builder /app/artifacts/submundo-808/dist/public/ /usr/share/nginx/html/
 RUN printf 'server { listen 80; server_name _; root /usr/share/nginx/html; index index.html; location / { try_files $uri $uri/ /index.html; } }\n' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
