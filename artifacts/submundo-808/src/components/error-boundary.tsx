@@ -75,11 +75,18 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
-    console.error(
-      'ErrorBoundary caught an error:',
-      toError(error),
-      info.componentStack,
-    );
+    const normalized=toError(error);
+    console.error('[Submundo808] React render failure:', normalized, info.componentStack);
+    // The server receives only a route path and a classification, never raw error
+    // messages, query parameters, stacks, user contacts, or authentication tokens.
+    const page=window.location.pathname;
+    const component=info.componentStack?.split('\n').find(line=>line.trim().startsWith('at '))?.trim().slice(3,90)||'unknown';
+    void fetch('/api/client-errors',{
+      method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({page,component,code:'react_render_error'})
+    }).catch(()=>{});
+
   }
 
   componentDidUpdate(prevProps: ErrorBoundaryProps): void {
