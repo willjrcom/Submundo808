@@ -69,13 +69,13 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   checkpoint();setError('');
   const id=crypto.randomUUID();
   setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},icon:'outro',color:'#9747FF',description:''}]);
-  setSelected(id);setEditLayout(true);setResizeId(id);setNotice('Novo ambiente criado. Arraste suas bordas e depois salve o mapa.');
+  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(id);setNotice('Novo ambiente criado. Arraste suas bordas e depois salve o mapa.');
  }
  function createMarker(){
   checkpoint();const id=crypto.randomUUID();
   const x=active?active.x+active.width/2:50,y=active?active.y+active.height/2:50;
   setMarkers(v=>[...v,{id,name:'Novo ponto',type:'outro',x,y,shape:'square',size:42,color:'#C4FF40',description:''}]);
-  setSelected(id);setEditLayout(true);setResizeId(null);setNotice('Arraste o ponto para posicionar. Salve o mapa ao terminar.');
+  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(null);setNotice('Arraste o ponto para posicionar. Salve o mapa ao terminar.');
  }
  function removeSelected(){
   if(!active&&!selectedMarker)return;
