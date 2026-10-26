@@ -145,7 +145,9 @@ http.createServer(async (req,res)=>{
         const page=String(payload.page||'').replace(/[^a-zA-Z0-9/_-]/g,'').slice(0,160);
         const component=String(payload.component||'').replace(/[^a-zA-Z0-9 _.-]/g,'').slice(0,100);
         const code=String(payload.code||'client_exception').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60);
-        console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),page,component,code}));
+        const errorType=String(payload.errorType||'Error').replace(/[^a-zA-Z]/g,'').slice(0,40);
+        const diagnostic=String(payload.diagnostic||'').replace(/https?:\/\/\S+/gi,'[url]').replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,'[email]').replace(/\b\d{10,}\b/g,'[number]').replace(/[\r\n\t]/g,' ').slice(0,220);
+        console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),page,component,code,errorType,diagnostic}));
         return json(res,202,{ok:true});
       }
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
