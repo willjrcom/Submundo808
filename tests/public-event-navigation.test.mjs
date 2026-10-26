@@ -33,7 +33,7 @@ test('Amigos e Perfil continuam acessíveis independentemente do evento',()=>{
 test('a Home apresenta a agenda antes da seleção e a programação depois',()=>{
  assert.match(home,/if\(!event\)return/);
  assert.match(home,/onSelectEvent\(id\)/);
- assert.match(home,/Voltar à agenda/);
+ assert.match(home,/Trocar evento/);
  assert.match(home,/onClearEvent\(\)/);
  assert.match(home,/eventProgramPath\(id\)/);
 });
