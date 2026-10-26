@@ -123,6 +123,15 @@ http.createServer(async (req,res)=>{
         if (origin && new URL(origin).host !== host) return json(res,403,{error:'Origem inválida'});
         if (limited(req)) return json(res,429,{error:'Muitas tentativas. Aguarde um minuto.'});
       }
+      // Client error telemetry: avoid personal data, URLs with query strings, and raw stack traces.
+      if(url.pathname==='/api/client-errors'&&req.method==='POST'){
+        const payload=await body(req);
+        const page=String(payload.page||'').replace(/[^a-zA-Z0-9/_-]/g,'').slice(0,160);
+        const component=String(payload.component||'').replace(/[^a-zA-Z0-9 _.-]/g,'').slice(0,100);
+        const code=String(payload.code||'client_exception').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60);
+        console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),page,component,code}));
+        return json(res,202,{ok:true});
+      }
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         let invite=db.prepare('SELECT token_hash FROM friend_invites WHERE user_id=?').get(user.id);
