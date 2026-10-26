@@ -79,7 +79,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
     <ChevronRight size={23} className="shrink-0 text-[#c4ff40] transition group-hover:translate-x-1"/>
    </button>)}
   </section>
-   {(event.services||event.venue.services||general)&&<section className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-[#c4ff40]">Informações importantes</h3>{general&&<p className="text-sm">Classificação etária: {general.minimum_age===0?'Livre':general.minimum_age+' anos'}</p>}{([['Regras de entrada',general?.entry_rules],['Documentos aceitos',general?.accepted_documents],['Política de cancelamento',general?.cancellation_policy],['Serviços do local',event.venue.services],['Serviços do evento',event.services]] as const).filter(([,value])=>!!value).map(([title,value])=><div key={title}><h4 className="text-xs font-bold text-white/85">{title}</h4><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-white/60">{value}</p></div>)}</section>}
+
  </div>;
 
  return <div className="space-y-6">
@@ -119,5 +119,6 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
     </div>)}
    </div>:<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/50">Programação ainda não cadastrada.</p>}
   </section>
+   {(event.services||event.venue.services||general)&&<section className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-[#c4ff40]">Informações importantes</h3>{general&&<p className="text-sm">Classificação etária: {general.minimum_age===0?'Livre':general.minimum_age+' anos'}</p>}{([['Regras de entrada',general?.entry_rules],['Documentos aceitos',general?.accepted_documents],['Política de cancelamento',general?.cancellation_policy],['Serviços do local',event.venue.services],['Serviços do evento',event.services]] as const).filter(([,value])=>!!value).map(([title,value])=><div key={title}><h4 className="text-xs font-bold text-white/85">{title}</h4><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-white/60">{value}</p></div>)}</section>}
  </div>;
 }
