@@ -13,10 +13,10 @@ test('permissão salva no servidor não é confundida com GPS autorizado no Andr
  assert.match(source,/if\(status\.state==='granted'\)/);
  assert.match(source,/setGpsPermissionRequired\(true\)/);
  assert.match(source,/const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired/);
- assert.match(source,/if\(gpsActive\)void stopSharing\(\);else startSharing\(\)/);
+ assert.match(source,/if\(gpsActive\)void stopSharing\(\);else if\(sharing\)startSharing\(\);else setLocationSetupOpen\(true\)/);
 });
 test('não exibe dois botões para autorizar a mesma localização',()=>{
- assert.match(source,/gpsActive\?'Desativar localização':'Ativar localização'/);
+ assert.match(source,/gpsActive\?'Desativar localização':sharing\?'Retomar localização':'Ativar localização'/);
  assert.doesNotMatch(source,/Permitir localização neste dispositivo/);
  assert.doesNotMatch(source,/Permitir localização<\/button>/);
  assert.match(source,/sharing&&!gpsActive&&!gpsStarting/);
