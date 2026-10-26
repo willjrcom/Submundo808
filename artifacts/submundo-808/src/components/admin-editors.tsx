@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {displayLabel} from './display-label';
+import {EventMenuEditor} from './admin-products';
 type Item={id:string;name:string;venue_id?:string;map_id?:string;x?:number;y?:number;width?:number;height?:number;gps?:Record<string,{lat:number;lng:number;accuracy:number}>};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm text-white';
 async function request(route:string,payload?:object){const r=await fetch('/api/admin/'+route,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na operação');return j;}
@@ -62,7 +63,7 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,event}:{ve
     {maps.filter(m=>m.venue_id===venue).map(m=><label key={m.id} className="flex items-center gap-3 rounded-lg border border-white/10 p-3 text-sm"><input type="checkbox" checked={selected.includes(m.id)} onChange={e=>setSelected(v=>e.target.checked?[...v,m.id]:v.filter(id=>id!==m.id))}/>{displayLabel(m.name)}</label>)}
     {!maps.some(m=>m.venue_id===venue)&&<p className="text-xs text-amber-200">Nenhum mapa cadastrado para este estabelecimento.</p>}
    </div>
-   <div className={tab==='cardapio'?'space-y-3':'hidden'}><h4 className="font-bold">Cardápio</h4><p className="text-sm text-white/60">Os produtos e preços são gerenciados na seção “Produtos e cardápios” do painel, vinculados a este evento. Esta aba ficará disponível para o gerenciamento integrado futuramente.</p></div>
+   <div className={tab==='cardapio'?'space-y-3':'hidden'}>{event?.id?<EventMenuEditor key={event.id} eventId={event.id}/>:<div className="rounded-xl border border-white/15 p-4 text-sm text-white/60">Salve o evento primeiro para configurar seus produtos e preços.</div>}</div>
    <div className={tab==='ingressos'?'space-y-3':'hidden'}><h4 className="font-bold">Ingressos e redes sociais</h4><input type="url" className={input} placeholder="Link externo de ingressos" value={tickets} onChange={e=>setTickets(e.target.value)}/><input type="url" className={input} placeholder="Instagram do evento" value={instagram} onChange={e=>setInstagram(e.target.value)}/><p className="text-xs text-white/50">Sem processamento de pagamentos pelo aplicativo.</p></div>
    <button type="submit" className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black">Salvar evento</button>
   </form>
