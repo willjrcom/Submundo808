@@ -8,7 +8,7 @@ function fixture(){
  db.exec(`
  CREATE TABLE venues(id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT DEFAULT '',city TEXT DEFAULT '',created_at INTEGER NOT NULL);
  CREATE TABLE venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,created_at INTEGER NOT NULL);
- CREATE TABLE map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}');
+ CREATE TABLE map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}',color TEXT DEFAULT '#9747FF',icon TEXT DEFAULT '');
  CREATE TABLE map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]');
  CREATE TABLE events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL);
  CREATE TABLE event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));
@@ -25,13 +25,20 @@ test('na primeira inicialização cria evento, 6 DJs, mapa, ambiente, pontos e 1
   const result=ensureDemoData(db,{now:1792944000000});
   assert.equal(result.created,true);
   assert.equal(result.productsCreated,14);
-  for(const [table,n] of [['venues',1],['venue_maps',1],['map_areas',1],['map_markers',1],['events',1],['event_maps',1],['products',14],['event_products',14]]){
+  for(const [table,n] of [['venues',1],['venue_maps',1],['map_areas',2],['map_markers',1],['events',1],['event_maps',1],['products',14],['event_products',14]]){
    assert.equal(count(db,table),n,table);
   }
   const event=db.prepare('SELECT lineup_json FROM events WHERE id=?').get(result.id);
   assert.equal(JSON.parse(event.lineup_json).length,6);
   const marker=db.prepare('SELECT markers_json FROM map_markers').get();
   assert.equal(JSON.parse(marker.markers_json).length,5);
+  const rooms=db.prepare('SELECT name,kind,y,height,color FROM map_areas ORDER BY y').all();
+  assert.deepEqual(rooms.map(({name})=>name),['Área VIP','Pista']);
+  assert.equal(rooms[0].height,48);
+  assert.equal(rooms[1].y,48);
+  assert.equal(rooms[1].height,52);
+  assert.equal(rooms[0].color,'#9747FF');
+  assert.equal(rooms[1].color,'#3B82F6');
   assert.equal(result.gpsStatus,'not-requested');
  }finally{db.close();}
 });
