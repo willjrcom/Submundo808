@@ -54,3 +54,20 @@ export function changeMarkerType<T extends PositionedMarker>(marker:T,type:strin
  if(marker.type==='entrada')return freeMarker(next);
  return next;
 }
+
+/**
+ * Marker x/y describes the CENTRE of the icon. A point anchored at x=0,
+ * x=100, y=0 or y=100 therefore straddles that map border equally.
+ * The label is drawn separately and must never affect this geometry.
+ */
+export function markerIconStyle(marker:Pick<PositionedMarker,'x'|'y'>,size:number){
+ return {
+  position:'absolute' as const,
+  left:marker.x+'%',
+  top:marker.y+'%',
+  width:size,
+  height:size,
+  transform:'translate(-50%, -50%)',
+  transformOrigin:'center center'
+ };
+}
