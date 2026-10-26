@@ -6,7 +6,7 @@ import {MapPin,Navigation,ArrowUp,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sof
 import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,type GpsFix} from './map-location-utils';
 import {startInitialGps,gpsErrorText} from './gps-acquisition';
 import {mapFrameAspect,normalizeMapFrame,type MapFrame} from './map-frame-geometry';
-import {normalizeMarker,type MarkerAnchor} from './map-marker-geometry';
+import {normalizeMarker,markerIconStyle,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
@@ -466,8 +466,8 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
    :'top-full left-1/2 -translate-x-1/2 mt-1';
   return <button key={m.id} type="button" onClick={()=>setSelectedMarkerId(v=>v===m.id?null:m.id)}
     aria-label={m.name} title={m.description||m.name}
-    className="absolute z-10 -translate-x-1/2 -translate-y-1/2 text-center"
-    style={{left:m.x+'%',top:m.y+'%',width:size,height:size}}>
+    className="z-10 text-center"
+    style={markerIconStyle(m,size)}>
     <span className={'flex h-full w-full items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span>
     <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold '+labelPosition}>{m.name}</span>
   </button>;})}
