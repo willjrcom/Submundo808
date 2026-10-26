@@ -1,3 +1,4 @@
+import {formatMobile} from './phone-mask';
 import AdminProducts from './admin-products';
 import NotFound from '../pages/not-found';
 import {ErrorBoundary} from './error-boundary';
@@ -20,7 +21,6 @@ export default function AdminShell(){
  const [settings,setSettings]=useState({minimum_age:18,entry_rules:'',accepted_documents:'',cancellation_policy:'',contact_name:'Submundo 808',contact_phone:''}),[settingsNotice,setSettingsNotice]=useState('');
  const [venueTab,setVenueTab]=useState<'maps'|'info'>('info');
  const [currentPath,setCurrentPath]=useState(window.location.pathname);
- const [seedBusy,setSeedBusy]=useState(false),[seedMessage,setSeedMessage]=useState(''),[seedStage,setSeedStage]=useState('Criando...'),[useDemoGps,setUseDemoGps]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
@@ -56,54 +56,7 @@ export default function AdminShell(){
   go({section,id:null,creating:false});
  }
  function openMap(mapId:string){if(!route.id)return;go({section:'Estabelecimentos',id:route.id,creating:false,mapId});}
- async function seedDemo(){
-  setSeedBusy(true);setError('');setSeedMessage('');
-  let location:{latitude:number;longitude:number;accuracy:number}|null=null;
-  let gpsWarning='';
-  try{
-   if(useDemoGps){
-    if(!navigator.geolocation){
-     gpsWarning='GPS indisponível; o evento será criado sem calibração automática.';
-    }else{
-     setSeedStage('Obtendo GPS...');
-     try{
-      const position=await new Promise<GeolocationPosition>((resolve,reject)=>
-       navigator.geolocation.getCurrentPosition(resolve,reject,{enableHighAccuracy:true,maximumAge:0,timeout:15000})
-      );
-      location={latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy};
-     }catch(e){
-      const err=e as GeolocationPositionError;
-      gpsWarning=err.code===1
-       ?'Permissão de localização negada; o evento será gerado sem GPS. Você poderá calibrar manualmente.'
-       :'Não foi possível obter o GPS agora; o evento será gerado sem calibração automática.';
-     }
-    }
-   }
-   setSeedStage('Gerando cenários...');
-   const result=await api('seed-demo',{location});
-   await reload();
-   const messages=[
-    result.created
-     ?'Evento criado com mapa, pontos, 6 DJs e '+result.productsTotal+' produtos no cardápio.'
-     :result.productsLinked>0||result.productsCreated>0
-      ?'Evento atualizado: '+result.productsCreated+' produtos criados e '+result.productsLinked+' vinculados, sem alterar preços personalizados.'
-      :'Evento e produtos preservados, sem duplicatas.'
-   ];
-   if(result.gpsStatus==='auto-calibrated'){
-    messages.push('Mapa calibrado aproximadamente em 50 × 40 m, com referências de 10 m. Precisão do GPS: ±'+Math.round(result.gpsAccuracy)+' m.');
-    if(result.markersRepositioned)messages.push('Pontos originais reorganizados na grade de 10 m.');
-   }else if(result.gpsStatus==='manual-preserved'){
-    messages.push('Já existe calibração manual; ela foi preservada sem alterações.');
-   }else if(result.gpsStatus==='no-demo-map'||result.gpsStatus==='no-areas'){
-    messages.push('Mapa não encontrado para calibração.');
-   }
-   if(result.showcase?.eventsAdded)messages.push('POC ampliada: '+result.showcase.eventsAdded+' eventos, '+result.showcase.mapsAdded+' mapas e '+result.showcase.venuesAdded+' estabelecimentos adicionais, com cardápios individuais.');
-   else if(result.showcase)messages.push('Os cinco eventos adicionais da POC já estão disponíveis, sem duplicatas.');
-   if(gpsWarning)messages.push(gpsWarning);
-   setSeedMessage(messages.join(' '));
-  }catch(e){setError(e instanceof Error?e.message:'Erro ao gerar evento');}
-  finally{setSeedBusy(false);setSeedStage('Criando...');}
- }
+
  async function removeConfirmed(){
   if(!confirmDelete)return;
   const item=confirmDelete;
@@ -141,12 +94,12 @@ export default function AdminShell(){
  {section==='Preferências'&&<form onSubmit={async e=>{e.preventDefault();setSettingsNotice('');try{await api('event-settings',settings);setSettingsNotice('Preferências salvas. As regras serão exibidas nos eventos publicados.');}catch(e){setSettingsNotice(e instanceof Error?e.message:'Erro ao salvar preferências.');}}} className="mt-6 max-w-3xl space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
   <div className="space-y-3 rounded-xl border border-white/10 p-4"><h3 className="font-bold">Identidade visual</h3><p className="text-xs text-white/60">Escolha a imagem que aparecerá junto ao nome Submundo 808 no cabeçalho. Sem imagem, será exibido apenas o nome.</p><div className="flex items-center gap-3">{brandLogo&&<img src={brandLogo} alt="Logo atual" className="h-14 w-14 rounded-xl object-cover"/>}<label className="flex-1 space-y-1 text-xs">Imagem do cabeçalho<input type="file" accept="image/png,image/jpeg,image/webp" className={input} onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>4_000_000){setBrandMessage('Selecione uma imagem de até 4 MB.');return;}const image=new Image(),url=URL.createObjectURL(file);image.onload=()=>{const canvas=document.createElement('canvas');canvas.width=128;canvas.height=128;const context=canvas.getContext('2d');if(!context)return;context.drawImage(image,0,0,128,128);URL.revokeObjectURL(url);const data=canvas.toDataURL('image/webp',.75);void api('branding',{logo:data}).then(()=>{setBrandLogo(data);setBrandMessage('Imagem do cabeçalho atualizada.');}).catch(err=>setBrandMessage(String(err)));};image.onerror=()=>{URL.revokeObjectURL(url);setBrandMessage('Imagem inválida.');};image.src=url;}}/></label></div>{brandLogo&&<button type="button" className="text-xs text-red-300 underline" onClick={()=>void api('branding',{logo:''}).then(()=>{setBrandLogo('');setBrandMessage('Imagem removida.');}).catch(err=>setBrandMessage(String(err)))}>Remover imagem</button>}{brandMessage&&<p role="status" className="text-xs text-[#c4ff40]">{brandMessage}</p>}</div>
   <h3 className="text-lg font-bold">Regras gerais de todos os eventos</h3><p className="text-xs text-white/60">Configuradas uma única vez. Serviços que variam por local ou festa devem ficar no cadastro correspondente.</p>
-  <div className="space-y-3 rounded-xl border border-white/10 p-4"><h3 className="font-bold">Contato oficial da Submundo</h3><p className="text-xs text-white/55">Aparece nos eventos publicados para copiar, ligar ou chamar no WhatsApp. Deixe o telefone vazio para ocultar essas ações.</p><label className="block space-y-1 text-xs">Nome do contato<input className={input} value={settings.contact_name} onChange={e=>setSettings(v=>({...v,contact_name:e.target.value}))} placeholder="Submundo 808"/></label><label className="block space-y-1 text-xs">Celular / WhatsApp com DDD<input className={input} type="tel" inputMode="numeric" maxLength={15} placeholder="(11) 99999-9999" value={settings.contact_phone.replace(/\D/g,'').length===11?settings.contact_phone.replace(/\D/g,'').replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3'):settings.contact_phone} onChange={e=>{const digits=e.target.value.replace(/\D/g,'').slice(0,11);setSettings(v=>({...v,contact_phone:digits}));}}/></label></div>
+  <div className="space-y-3 rounded-xl border border-white/10 p-4"><h3 className="font-bold">Contato oficial da Submundo</h3><p className="text-xs text-white/55">Aparece nos eventos publicados para copiar, ligar ou chamar no WhatsApp. Deixe o telefone vazio para ocultar essas ações.</p><label className="block space-y-1 text-xs">Nome do contato<input className={input} value={settings.contact_name} onChange={e=>setSettings(v=>({...v,contact_name:e.target.value}))} placeholder="Submundo 808"/></label><label className="block space-y-1 text-xs">Celular / WhatsApp com DDD<input className={input} type="tel" inputMode="numeric" maxLength={15} placeholder="(11) 99999-9999" value={formatMobile(settings.contact_phone)} onChange={e=>{const digits=e.target.value.replace(/\D/g,'').slice(0,11);setSettings(v=>({...v,contact_phone:digits}));}}/></label></div>
   <label className="block space-y-1 text-xs">Classificação etária mínima<input type="number" min={0} max={100} value={settings.minimum_age} onChange={e=>setSettings(v=>({...v,minimum_age:Number(e.target.value)}))} className={input}/></label>
   {([['entry_rules','Regras de entrada e itens proibidos'],['accepted_documents','Documentos aceitos'],['cancellation_policy','Política de cancelamento']] as const).map(([field,label])=><label key={field} className="block space-y-1 text-xs">{label}<textarea rows={5} maxLength={5000} value={settings[field]} onChange={e=>setSettings(v=>({...v,[field]:e.target.value}))} className={input} placeholder="Uma regra por linha"/></label>)}
   <button type="submit" className="rounded-xl bg-[#c4ff40] px-5 py-3 text-sm font-bold text-black">Salvar preferências</button>{settingsNotice&&<p role="status" className="text-sm text-[#c4ff40]">{settingsNotice}</p>}
  </form>}
- {section==='Visão geral'&&<div className="mt-6 rounded-2xl border border-[#c4ff40]/20 bg-white/5 p-5"><h3 className="font-bold">Geração rápida</h3><p className="mt-2 text-sm text-white/60">Prepare cinco eventos adicionais em quatro datas, incluindo dois no mesmo dia, com três estabelecimentos ao todo, seis mapas e cardápios completos. Os dados personalizados são preservados.</p><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/15 p-3 text-sm"><input type="checkbox" checked={useDemoGps} disabled={seedBusy} onChange={e=>setUseDemoGps(e.target.checked)} className="mt-1 h-4 w-4 accent-[#c4ff40]"/><span><span className="font-semibold">Calibrar mapa pelo GPS</span><span className="mt-1 block text-xs text-white/55">Usa sua localização para estimar uma área de 50 × 40 m. A calibração manual não será substituída.</span></span></label><button disabled={seedBusy} onClick={()=>void seedDemo()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{seedBusy?seedStage:'Gerar / conferir todos os cenários'}</button>{seedMessage&&<p className="mt-3 text-sm text-[#c4ff40]">{seedMessage}</p>}</div>}
+
  {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
  {section==='Estabelecimentos'&&(editing||creating?
  <div className="mt-8 space-y-5">
