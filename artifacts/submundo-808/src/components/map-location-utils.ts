@@ -57,13 +57,29 @@ export function mapSize(b:MapCorners):{width:number;height:number}{
 }
 export function offMapInfo(p:Projected,b:MapCorners){
  const size=mapSize(b);
- const outsideX=Math.max(0,-p.x,p.x-100)*size.width/100;
- const outsideY=Math.max(0,-p.y,p.y-100)*size.height/100;
+ // Keep the signed distance from each outside edge. These distances are in
+ // meters so the arrow is correct even on a very wide or very tall map.
+ const outsideX=(p.x<0?p.x:p.x>100?p.x-100:0)*size.width/100;
+ const outsideY=(p.y<0?p.y:p.y>100?p.y-100:0)*size.height/100;
  const outsideMeters=Math.hypot(outsideX,outsideY);
- // Permite mostrar pessoas fora da planta SEM marcar falsamente que estão dentro.
+ const vertical=outsideY<0?'acima':outsideY>0?'abaixo':'';
+ const horizontal=outsideX<0?'à esquerda':outsideX>0?'à direita':'';
+ const direction=[vertical,horizontal].filter(Boolean).join(' e ')||'perto do limite';
+ // ArrowUp points north before rotation; rotate clockwise toward the
+ // actual position OUTSIDE the map (not back toward the center).
+ const angleDegrees=(Math.atan2(outsideX,-outsideY)*180/Math.PI+360)%360;
+ // Inset the marker to keep the entire 36px circle visible on mobile.
  return {
   outsideMeters,
-  edgeX:clamp(p.x,5,95),
-  edgeY:clamp(p.y,5,95)
+  edgeX:clamp(p.x,7,93),
+  edgeY:clamp(p.y,7,93),
+  direction,
+  angleDegrees
  };
+}
+export function formatMapDistance(meters:number):string{
+ if(!Number.isFinite(meters)||meters<0)return 'distância indisponível';
+ return meters>=1000
+  ?new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(meters/1000)+' km'
+  :Math.round(meters)+' m';
 }
