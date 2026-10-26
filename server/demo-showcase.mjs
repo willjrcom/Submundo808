@@ -6,10 +6,15 @@ import {seedDemoProducts,DEMO_PRODUCTS} from './demo-products.mjs';
 export const SHOWCASE_KEY='poc_showcase_v2_created';
 const makeId=(kind,slug)=>'poc-v2-'+kind+'-'+slug;
 const place=(name,kind,x,y,width,height,color)=>({name,kind,x,y,width,height,color,icon:kind});
-const point=(name,type,x,y,side)=>({
- name,type,x,y,shape:'square',size:42,color:'#C4FF40',
- ...(side?{anchor:{side,offset:side==='top'||side==='bottom'?x:y}}:{})
-});
+const point=(name,type,x,y,side)=>{
+ const offset=side==='top'||side==='bottom'?x:y;
+ return {
+  name,type,x:side==='left'?0:side==='right'?100:x,
+  y:side==='top'?0:side==='bottom'?100:y,
+  shape:'square',size:42,color:'#C4FF40',
+  ...(side?{anchor:{side,offset}}:{})
+ };
+};
 const VENUES=[
  {slug:'terraco',name:'Terraço 808',address:'Local a divulgar',city:'São Paulo'},
  {slug:'armazem',name:'Armazém Aurora 808',address:'Local a divulgar',city:'São Paulo'}
