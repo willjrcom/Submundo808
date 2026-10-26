@@ -80,10 +80,10 @@ const cookie = (req, key) => (req.headers.cookie || '').split(';').map(x => x.tr
 const getUser = req => {
   const claims=verifyJwt(cookie(req,JWT_COOKIE_NAME),JWT_SECRET);
   if(!claims)return null;
-  const user=db.prepare('SELECT id,name,email,token_version FROM users WHERE id=?').get(claims.sub);
+  const user=db.prepare('SELECT id,name,email,phone,instagram,token_version FROM users WHERE id=?').get(claims.sub);
   if(!user||user.token_version!==claims.ver)return null;
   db.prepare('INSERT INTO user_activity(user_id,last_seen) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen').run(user.id,Date.now());
-  return {id:user.id,name:user.name,email:user.email};
+  return {id:user.id,name:user.name,email:user.email,phone:user.phone||'',instagram:user.instagram||''};
 };
 const sessionCookie=authCookie;
 const createSession=(req,res,id)=>{
@@ -499,7 +499,7 @@ http.createServer(async (req,res)=>{
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
-        const b=await body(req),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||''),name=String(b.name||'').trim().slice(0,60)||email.split('@')[0].slice(0,60),phone=String(b.phone||'').replace(/[^0-9]/g,'');
+        const b=await body(req),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||''),name=String(b.name||'').trim().slice(0,60)||(email.split('@')[0].length>=2?email.split('@')[0].slice(0,60):'Participante'),phone=String(b.phone||'').replace(/[^0-9]/g,'');
         if(name.length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length<10||phone.length>13)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
         const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,phone,created_at) VALUES(?,?,?,?,?,?)').run(id,name,email,passwordHash(pass),phone,Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
