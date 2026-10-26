@@ -448,7 +448,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
   {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}}
  </div>
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
- {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-hidden rounded-2xl border border-white/15 bg-[#17111d] p-3"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+ {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  {data?.areas.map(a=>{const color=validColor(a.color);return <div key={a.id} role="img" aria-label={'Ambiente: '+a.name} title={a.description||a.name} className="absolute border-2" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:color,backgroundColor:color+'33'}}/>;})}
  {roomLabels.map(label=>{
   const room=data?.areas.find(a=>a.id===label.id);
@@ -458,8 +458,17 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  })}
  {data?.markers.map(m=>{const Icon=mapIcon(m.type),color=validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
   const side=m.anchor?.side;
-  const shift=side==='top'?' -translate-x-1/2':side==='bottom'?' -translate-x-1/2 -translate-y-full':side==='left'?' -translate-y-1/2':side==='right'?' -translate-x-full -translate-y-1/2':' -translate-x-1/2 -translate-y-1/2';
-  return <button key={m.id} type="button" onClick={()=>setSelectedMarkerId(v=>v===m.id?null:m.id)} aria-label={m.name} title={m.description||m.name} className={'absolute z-10 flex items-center gap-1 text-center '+(side==='bottom'?'flex-col-reverse':'flex-col')+shift} style={{left:m.x+'%',top:m.y+'%'}}><span className={'flex items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{width:size,height:size,borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span><span className="max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold">{m.name}</span></button>;})}
+  const labelPosition=side==='bottom'?'bottom-full left-1/2 -translate-x-1/2 mb-1'
+   :side==='left'?'left-full top-1/2 -translate-y-1/2 ml-1'
+   :side==='right'?'right-full top-1/2 -translate-y-1/2 mr-1'
+   :'top-full left-1/2 -translate-x-1/2 mt-1';
+  return <button key={m.id} type="button" onClick={()=>setSelectedMarkerId(v=>v===m.id?null:m.id)}
+    aria-label={m.name} title={m.description||m.name}
+    className="absolute z-10 -translate-x-1/2 -translate-y-1/2 text-center"
+    style={{left:m.x+'%',top:m.y+'%',width:size,height:size}}>
+    <span className={'flex h-full w-full items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span>
+    <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold '+labelPosition}>{m.name}</span>
+  </button>;})}
  {mapped?.inside&&location&&scale&&<div aria-label={'Margem de precisão do seu GPS: ±'+Math.round(location.accuracy)+' m'} className="pointer-events-none absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-blue-400/40 bg-blue-400/10" style={{left:mapped.x+'%',top:mapped.y+'%',width:Math.min(75,2*location.accuracy/Math.max(scale.width,1)*100)+'%',height:Math.min(75,2*location.accuracy/Math.max(scale.height,1)*100)+'%'}}/>}
  {mapped?.inside&&<div aria-label="Sua localização aproximada" className="pointer-events-none absolute z-20 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-500 shadow-[0_0_0_6px_#33aaff55]" style={{left:mapped.x+'%',top:mapped.y+'%'}}/>}
  {myOutside&&<div
