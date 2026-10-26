@@ -24,7 +24,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [savedDemoEmail,setSavedDemoEmail]=useState<string|null>(()=>localStorage.getItem('submundo-demo-email'));
   const [demoCredentials,setDemoCredentials]=useState<{email:string;password:string}|null>(null);
   const [mode,setMode]=useState<Mode>('login');
-  [profileEditing,setProfileEditing]=useState(false),[profilePhone,setProfilePhone]=useState(''),[profileInstagram,setProfileInstagram]=useState(''),[profileName,setProfileName]=useState(''),[phone,setPhone]=useState('');
+  const [profileEditing,setProfileEditing]=useState(false),[profilePhone,setProfilePhone]=useState(''),[profileInstagram,setProfileInstagram]=useState(''),[profileName,setProfileName]=useState(''),[phone,setPhone]=useState('');
   const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [current,setCurrent]=useState('');
   const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(true);const [initialError,setInitialError]=useState(false);
   const resetToken=new URLSearchParams(window.location.search).get('reset');
