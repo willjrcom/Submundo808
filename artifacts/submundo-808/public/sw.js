@@ -1,5 +1,5 @@
 // Network-first for app shell and JS/CSS so deployments never mix stale assets.
-const CACHE = 'submundo-808-shell-v2';
+const CACHE = 'submundo-808-shell-v3';
 const ROOT = new URL('./', self.location.href).href;
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
