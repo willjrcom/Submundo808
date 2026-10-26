@@ -87,6 +87,7 @@ export default function VenueMap(){
   const [gpsStarting,setGpsStarting]=useState(false);
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
+  const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
   const [sharingEventId,setSharingEventId]=useState<string|null>(null);
@@ -291,6 +292,7 @@ export default function VenueMap(){
    try{
     await savePrefs(false,false);
     shareEpoch.current++;sharingRef.current=false;setSharing(false);
+    setLocationSetupOpen(false);
     setGpsPermissionRequired(false);lastSend.current=0;
     setSharingExpiresAt(null);setSharingEventId(null);
     if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
@@ -312,6 +314,7 @@ export default function VenueMap(){
    if(!sharingRef.current&&shareMode==='event'&&!selectedEventId){
     setGeoError('Selecione uma festa para compartilhar até o encerramento.');return;
    }
+   setLocationSetupOpen(false);
    gpsActivatingRef.current=true;
    setGpsStarting(true);setGeoError('');
    const attempt=++gpsAttemptId.current;
@@ -375,35 +378,46 @@ export default function VenueMap(){
   return <PageLoading label="Carregando mapa" description="Preparando o mapa e as localizações."/>;
  }
 
- return <section className="space-y-4">
- <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-4">
-  <div className="flex items-center gap-2"><Navigation size={19} className="text-[#c4ff40]"/><h3 className="font-bold">Localização</h3></div>
-  <fieldset disabled={sharing||gpsStarting||prefsSaving} className="mt-4 space-y-2 disabled:opacity-70">
-   <legend className="mb-2 text-xs font-semibold text-white/70">Compartilhar por</legend>
-   {([
-    {value:'event',title:'Até o fim da festa',hint:eventForSharing?.ends_at?'Encerra em '+eventEndLabel(eventForSharing.ends_at):'Encerra automaticamente no horário do evento'},
-    {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
-    {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
-   ] as const).map(option=><label key={option.value} className={'flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 transition '+(shareMode===option.value?'border-[#c4ff40]/60 bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}>
-    <input type="radio" name="sharing-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} value={option.value} className="h-4 w-4 shrink-0 accent-[#c4ff40]"/>
-    <span className="min-w-0"><span className="block text-sm font-bold">{option.title}</span><span className="mt-0.5 block text-[11px] text-white/50">{option.hint}</span></span>
-   </label>)}
-  </fieldset>
-  {sharing&&sharingExpiresAt&&<p className="mt-3 text-xs font-semibold text-[#c4ff40]">Compartilhamento ativo até {sharingDeadline}.</p>}
-  <button
-   disabled={!prefsReady||prefsSaving}
-   aria-busy={gpsStarting}
-   onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else startSharing();}}
-   className={'mt-3 w-full rounded-xl px-4 py-3.5 text-sm font-black disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
-  >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':'Ativar localização'}</button>
-  <p className="mt-2 text-xs text-white/55">{gpsStarting?'Aguardando o GPS do aparelho...':gpsActive?'Sua posição está visível para seus amigos.':sharing?'O GPS deste aparelho ainda não está ativo.':'Seus amigos poderão ver sua posição enquanto o aplicativo estiver aberto.'}</p>
+ return <section className="space-y-3">
+ <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
+  <div className="mb-2 flex items-center gap-2"><Navigation size={17} className="text-[#c4ff40]"/><h3 className="text-sm font-bold">Localização com amigos</h3></div>
+  {!locationSetupOpen&&<button
+   type="button" disabled={!prefsReady||prefsSaving} aria-busy={gpsStarting}
+   onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else if(sharing)startSharing();else setLocationSetupOpen(true);}}
+   className={'w-full rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
+  >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':sharing?'Retomar localização':'Ativar localização'}</button>}
+  {locationSetupOpen&&!sharing&&<div className="space-y-3">
+   <fieldset className="space-y-2">
+    <legend className="mb-1 text-xs font-bold text-white/70">Por quanto tempo compartilhar?</legend>
+    {([
+     {value:'event',title:'Até o fim da festa',hint:eventForSharing?.ends_at?'Encerra em '+eventEndLabel(eventForSharing.ends_at):'Usa o horário do evento selecionado'},
+     {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
+     {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
+    ] as const).map(option=><label key={option.value} className={'flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 '+(shareMode===option.value?'border-[#c4ff40]/60 bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}>
+     <input type="radio" name="sharing-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} value={option.value} className="h-4 w-4 shrink-0 accent-[#c4ff40]"/>
+     <span><span className="block text-sm font-bold">{option.title}</span><span className="text-[11px] text-white/50">{option.hint}</span></span>
+    </label>)}
+   </fieldset>
+   <div className="flex gap-2">
+    <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold text-white/75">Cancelar</button>
+    <button type="button" disabled={prefsSaving||gpsStarting} onClick={startSharing} className="flex-[1.4] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black disabled:opacity-50">Confirmar e ativar</button>
+   </div>
+   <p className="text-[11px] text-white/45">A localização só atualiza enquanto o dispositivo permite. Você pode desativar quando quiser.</p>
+  </div>}
+  {sharing&&sharingExpiresAt&&<p className="mt-2 text-xs text-[#c4ff40]">Compartilhando até {sharingDeadline}</p>}
   {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
+  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Aguardando o GPS do aparelho...</p>}
   {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
-  {geoError&&<p className="mt-2 text-xs text-amber-300">{geoError}</p>}
+  {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
   {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
-  {friends.length>0&&<details className="mt-3 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
+  {friends.length>0&&<details className="mt-2 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
  </div>
- <div><h2 className="text-2xl font-black uppercase">Mapa do evento</h2></div>
+ <div className="flex flex-wrap items-center justify-between gap-2">
+  <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
+  {eventChoices.length>1&&<select aria-label="Escolher evento do mapa" value={selectedEventId} onChange={event=>{localStorage.setItem('submundo-event-id',event.target.value);window.dispatchEvent(new Event('submundo-event-selected'));}} className="max-w-full rounded-xl border border-white/20 bg-[#211829] px-3 py-2 text-xs font-bold text-white">
+   {eventChoices.map(choice=><option key={choice.id} value={choice.id}>{displayLabel(choice.name)}</option>)}
+  </select>}
+ </div>
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
   <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapped.inside?'Você está no mapa.':positionUncertain?'Você parece estar '+myOutside?.direction+' do mapa, mas o GPS está impreciso.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+'.'}</p>
