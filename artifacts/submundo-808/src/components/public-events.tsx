@@ -25,11 +25,12 @@ function changeUrl(pathname:string){
 }
 export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:{activeEventId:string;onSelectEvent:(id:string)=>void;onClearEvent:()=>void}){
  const [events,setEvents]=useState<EventItem[]>([]);
- const [general,setGeneral]=useState<{minimum_age:number;entry_rules:string;accepted_documents:string;cancellation_policy:string}|null>(null);
+ const [general,setGeneral]=useState<{minimum_age:number;entry_rules:string;accepted_documents:string;cancellation_policy:string;contact_name?:string;contact_phone?:string}|null>(null);
  const selected=activeEventId;
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  const [copiedAddress,setCopiedAddress]=useState(false);
+ const [copiedContact,setCopiedContact]=useState(false);
  useEffect(()=>{fetch('/api/public/event-settings').then(r=>r.json()).then(j=>setGeneral(j.settings)).catch(()=>{});},[]);
  useEffect(()=>{
   let mounted=true;
@@ -119,6 +120,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
     </div>)}
    </div>:<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/50">Programação ainda não cadastrada.</p>}
   </section>
+   {general?.contact_phone&&<section className="space-y-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><h3 className="font-bold text-[#c4ff40]">Contato oficial</h3><p className="text-sm font-semibold">{general.contact_name||'Submundo 808'}</p><p className="text-xs text-white/60">{general.contact_phone.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(general.contact_phone||'');setCopiedContact(true);}catch{setError('Não foi possível copiar o contato.');}}} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">{copiedContact?'Copiado!':'Copiar número'}</button><a href={'tel:+55'+general.contact_phone} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">Ligar</a><a href={'https://wa.me/55'+general.contact_phone} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-[#c4ff40]/40 px-3 py-2 text-xs font-semibold text-[#c4ff40]">Chamar no WhatsApp</a></div></section>}
    {(event.services||event.venue.services||general)&&<section className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-[#c4ff40]">Informações importantes</h3>{general&&<p className="text-sm">Classificação etária: {general.minimum_age===0?'Livre':general.minimum_age+' anos'}</p>}{([['Regras de entrada',general?.entry_rules],['Documentos aceitos',general?.accepted_documents],['Política de cancelamento',general?.cancellation_policy],['Serviços do local',event.venue.services],['Serviços do evento',event.services]] as const).filter(([,value])=>!!value).map(([title,value])=><div key={title}><h4 className="text-xs font-bold text-white/85">{title}</h4><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-white/60">{value}</p></div>)}</section>}
  </div>;
 }
