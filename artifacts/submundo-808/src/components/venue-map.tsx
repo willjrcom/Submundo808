@@ -44,7 +44,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId)).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao carregar produtos');return j;}).then(j=>{if(alive)setPointProducts(j.items||[]);}).catch(e=>{if(alive)setPointMenuError(e instanceof Error?e.message:'Falha ao carregar produtos');}).finally(()=>{if(alive)setPointMenuLoading(false);});
  return()=>{alive=false;};},[pointMenuOpen,activeEventId]);
  const [data,setData]=useState<MapData|null>(null);
- const {labels:roomLabels,setMapElement}=useMapLabels(data?.areas||EMPTY_AREAS,data?.markers||EMPTY_MARKERS);
+ const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(data?.areas||EMPTY_AREAS,data?.markers||EMPTY_MARKERS);
  const [mapError,setMapError]=useState('');
  const [mapsReady,setMapsReady]=useState(false),[mapDataReady,setMapDataReady]=useState(false);
  useEffect(()=>{
@@ -467,18 +467,14 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
   return <span key={'label-'+label.id} className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded border border-white/15 bg-[#100d18]/90 px-1.5 py-1 text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%',maxWidth:Math.max(room.width,10)+'%'}}><Icon size={12} className="shrink-0" style={{color:validColor(room.color)}}/><span className="truncate">{room.name}</span></span>;
  })}
  {data?.markers.map(m=>{const Icon=mapIcon(m.type),color=validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
-  const side=m.anchor?.side;
-  const labelPosition=side==='bottom'?'bottom-full left-1/2 -translate-x-1/2 mb-1'
-   :side==='left'?'left-full top-1/2 -translate-y-1/2 ml-1'
-   :side==='right'?'right-full top-1/2 -translate-y-1/2 mr-1'
-   :'top-full left-1/2 -translate-x-1/2 mt-1';
   return <button key={m.id} type="button" onClick={()=>setSelectedMarkerId(v=>v===m.id?null:m.id)}
     aria-label={m.name} title={m.description||m.name}
     className="z-10 text-center"
     style={markerIconStyle(m,size)}>
     <span className={'flex h-full w-full items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span>
-    <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold '+labelPosition}>{m.name}</span>
+
   </button>;})}
+ {pointLabels.filter(label=>label.visible).map(label=>{const m=data?.markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
  {mapped?.inside&&location&&scale&&<div aria-label={'Margem de precisão do seu GPS: ±'+Math.round(location.accuracy)+' m'} className="pointer-events-none absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-blue-400/40 bg-blue-400/10" style={{left:mapped.x+'%',top:mapped.y+'%',width:Math.min(75,2*location.accuracy/Math.max(scale.width,1)*100)+'%',height:Math.min(75,2*location.accuracy/Math.max(scale.height,1)*100)+'%'}}/>}
  {mapped?.inside&&<div aria-label="Sua localização aproximada" className="pointer-events-none absolute z-20 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-500 shadow-[0_0_0_6px_#33aaff55]" style={{left:mapped.x+'%',top:mapped.y+'%'}}/>}
  {myOutside&&<div
