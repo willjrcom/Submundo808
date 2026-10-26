@@ -6,7 +6,7 @@ import {ArrowLeft,CalendarDays,Clock3,MapPin,Music2,ExternalLink,Ticket,Instagra
 import {eventProgramPath} from './active-event';
 
 type DJ={nome:string;instagram?:string;inicio?:string;fim?:string};
-type EventItem={id:string;name:string;description:string;starts_at:string;ends_at:string;site_url:string;tickets_url:string;instagram_url:string;venue:{name:string;address:string;city:string};map_ids:string[];lineup:DJ[]};
+type EventItem={id:string;name:string;description:string;starts_at:string;ends_at:string;site_url:string;tickets_url:string;instagram_url:string;doors_at?:string;cover_image?:string;services?:string;venue:{name:string;address:string;city:string;services?:string};map_ids:string[];lineup:DJ[]};
 
 const date=(value:string)=>{
  if(!value)return 'A definir';
@@ -25,9 +25,11 @@ function changeUrl(pathname:string){
 }
 export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:{activeEventId:string;onSelectEvent:(id:string)=>void;onClearEvent:()=>void}){
  const [events,setEvents]=useState<EventItem[]>([]);
+ const [general,setGeneral]=useState<{minimum_age:number;entry_rules:string;accepted_documents:string;cancellation_policy:string}|null>(null);
  const selected=activeEventId;
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
+ useEffect(()=>{fetch('/api/public/event-settings').then(r=>r.json()).then(j=>setGeneral(j.settings)).catch(()=>{});},[]);
  useEffect(()=>{
   let mounted=true;
   fetch('/api/public/events').then(async response=>{
@@ -85,12 +87,15 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
    <p className="text-xs font-bold uppercase tracking-[.2em] text-[#c4ff40]">Programação do evento</p>
    <h1 className="mt-2 text-3xl font-black uppercase">{displayLabel(event.name)}</h1>
   </div>
+  {event.cover_image&&<img src={event.cover_image} alt={'Capa de '+event.name} className="aspect-video w-full rounded-2xl border border-white/10 object-cover"/>}
   <section className="relative overflow-hidden rounded-3xl border border-[#c4ff40]/25 bg-[radial-gradient(circle_at_85%_15%,#51235d,transparent_50%),linear-gradient(145deg,#211129,#0b090f)] p-6">
    <div className="space-y-3 text-sm">
+    {event.doors_at&&<p className="flex items-start gap-3"><Clock3 size={18} className="shrink-0 text-[#c4ff40]"/><span>Abertura dos portões: {date(event.doors_at)}</span></p>}
     <p className="flex items-start gap-3"><CalendarDays size={18} className="shrink-0 text-[#c4ff40]"/><span>{date(event.starts_at)}{event.ends_at?' — '+date(event.ends_at):''}</span></p>
     <p className="flex items-start gap-3"><MapPin size={18} className="shrink-0 text-[#c4ff40]"/><span>{displayLabel(event.venue.name)}{displayAddress(event.venue.address)?', '+displayAddress(event.venue.address):''}{event.venue.city?' · '+event.venue.city:''}</span></p>
    </div>
    {displayDescription(event.description)&&<p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-white/65">{displayDescription(event.description)}</p>}
+   {(event.services||event.venue.services||general)&&<section className="mt-5 space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-[#c4ff40]">Informações importantes</h3>{general&&<p className="text-sm">Classificação etária: {general.minimum_age===0?'Livre':general.minimum_age+' anos'}</p>}{([['Regras de entrada',general?.entry_rules],['Documentos aceitos',general?.accepted_documents],['Política de cancelamento',general?.cancellation_policy],['Serviços do local',event.venue.services],['Serviços do evento',event.services]] as const).filter(([,value])=>!!value).map(([title,value])=><div key={title}><h4 className="text-xs font-bold text-white/85">{title}</h4><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-white/60">{value}</p></div>)}</section>}
    {(event.tickets_url||event.site_url||event.instagram_url)&&<div className="mt-5 flex flex-wrap gap-2">
     {event.tickets_url&&<a href={link(event.tickets_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-xs font-black text-black"><Ticket size={16}/> Ingressos</a>}
     {event.site_url&&<a href={link(event.site_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-xs"><ExternalLink size={15}/> Site oficial</a>}
