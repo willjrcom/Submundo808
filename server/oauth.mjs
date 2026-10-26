@@ -8,6 +8,40 @@ export function createOauth({db,getUser,createSession,passwordHash}){
  const go=(res,location)=>{res.writeHead(302,{Location:location,'Cache-Control':'no-store'});res.end();};
  async function handle(req,res,url){
   if(url.pathname==='/api/auth/providers')return reply(res,{google:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REDIRECT_URI),meaple:!!(process.env.MEAPLE_CLIENT_ID&&process.env.MEAPLE_REDIRECT_URI)});
+  if(url.pathname==='/api/auth/connections'){
+   const user=getUser(req);if(!user)return reply(res,{error:'Faça login.'},401);
+   return reply(res,{providers:db.prepare('SELECT provider FROM oauth_links WHERE user_id=?').all(user.id).map(r=>r.provider)});
+  }
+  if(url.pathname==='/api/meaple/tickets'){
+   const user=getUser(req);if(!user)return reply(res,{error:'Faça login.'},401);
+   if(!process.env.MEAPLE_CLIENT_ID)return reply(res,{error:'Meaple não configurada.'},503);
+   const auth=db.prepare('SELECT * FROM meaple_tokens WHERE user_id=?').get(user.id);
+   if(!auth)return reply(res,{error:'Conecte sua conta Meaple no perfil.'},403);
+   try{
+    let accessToken=auth.access_token;
+    if(Date.now()>auth.expires_at-60000){
+     if(!auth.refresh_token)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
+     const params=new URLSearchParams({grant_type:'refresh_token',client_id:process.env.MEAPLE_CLIENT_ID,refresh_token:auth.refresh_token});
+     const refreshed=await fetch('https://whitelabel.meaple.app/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params,signal:AbortSignal.timeout(12000)});
+     if(!refreshed.ok)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
+     const tokens=await refreshed.json();accessToken=tokens.access_token;
+     db.prepare('UPDATE meaple_tokens SET access_token=?,refresh_token=?,expires_at=? WHERE user_id=?').run(accessToken,tokens.refresh_token||auth.refresh_token,Date.now()+Number(tokens.expires_in||3600)*1000,user.id);
+    }
+    const {MeapleSDK}=await import('@meaple-com/core');
+    const sdk=new MeapleSDK({clientId:process.env.MEAPLE_CLIENT_ID,baseURL:process.env.MEAPLE_API_URL||'https://api.meaple.com.br'});
+    sdk.setGlobalToken(accessToken);
+    const local=db.prepare("SELECT id,name,meaple_event_id FROM events WHERE meaple_event_id<>''").all();
+    const available=await sdk.users.getEvents();
+    const eligible=new Set((Array.isArray(available)?available:available?.events||[]).map(e=>e.id));
+    const linked=local.filter(e=>eligible.has(e.meaple_event_id));
+    const events=[];
+    for(const event of linked.slice(0,30)){
+     const tickets=await sdk.events.getUserEventTickets(event.meaple_event_id);
+     events.push({event_id:event.id,name:event.name,tickets:(Array.isArray(tickets)?tickets:[]).map(t=>({id:t.id,slug:t.slug,name:t.ticket?.name||'Ingresso',qrCodeDataUrl:t.qrCodeDataUrl||null,usedAt:t.usedAt||null}))});
+    }
+    return reply(res,{events});
+   }catch(error){console.error('Meaple tickets lookup failed',error?.message);return reply(res,{error:'Não foi possível consultar seus ingressos na Meaple agora.'},502);}
+  }
   const match=url.pathname.match(/^\/api\/auth\/(google|meaple)\/(start|callback)$/);
   if(!match)return false;
   const [,provider,action]=match;
