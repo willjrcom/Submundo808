@@ -3,6 +3,7 @@ import PageLoading from './page-loading';
 import {displayLabel,displayDescription,displayAddress} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {ArrowLeft,CalendarDays,Clock3,MapPin,Music2,ExternalLink,Ticket,Instagram,ChevronRight} from 'lucide-react';
+import {eventProgramPath} from './active-event';
 
 type DJ={nome:string;instagram?:string;inicio?:string;fim?:string};
 type EventItem={id:string;name:string;description:string;starts_at:string;ends_at:string;site_url:string;tickets_url:string;instagram_url:string;venue:{name:string;address:string;city:string};map_ids:string[];lineup:DJ[]};
@@ -18,18 +19,13 @@ const hour=(value?:string)=>{
  return Number.isNaN(d.getTime())?value.slice(-5):new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(d);
 };
 const link=(value:string)=>!value?'':/^https?:\/\//i.test(value)?value:'https://'+value.replace(/^@/,'');
-const eventFromUrl=()=>{
- const parts=window.location.pathname.split('/').filter(Boolean);
- if(parts[0]!=='programacao'||parts.length!==2)return '';
- try{return decodeURIComponent(parts[1]);}catch{return '';}
-};
 function changeUrl(pathname:string){
  if(window.location.pathname!==pathname)window.history.pushState({tab:'inicio'},'',pathname);
  window.dispatchEvent(new Event('submundo-navigation'));
 }
-export default function PublicEvents(){
+export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:{activeEventId:string;onSelectEvent:(id:string)=>void;onClearEvent:()=>void}){
  const [events,setEvents]=useState<EventItem[]>([]);
- const [selected,setSelected]=useState(eventFromUrl);
+ const selected=activeEventId;
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  useEffect(()=>{
@@ -42,22 +38,14 @@ export default function PublicEvents(){
    .finally(()=>{if(mounted)setLoading(false);});
   return()=>{mounted=false;};
  },[]);
- useEffect(()=>{
-  const sync=()=>setSelected(eventFromUrl());
-  window.addEventListener('popstate',sync);
-  window.addEventListener('submundo-navigation',sync);
-  return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('submundo-navigation',sync);};
- },[]);
 
  function openEvent(id:string){
-  localStorage.setItem('submundo-event-id',id);
-  window.dispatchEvent(new Event('submundo-event-selected'));
-  setSelected(id);
-  changeUrl('/programacao/'+encodeURIComponent(id));
+  onSelectEvent(id);
+  changeUrl(eventProgramPath(id));
   window.scrollTo(0,0);
  }
  function backToAgenda(){
-  setSelected('');
+  onClearEvent();
   changeUrl('/');
   window.scrollTo(0,0);
  }
@@ -66,10 +54,9 @@ export default function PublicEvents(){
  if(error)return <div role="alert" className="rounded-2xl border border-red-400/30 p-5 text-sm text-red-300">{error}<button onClick={()=>window.location.reload()} className="ml-3 underline">Tentar novamente</button></div>;
  if(!events.length)return <div className="rounded-3xl border border-white/10 bg-white/5 p-7"><CalendarDays className="mb-4 text-[#c4ff40]"/><h1 className="text-2xl font-black">Próximos eventos</h1><p className="mt-3 text-sm text-white/60">Nenhum evento cadastrado ainda. A programação aparecerá aqui quando for publicada.</p></div>;
  const event=events.find(e=>e.id===selected);
- if(selected&&!event)return <div className="space-y-4"><button onClick={backToAgenda} className="flex items-center gap-2 text-sm text-[#c4ff40]"><ArrowLeft size={17}/> Voltar à agenda</button><p role="alert" className="rounded-2xl border border-white/15 p-5 text-sm text-white/60">Não encontramos esse evento. Selecione outro na agenda.</p></div>;
+ if(selected&&!event)return <div className="space-y-4"><button onClick={backToAgenda} className="flex items-center gap-2 text-sm text-[#c4ff40]"><ArrowLeft size={17}/> Trocar evento</button><p role="alert" className="rounded-2xl border border-white/15 p-5 text-sm text-white/60">Não encontramos esse evento. Selecione outro na agenda.</p></div>;
 
- // Agenda e programação são telas distintas: não mostrar o primeiro evento
- // automaticamente e não interpretar a seleção do cardápio como navegação.
+ // Agenda para escolher a festa; com uma seleção ativa, esta aba mostra sua programação.
  if(!event)return <div className="space-y-6">
   <section>
    <p className="mb-3 text-xs font-bold uppercase tracking-[.2em] text-[#c4ff40]">Agenda Submundo 808</p>
