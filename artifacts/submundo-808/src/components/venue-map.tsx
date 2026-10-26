@@ -211,11 +211,13 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
    if(Date.now()-lastSend.current<(heartbeat?15000:10000))return;
    const epoch=shareEpoch.current;
    sendBusy.current=true;
-   void requestLocation('update',position).then(()=>{
+   const currentEventId=activeEventRef.current;
+   if(!currentEventId){sendBusy.current=false;return;}
+   void requestLocation('update',{...position,eventId:currentEventId}).then(()=>{
     if(epoch===shareEpoch.current){lastSend.current=Date.now();setFriendError('');}
    }).catch(e=>{
     if(epoch!==shareEpoch.current)return;
-    if((e as {status?:number}).status===410||(e as {status?:number}).status===403){
+    if([403,409,410].includes((e as {status?:number}).status||0)){
      endLocalSharing('O prazo de compartilhamento terminou ou foi desativado.');
     }else setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');
    }).finally(()=>{sendBusy.current=false;});
