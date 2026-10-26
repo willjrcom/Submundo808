@@ -1,7 +1,10 @@
-import {randomBytes,randomUUID,createHash} from 'node:crypto';
+import {randomBytes,randomUUID,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 const states=new Map();
 const asUrl=bytes=>Buffer.from(bytes).toString('base64url');
-export function createOauth({db,getUser,createSession,passwordHash}){
+export function createOauth({db,getUser,createSession,passwordHash,secret}){
+ const key=createHash('sha256').update(secret).digest();
+ const seal=value=>{const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);const data=Buffer.concat([cipher.update(String(value),'utf8'),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString('base64');};
+ const unseal=value=>{const data=Buffer.from(value,'base64'),decipher=createDecipheriv('aes-256-gcm',key,data.subarray(0,12));decipher.setAuthTag(data.subarray(12,28));return Buffer.concat([decipher.update(data.subarray(28)),decipher.final()]).toString('utf8');};
  db.exec("CREATE TABLE IF NOT EXISTS oauth_links(provider TEXT NOT NULL,external_id TEXT NOT NULL,user_id TEXT NOT NULL,PRIMARY KEY(provider,external_id),UNIQUE(provider,user_id))");
  db.exec("CREATE TABLE IF NOT EXISTS meaple_tokens(user_id TEXT PRIMARY KEY,access_token TEXT NOT NULL,refresh_token TEXT NOT NULL DEFAULT '',expires_at INTEGER NOT NULL)");
  const reply=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
@@ -18,14 +21,14 @@ export function createOauth({db,getUser,createSession,passwordHash}){
    const auth=db.prepare('SELECT * FROM meaple_tokens WHERE user_id=?').get(user.id);
    if(!auth)return reply(res,{error:'Conecte sua conta Meaple no perfil.'},403);
    try{
-    let accessToken=auth.access_token;
+    let accessToken=unseal(auth.access_token);
     if(Date.now()>auth.expires_at-60000){
      if(!auth.refresh_token)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
-     const params=new URLSearchParams({grant_type:'refresh_token',client_id:process.env.MEAPLE_CLIENT_ID,refresh_token:auth.refresh_token});
+     const params=new URLSearchParams({grant_type:'refresh_token',client_id:process.env.MEAPLE_CLIENT_ID,refresh_token:unseal(auth.refresh_token)});
      const refreshed=await fetch('https://whitelabel.meaple.app/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params,signal:AbortSignal.timeout(12000)});
      if(!refreshed.ok)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
      const tokens=await refreshed.json();accessToken=tokens.access_token;
-     db.prepare('UPDATE meaple_tokens SET access_token=?,refresh_token=?,expires_at=? WHERE user_id=?').run(accessToken,tokens.refresh_token||auth.refresh_token,Date.now()+Number(tokens.expires_in||3600)*1000,user.id);
+     db.prepare('UPDATE meaple_tokens SET access_token=?,refresh_token=?,expires_at=? WHERE user_id=?').run(seal(accessToken),tokens.refresh_token?seal(tokens.refresh_token):auth.refresh_token,Date.now()+Number(tokens.expires_in||3600)*1000,user.id);
     }
     const {MeapleSDK}=await import('@meaple-com/core');
     const sdk=new MeapleSDK({clientId:process.env.MEAPLE_CLIENT_ID,baseURL:process.env.MEAPLE_API_URL||'https://api.meaple.com.br'});
@@ -81,7 +84,7 @@ export function createOauth({db,getUser,createSession,passwordHash}){
     db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(userId,String(profile.name||'Participante').slice(0,60),email&&email.includes('@')?email:fallback,passwordHash(asUrl(randomBytes(36))),Date.now());
     db.prepare('INSERT INTO oauth_links VALUES(?,?,?)').run(provider,externalId,userId);
    }
-   if(provider==='meaple')db.prepare('INSERT INTO meaple_tokens VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET access_token=excluded.access_token,refresh_token=excluded.refresh_token,expires_at=excluded.expires_at').run(userId,token.access_token,token.refresh_token||'',Date.now()+(Number(token.expires_in)||3600)*1000);
+   if(provider==='meaple')db.prepare('INSERT INTO meaple_tokens VALUES(?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET access_token=excluded.access_token,refresh_token=excluded.refresh_token,expires_at=excluded.expires_at').run(userId,seal(token.access_token),seal(token.refresh_token||''),Date.now()+(Number(token.expires_in)||3600)*1000);
    createSession(req,res,userId);return go(res,'/profile');
   }catch(error){console.error('OAuth failure',provider,error.message);return go(res,'/login?auth_error=provider');}
  }
