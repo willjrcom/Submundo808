@@ -1,4 +1,3 @@
-import FriendQR from './friend-qr';
 import { useEffect, useState } from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
@@ -62,7 +61,6 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       <div className="mt-7 border-t border-white/15 pt-4 text-[11px] text-white/40">ID: {user.id.slice(0,8).toUpperCase()} · Não é ingresso</div>
     </div>
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
-    <FriendQR/>
     {(demoCredentials||savedDemoEmail===user.email)&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials?.email||savedDemoEmail}</p><p className="mt-1 break-all">Senha: {demoCredentials?.password||'Exibida somente na criação da conta'}</p>{demoCredentials&&<button onClick={()=>void navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`)} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">Copiar credenciais</button>}</div>}
     <div className="space-y-3"><button onClick={()=>change('password')} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><KeyRound size={19} className="text-[#c4ff40]"/> Alterar minha senha</button><button onClick={async()=>{try{await request('logout',{});setUser(null);onUser?.(null);change('login');}catch(e){setError(String(e));}}} className="flex w-full items-center gap-3 rounded-xl border border-white/15 px-4 py-4 text-sm font-bold"><LogOut size={19}/> Sair da conta</button></div>
     <div className="mt-5 rounded-xl border border-white/10 p-4 text-xs leading-relaxed text-white/50"><ShieldCheck size={17} className="mb-2 text-[#c4ff40]"/> Sua conta está salva no servidor. Seu QR Code temporário permite adicionar amigos diretamente, sem aprovação. Nenhuma localização é coletada.</div>
