@@ -62,7 +62,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
- const {labels:roomLabels,setMapElement}=useMapLabels(areas,markers);
+ const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
  const setCanvasRef=useCallback((element:HTMLDivElement|null)=>{canvas.current=element;setMapElement(element);},[setMapElement]);
  const active=areas.find(a=>a.id===selected);
  const selectedMarker=markers.find(m=>m.id===selected);
@@ -310,21 +310,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       })}
       {markers.map(m=>{
       const Icon=iconFor(m.type);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
-       const side=m.anchor?.side;
-       // The point coordinate is always the ICON CENTER: half inside,
-       // half outside the boundary, regardless of the label dimensions.
-       const labelPosition=side==='bottom'?'bottom-full left-1/2 -translate-x-1/2 mb-1'
-        :side==='left'?'left-full top-1/2 -translate-y-1/2 ml-1'
-        :side==='right'?'right-full top-1/2 -translate-y-1/2 mr-1'
-        :'top-full left-1/2 -translate-x-1/2 mt-1';
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();if(selected!==m.id)setEditLayout(false);setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
        className={'z-10 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
        style={markerIconStyle(m,size)}>
        <span className={'flex h-full w-full items-center justify-center border-2 shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(chosen?' ring-2 ring-white/80':'')} style={{color,borderColor:color,backgroundColor:'#15101be8'}}><Icon size={Math.max(15,size*.5)}/></span>
-       <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold leading-tight '+labelPosition}>{m.name}</span>
+
       </button>;
      })}
+     {pointLabels.filter(label=>label.visible).map(label=>{const m=markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
     </div></div>}
     {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
     <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{editing?'Arraste qualquer ambiente, inclusive para a área externa ao quadro, e depois encaixe novamente. Selecione o ambiente e clique em Redimensionar; bordas em comum alteram os dois ambientes.':'Selecione qualquer ambiente, inclusive os já salvos. Use Editar layout ou os botões do painel lateral para movê-lo ou redimensioná-lo.'}</p></div>
