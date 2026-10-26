@@ -12,7 +12,7 @@ type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
 type ShareMode='event'|'4h'|'1h';
-type EventChoice={id:string;name:string;ends_at:string};
+type EventChoice={id:string;name:string;ends_at:string;map_ids:string[]};
 const formatDeadline=(dateValue:number)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(dateValue));
 const eventEndLabel=(value:string)=>{
  const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
