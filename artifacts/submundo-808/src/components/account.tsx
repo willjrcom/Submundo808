@@ -1,3 +1,4 @@
+import MeapleTickets from './meaple-tickets';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
 import PageLoading from './page-loading';
@@ -81,6 +82,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     </div>}
     {success&&<p role="status" className="mb-4 text-xs text-[#c4ff40]">{success}</p>}
     <div className="mb-4 space-y-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><h3 className="text-sm font-bold">Contas conectadas</h3><p className="text-xs text-white/55">Conecte sua conta Meaple para consultar os ingressos. Os dados de login permanecem com os provedores.</p>{providers.google&&<a href="/api/auth/google/start" className="block rounded-lg border border-white/20 p-3 text-center text-sm">{connections.includes('google')?'Google conectado':'Vincular Google'}</a>}{providers.meaple&&<a href="/api/auth/meaple/start" className="block rounded-lg border border-white/20 p-3 text-center text-sm">{connections.includes('meaple')?'Meaple conectada':'Vincular Meaple'}</a>}</div>
+    <MeapleTickets connected={connections.includes('meaple')}/>
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
         {(demoCredentials||savedDemoEmail===user.email)&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials?.email||savedDemoEmail}</p><p className="mt-1 break-all">Senha: {demoCredentials?.password||'Exibida somente na criação da conta'}</p>{demoCredentials&&<button onClick={()=>void navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`)} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">Copiar credenciais</button>}</div>}
 
