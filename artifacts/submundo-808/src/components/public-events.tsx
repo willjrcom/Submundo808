@@ -102,7 +102,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
    {(event.tickets_url||event.site_url||event.instagram_url)&&<div className="mt-5 flex flex-wrap gap-2">
     {event.tickets_url&&<a href={link(event.tickets_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-xs font-black text-black"><Ticket size={16}/> Ingressos</a>}
     {event.site_url&&<a href={link(event.site_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-xs"><ExternalLink size={15}/> Site oficial</a>}
-    {event.instagram_url&&<a href={link(event.instagram_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-xs"><Instagram size={15}/> Instagram</a>}
+    {event.instagram_url&&<a href={link(event.instagram_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-xs"><Instagram size={15}/> {dj.instagram.includes('/explore/')?'Explorar Instagram':'Instagram'}</a>}
    </div>}
   </section>
   <section>
@@ -113,7 +113,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
      <div className="min-w-0 flex-1"><p className="font-bold">{dj.nome}</p><p className="mt-1 flex items-center gap-1 text-xs text-white/50"><Clock3 size={13}/>{hour(dj.inicio)} — {hour(dj.fim)}</p>
       <div className="mt-3 flex flex-wrap gap-2">
        {dj.instagram&&<a href={dj.instagram.startsWith('https://')?dj.instagram:'https://www.instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Instagram size={15}/> Instagram</a>}
-       {dj.spotify?.startsWith('https://open.spotify.com/')&&<a href={dj.spotify} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> Spotify</a>}
+       {dj.spotify?.startsWith('https://open.spotify.com/')&&<a href={dj.spotify} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> {dj.spotify.includes('/search/')?'Buscar no Spotify':'Spotify'}</a>}
       </div>
      </div>
     </div>)}
