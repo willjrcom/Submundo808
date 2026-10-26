@@ -39,13 +39,14 @@ test('calibração gerada tem 50 × 40 m, orientada a norte e com centro no GPS 
  assert.ok(Math.abs((gps.tl.lng+gps.br.lng)/2-location.longitude)<0.000001);
  assert.equal(gps.accuracyMeters,8);
 });
-test('pontos novos usam grade onde vizinhos estão separados por 10 metros',()=>{
- assert.equal(DEMO_MARKERS.length,4);
- const toMeters=m=>({x:m.x/100*DEMO_WIDTH_METERS,y:m.y/100*DEMO_HEIGHT_METERS});
- const points=DEMO_MARKERS.map(toMeters);
- assert.ok(Math.abs(Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)-DEMO_SPACING_METERS)<1e-9);
- assert.ok(Math.abs(Math.hypot(points[0].x-points[2].x,points[0].y-points[2].y)-DEMO_SPACING_METERS)<1e-9);
+test('pontos novos seguem o layout visual com palco ao norte, entrada ao sul e dois bares',()=>{
+ assert.equal(DEMO_MARKERS.length,5);
+ const point=name=>DEMO_MARKERS.find(marker=>marker.name===name);
+ assert.ok(point('Palco').y<point('Entrada').y);
+ assert.ok(point('Bar principal').x<point('Banheiros').x);
+ assert.ok(point('Bar de cerveja'));
  assert.ok(DEMO_MARKERS.every(p=>p.shape==='square'));
+ assert.equal(new Set(DEMO_MARKERS.map(p=>p.name)).size,5);
 });
 test('GPS automático reconfigura a demonstração existente e reorganiza somente os pontos originais',()=>{
  const db=fixture();
