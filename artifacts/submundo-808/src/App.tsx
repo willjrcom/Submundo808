@@ -53,6 +53,7 @@ function ParticipantApp() {
   const [activeEventId,setActiveEventId]=useState(getActiveEventId);
   const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
   const clearEvent=()=>{resetActiveEventId();setActiveEventId('');};
+  const chooseAnotherEvent=()=>{clearEvent();window.history.pushState({tab:'inicio'},'','/');setTab('inicio');window.dispatchEvent(new Event('submundo-navigation'));window.scrollTo(0,0);};
   useEffect(()=>{
     // Keep deep-link selection when a participant opens /programacao/:id
     // directly, then changes tab or installs/restarts the PWA.
@@ -111,7 +112,7 @@ function ParticipantApp() {
       <main className="px-5 pt-7">
         {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
         {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/></div>}
-        {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/>}
+        {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={chooseAnotherEvent}/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
       </main>
