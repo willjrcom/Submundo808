@@ -130,18 +130,36 @@ function buildLineup(event,base){
   const hour=h%24,day=event.offset+Math.floor(h/24);
   const nextHour=(h+1)%24,nextDay=event.offset+Math.floor((h+1)/24);
   return {
-   nome:name,instagram:'',
+   nome:name,...demoSocial(name),
    inicio:dateAt(base,day,String(hour).padStart(2,'0')+':00'),
    fim:dateAt(base,nextDay,String(nextHour).padStart(2,'0')+':00')
   };
  });
+}
+function demoSocial(name){return {instagram:'https://www.instagram.com/explore/',spotify:'https://open.spotify.com/search/'+encodeURIComponent(name)};}
+function provisionDemoLineup(db){
+ let updated=0;
+ for(const event of EVENTS){
+  const id=makeId('event',event.slug),row=db.prepare('SELECT lineup_json FROM events WHERE id=?').get(id);
+  if(!row)continue;let lineup;try{lineup=JSON.parse(row.lineup_json||'[]');}catch{continue;}
+  if(!Array.isArray(lineup))continue;
+  let changed=false;
+  for(const dj of lineup){
+   if(!dj||!dj.nome)continue;
+   const defaults=demoSocial(dj.nome);
+   if(!dj.instagram){dj.instagram=defaults.instagram;changed=true;}
+   if(!dj.spotify){dj.spotify=defaults.spotify;changed=true;}
+  }
+  if(changed){db.prepare('UPDATE events SET lineup_json=? WHERE id=?').run(JSON.stringify(lineup),id);updated++;}
+ }
+ return updated;
 }
 export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
  db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
  const existing=db.prepare('SELECT value FROM app_settings WHERE key=?').get(SHOWCASE_KEY);
  if(existing){
   db.exec('BEGIN');
-  try{const upgraded=provisionDemoPointMenus(db,now);db.exec('COMMIT');return {created:false,eventsAdded:0,venuesAdded:0,mapsAdded:0,itemsPerMenu:DEMO_PRODUCTS.length,...upgraded,eventIds:EVENTS.map(e=>makeId('event',e.slug))};}
+  try{const upgraded=provisionDemoPointMenus(db,now),lineupUpdated=provisionDemoLineup(db);db.exec('COMMIT');return {created:false,eventsAdded:0,venuesAdded:0,mapsAdded:0,itemsPerMenu:DEMO_PRODUCTS.length,...upgraded,lineupUpdated,eventIds:EVENTS.map(e=>makeId('event',e.slug))};}
   catch(error){db.exec('ROLLBACK');throw error;}
  }
  const baseEvent=baseEventId?db.prepare('SELECT venue_id FROM events WHERE id=?').get(baseEventId):null;
@@ -194,7 +212,7 @@ export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
     }
    }
   }
-  const upgraded=provisionDemoPointMenus(db,now);
+  const upgraded=provisionDemoPointMenus(db,now),lineupUpdated=provisionDemoLineup(db);
   db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run(SHOWCASE_KEY,JSON.stringify({createdAt:now,version:3}));
   db.exec('COMMIT');
   return {created:true,eventsAdded,venuesAdded,mapsAdded,itemsPerMenu:DEMO_PRODUCTS.length,...upgraded,eventIds:EVENTS.map(e=>makeId('event',e.slug))};
