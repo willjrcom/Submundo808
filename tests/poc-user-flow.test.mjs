@@ -20,13 +20,14 @@ test('home cards show venue, date, DJs and per-event map count',()=>{
  assert.match(home,/\{displayLabel\(e\.venue\.name\)\}/);
  assert.match(home,/\{e\.lineup\.length\} DJs/);
  assert.match(home,/\{e\.map_ids\.length\}/);
- assert.match(home,/localStorage\.setItem\('submundo-event-id',id\)/);
+ assert.match(home,/onSelectEvent\(id\)/);
 });
-test('participant chooses an event for the map and prices follow the chosen event',()=>{
- assert.match(map,/aria-label="Escolher evento do mapa"/);
+test('event choice in Home governs both the map and its menu prices',()=>{
  assert.match(map,/setSelectedMap\(filtered\[0\]\?\.id\|\|''\)/);
- assert.match(map,/submundo-event-selected/);
- assert.match(menu,/event_id='\+encodeURIComponent\(eventId\)/);
+ assert.match(map,/event\.map_ids\?\.includes\(m\.id\)/);
+ assert.doesNotMatch(map,/aria-label="Escolher evento do mapa"/);
+ assert.match(menu,/event_id='\+encodeURIComponent\(activeEventId\)/);
+ assert.doesNotMatch(menu,/aria-label="Evento do cardápio"/);
 });
 test('location starts as one button then exposes duration and explicit confirmation',()=>{
  assert.match(map,/useState\(false\);/);
@@ -41,7 +42,7 @@ test('location starts as one button then exposes duration and explicit confirmat
  assert.match(map,/startInitialGps\(navigator\.geolocation/);
 });
 test('map is rendered before secondary geolocation status and calibration notice',()=>{
- const mapPosition=map.indexOf('aria-label="Selecionar mapa"');
+ const mapPosition=map.indexOf('Mapa do evento');
  const ownPosition=map.indexOf('Sua posição</div>');
  assert.ok(mapPosition<ownPosition);
  assert.ok(map.indexOf('data?.markers.map')<ownPosition);
