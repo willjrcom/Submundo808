@@ -8,7 +8,7 @@ import {
  Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3
 } from 'lucide-react';
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
-import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,type MapFrame,type FrameHandle} from './map-frame-geometry';
+import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
@@ -286,7 +286,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/85 p-3"><div className="w-full max-w-xl space-y-4 rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
    <div className="flex items-center justify-between"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button className={button} onClick={()=>setCalibrationOpen(false)}>Fechar</button></div>
    <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração GPS aproximada ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
-   <div className="relative aspect-[4/3] overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+   <div className="relative overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(frame),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
     {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
     {([['tl','top-1 left-1'],['tr','top-1 right-1'],['bl','bottom-1 left-1'],['br','bottom-1 right-1']] as const).map(([key,pos],i)=><div key={key} className={'absolute z-10 rounded-full border px-2 py-1 text-xs font-bold '+pos+' '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] bg-[#c4ff40] text-black':'border-purple-400 bg-[#21132d] text-white')}>{calibrationArea?.gps?.[key]?'✓':i+1}</div>)}
     {calibrationPosition&&<div className="absolute bottom-1/2 left-1/2 rounded bg-blue-500 px-2 py-1 text-[10px] font-bold">GPS capturado ±{Math.round(calibrationPosition.accuracy)} m</div>}
