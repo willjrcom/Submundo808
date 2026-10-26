@@ -9,7 +9,7 @@ import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
 import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag } from 'lucide-react';
-type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[]};
+type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[]};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
@@ -19,7 +19,7 @@ export default function AdminShell(){
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
- const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+ const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[postalCode,setPostalCode]=useState(''),[street,setStreet]=useState(''),[neighborhood,setNeighborhood]=useState(''),[complement,setComplement]=useState(''),[addressUrl,setAddressUrl]=useState(''),[venueSearch,setVenueSearch]=useState(''),[filteredVenues,setFilteredVenues]=useState<Item[]|null>(null),[searchBusy,setSearchBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
  const section=route.section,creating=route.creating;
  const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
  const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
@@ -27,7 +27,7 @@ export default function AdminShell(){
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
  useEffect(()=>{const onPop=()=>{setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
- useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');},[section,route.id,route.creating,editing?.id]);
+ useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setPostalCode(editing?.postal_code||'');setStreet(editing?.street||'');setNeighborhood(editing?.neighborhood||'');setComplement(editing?.complement||'');setAddressUrl(editing?.address_url||'');},[section,route.id,route.creating,editing?.id]);
  useEffect(()=>{if(section!=='Visão geral'||!user?.isAdmin)return;const t=setInterval(()=>void api('overview').then(setStats).catch(()=>{}),30000);return ()=>clearInterval(t);},[section,user?.isAdmin]);
  // Preserve old /mapas/:id bookmarks while removing the standalone menu.
  useEffect(()=>{
@@ -40,6 +40,7 @@ export default function AdminShell(){
   window.history.replaceState({},'',path);
   setRoute(next);
  },[section,route.id,listsLoaded,maps]);
+ useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
  function go(next:AdminRoute){const path=adminRoutePath(next);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
@@ -111,7 +112,7 @@ export default function AdminShell(){
   e.preventDefault();setBusy(true);setError('');setNotice('');
   try{
    if(section!=='Estabelecimentos')return;
-   const response=await api(editing?'edit-venue':'venues',{id:editing?.id,name,address,city});
+   const response=await api(editing?'edit-venue':'venues',{id:editing?.id,name,address,city,postal_code:postalCode,street,neighborhood,complement,address_url:addressUrl});
    await reload();
    if(!editing&&response.id)go({section:'Estabelecimentos',id:response.id,creating:false});
    else setNotice('Estabelecimento atualizado com sucesso.');
@@ -139,7 +140,7 @@ export default function AdminShell(){
    {(!editing||venueTab==='info')&&<form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
     <h3 className="font-bold">{editing?'Dados do estabelecimento':'Cadastrar estabelecimento'}</h3>
     <label className="block space-y-1 text-xs text-white/60">Nome<input required maxLength={100} placeholder="Nome do estabelecimento" value={name} onChange={e=>setName(e.target.value)} className={input}/></label>
-    <label className="block space-y-1 text-xs text-white/60">Endereço<input placeholder="Endereço" value={address} onChange={e=>setAddress(e.target.value)} className={input}/></label>
+    <div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1 text-xs text-white/60">CEP<input value={postalCode} onChange={e=>setPostalCode(e.target.value)} placeholder="00000-000" maxLength={12} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Rua e número<input value={street} onChange={e=>setStreet(e.target.value)} placeholder="Rua, avenida e número" className={input}/></label><label className="block space-y-1 text-xs text-white/60">Bairro<input value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Complemento<input value={complement} onChange={e=>setComplement(e.target.value)} placeholder="Bloco, sala, referência..." className={input}/></label></div><label className="block space-y-1 text-xs text-white/60">Link de localização<input type="url" value={addressUrl} onChange={e=>setAddressUrl(e.target.value)} placeholder="https://maps.google.com/..." className={input}/></label>
     <label className="block space-y-1 text-xs text-white/60">Cidade<input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></label>
     <button disabled={busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Pencil size={17}/>{busy?'Salvando...':editing?'Salvar estabelecimento':'Cadastrar e abrir'}</button>
     {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
@@ -154,13 +155,14 @@ export default function AdminShell(){
    <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Acesse um estabelecimento para gerenciar seus mapas e ambientes.</p></div>
    <button type="button" onClick={()=>go({section:'Estabelecimentos',id:null,creating:true})} className="shrink-0 rounded-xl bg-[#c4ff40] px-3 py-2.5 text-xs font-bold text-black"><Plus size={14} className="mr-1 inline-block"/> Novo</button>
   </div>
-  {venues.length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
-  :<div className="grid gap-3 md:grid-cols-2">{venues.map(item=>{
+  <label className="block space-y-2 text-xs text-white/60">Buscar por nome, cidade, rua, bairro ou CEP<input value={venueSearch} onChange={e=>setVenueSearch(e.target.value)} placeholder="Digite uma cidade ou outro termo..." className={input}/></label>{searchBusy&&<p className="text-xs text-white/50">Buscando no servidor...</p>}
+  {(filteredVenues??venues).length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
+  :<div className="grid gap-3 md:grid-cols-2">{(filteredVenues??venues).map(item=>{
    const mapCount=maps.filter(map=>map.venue_id===item.id).length;
    const eventCount=events.filter(event=>event.venue_id===item.id).length;
    return <article key={item.id} className="rounded-xl border border-white/10 bg-white/[.035] p-4">
     <h3 className="font-bold">{displayLabel(item.name)}</h3>
-    <p className="mt-1 text-xs text-white/50">{[item.city,item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
+    <p className="mt-1 text-xs text-white/50">{[item.city,item.neighborhood,item.street||item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
     <p className="mt-3 flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{mapCount} {mapCount===1?'mapa':'mapas'}</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{eventCount} {eventCount===1?'evento':'eventos'}</span></p>
     <div className="mt-4 flex gap-2">
      <button onClick={()=>edit(item)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Pencil size={14}/> Abrir estabelecimento</button>
