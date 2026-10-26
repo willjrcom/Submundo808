@@ -274,13 +274,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       {markers.map(m=>{
       const Icon=iconFor(m.type);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
        const side=m.anchor?.side;
-       const shift=side==='top'?' -translate-x-1/2':side==='bottom'?' -translate-x-1/2 -translate-y-full':side==='left'?' -translate-y-1/2':side==='right'?' -translate-x-full -translate-y-1/2':' -translate-x-1/2 -translate-y-1/2';
+       // The point coordinate is always the ICON CENTER: half inside,
+       // half outside the boundary, regardless of the label dimensions.
+       const labelPosition=side==='bottom'?'bottom-full left-1/2 -translate-x-1/2 mb-1'
+        :side==='left'?'left-full top-1/2 -translate-y-1/2 ml-1'
+        :side==='right'?'right-full top-1/2 -translate-y-1/2 mr-1'
+        :'top-full left-1/2 -translate-x-1/2 mt-1';
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
-       className={'absolute z-10 flex items-center gap-1 text-center '+(side==='bottom'?'flex-col-reverse':'flex-col')+shift+' '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
-       style={{left:m.x+'%',top:m.y+'%'}}>
-       <span className={'flex items-center justify-center border-2 shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(chosen?' ring-2 ring-white/80':'')} style={{width:size,height:size,color,borderColor:color,backgroundColor:'#15101be8'}}><Icon size={Math.max(15,size*.5)}/></span>
-       <span className="max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold leading-tight">{m.name}</span>
+       className={'absolute z-10 -translate-x-1/2 -translate-y-1/2 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
+       style={{left:m.x+'%',top:m.y+'%',width:size,height:size}}>
+       <span className={'flex h-full w-full items-center justify-center border-2 shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(chosen?' ring-2 ring-white/80':'')} style={{color,borderColor:color,backgroundColor:'#15101be8'}}><Icon size={Math.max(15,size*.5)}/></span>
+       <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold leading-tight '+labelPosition}>{m.name}</span>
       </button>;
      })}
     </div></div>}
