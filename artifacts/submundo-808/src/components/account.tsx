@@ -40,16 +40,16 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[]);
-  const change=(next:Mode)=>{setMode(next);setError('');setSuccess('');setPassword('');setConfirm('');setCurrent('');const path=next==='register'?'/register':next==='forgot'?'/recovery':next==='password'?'/change-password':next==='reset'?'/reset-password':'/profile';if(window.location.pathname!==path)window.history.pushState({},'',path);};
+  const change=(next:Mode)=>{setMode(next);setError('');setSuccess('');setPassword('');setConfirm('');setCurrent('');const path=next==='register'?'/register':next==='forgot'?'/recovery':next==='password'?'/change-password':next==='reset'?'/reset-password':user?'/profile':'/login';if(window.location.pathname!==path)window.history.pushState({},'',path);};
   async function submit(event:React.FormEvent) {
     event.preventDefault();setError('');setSuccess('');
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password,phone});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password,phone});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
-      if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'',window.location.pathname);change('login');setSuccess('Senha redefinida. Faça login.');}
+      if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
   async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
