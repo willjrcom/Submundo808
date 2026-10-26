@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
-import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
+import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
 
 type GPS={lat:number;lng:number;accuracy:number};
@@ -40,6 +40,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
+ const [pendingDelete,setPendingDelete]=useState<{id:string;name:string;kind:'area'|'marker'}|null>(null);
  const calibrationArea=areas.find(a=>(['tl','tr','br','bl'] as const).some(k=>a.gps?.[k]))||areas[0];
  const calibrationKeys=['tl','tr','bl','br'] as const;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
@@ -64,9 +65,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
  useEffect(()=>{
   const onKeyboard=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
     event.preventDefault();event.stopPropagation();setCalibrationOpen(false);return;
    }
+   if(pendingDelete)return;
    if(!(event.ctrlKey||event.metaKey)||event.altKey||drag.current)return;
    const target=event.target as HTMLElement|null;
    if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
@@ -78,7 +81,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[calibrationOpen,history,future,areas,markers,frame]);
+ },[calibrationOpen,pendingDelete,history,future,areas,markers,frame]);
 
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -100,12 +103,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(null);setNotice('Arraste o ponto para posicionar. Salve o mapa ao terminar.');
  }
  function removeSelected(){
-  if(!active&&!selectedMarker)return;
-  if(!window.confirm('Remover '+(active?.name||selectedMarker?.name)+'? A exclusão será aplicada ao salvar o mapa.'))return;
+  const item=active?{id:active.id,name:active.name,kind:'area' as const}:selectedMarker?{id:selectedMarker.id,name:selectedMarker.name,kind:'marker' as const}:null;
+  if(item)setPendingDelete(item);
+ }
+ function confirmDelete(){
+  if(!pendingDelete)return;
+  const item=pendingDelete;
+  if((item.kind==='area'&&!areas.some(a=>a.id===item.id))||(item.kind==='marker'&&!markers.some(m=>m.id===item.id))){setPendingDelete(null);return;}
   checkpoint();
-  if(active)setAreas(v=>v.filter(a=>a.id!==active.id));
-  else setMarkers(v=>v.filter(m=>m.id!==selectedMarker?.id));
-  setSelected('');setResizeId(null);
+  if(item.kind==='area')setAreas(v=>v.filter(a=>a.id!==item.id));
+  else setMarkers(v=>v.filter(m=>m.id!==item.id));
+  setSelected('');setResizeId(null);setPendingDelete(null);
+  setNotice('Item removido do editor. Salve o mapa para confirmar a exclusão.');
  }
  function coord(e:React.PointerEvent){
   const rect=canvas.current?.getBoundingClientRect();if(!rect||!rect.width||!rect.height)return null;
@@ -309,19 +318,19 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
-     {(selectedMarker.type==='palco'||selectedMarker.type==='entrada')&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
+     <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
        <p className="font-bold text-[#c4ff40]">Posicionamento</p>
-       {selectedMarker.type==='palco'&&<div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={()=>updateMarker(freeMarker(selectedMarker))} className={button+' '+(!selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Ponto livre</button>
-        <button type="button" onClick={()=>updateMarker(anchorMarker(selectedMarker,selectedMarker.anchor?.side||'top'))} className={button+' '+(selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Na borda</button>
-       </div>}
-       {(selectedMarker.anchor||selectedMarker.type==='entrada')&&<label className="block space-y-1">Lateral do mapa
-        <select className={input} value={selectedMarker.anchor?.side||'bottom'} onChange={e=>updateMarker(anchorMarker(selectedMarker,e.target.value as MapSide))}>
+       <div className="grid grid-cols-2 gap-2">
+        <button type="button" disabled={selectedMarker.type==='entrada'} aria-pressed={!selectedMarker.anchor} onClick={()=>updateMarker(freeMarker(selectedMarker))} className={button+' '+(!selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Ponto livre</button>
+        <button type="button" aria-pressed={!!selectedMarker.anchor} onClick={()=>updateMarker(anchorMarker(selectedMarker,selectedMarker.anchor?.side||closestMapEdge(selectedMarker.x,selectedMarker.y).side))} className={button+' '+(selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Na borda</button>
+       </div>
+       {selectedMarker.anchor&&<label className="block space-y-1">Lateral do mapa
+        <select className={input} value={selectedMarker.anchor.side} onChange={e=>updateMarker(anchorMarker(selectedMarker,e.target.value as MapSide))}>
          {MAP_SIDES.map(side=><option key={side} value={side}>{{top:'Superior',right:'Direita',bottom:'Inferior',left:'Esquerda'}[side]}</option>)}
         </select>
        </label>}
-       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas ficam sempre na borda e podem ser criadas várias vezes.':'O palco pode ficar livre ou preso a qualquer lateral.'} {selectedMarker.anchor||selectedMarker.type==='entrada'?'Arraste para deslocar ao longo da borda.':''}</p>
-      </div>}
+       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas precisam ficar em uma borda. Você pode cadastrar várias entradas.':selectedMarker.anchor?'Arraste este ponto ao longo da lateral selecionada.':'Deixe o ponto livre ou fixe-o em qualquer lateral.'}</p>
+      </div>
       <div className="space-y-2 text-xs text-white/65">Formato<div className="grid grid-cols-2 gap-2"><button onClick={()=>updateMarker({shape:'square'})} className={button+' '+(selectedMarker.shape!=='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Quadrado</button><button onClick={()=>updateMarker({shape:'circle'})} className={button+' '+(selectedMarker.shape==='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button></div></div>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(pointColor(selectedMarker),color=>updateMarker({color}))}</div>
      <label className="block space-y-2 text-xs text-white/65">Tamanho do ícone <span className="float-right">{selectedMarker.size||42}px</span><input aria-label="Tamanho do ponto" type="range" min="24" max="72" step="2" value={selectedMarker.size||42} onChange={e=>updateMarker({size:Number(e.target.value)})} className="w-full accent-[#c4ff40]"/></label>
@@ -330,6 +339,17 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
   </div>
+  {pendingDelete&&<div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPendingDelete(null);}} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-remove-title" aria-describedby="confirm-remove-description" className="w-full max-w-md rounded-2xl border border-white/15 bg-[#191320] p-5 shadow-2xl sm:p-6">
+     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-red-400/30 bg-red-400/10 text-red-300"><Trash2 size={22}/></div>
+     <h3 id="confirm-remove-title" className="text-xl font-black text-white">Excluir {pendingDelete.kind==='area'?'ambiente':'ponto'}?</h3>
+     <p id="confirm-remove-description" className="mt-3 break-words text-sm leading-relaxed text-white/65">Deseja remover <strong className="text-white">{pendingDelete.name}</strong>? A exclusão só será aplicada ao servidor quando você clicar em <strong className="text-white">Salvar mapa</strong>.</p>
+     <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+      <button type="button" autoFocus onClick={()=>setPendingDelete(null)} className={button+' w-full sm:w-auto'}>Cancelar</button>
+      <button type="button" onClick={confirmDelete} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-200 transition hover:bg-red-500/25 sm:w-auto"><Trash2 size={16}/> Excluir item</button>
+     </div>
+    </div>
+   </div>}
   {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" onMouseDown={e=>{if(e.target===e.currentTarget)setCalibrationOpen(false);}} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3"><div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
    <div className="sticky -top-4 z-30 flex items-center justify-between gap-2 border-b border-white/10 bg-[#17111d] py-2"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button type="button" autoFocus aria-label="Fechar calibração" className={button} onClick={()=>setCalibrationOpen(false)}>Fechar <span aria-hidden="true">×</span></button></div>
    <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração GPS aproximada ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
