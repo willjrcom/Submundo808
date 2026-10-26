@@ -54,7 +54,6 @@ export default function App() {
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [tab, setTab] = useState<Tab>(tabFromUrl);
-  useEffect(()=>{const aliases:Record<string,string>={mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile',cadastrar:'register',programacao:'schedule'};const parts=window.location.pathname.split('/');const canonical=aliases[parts[1]];if(canonical){parts[1]=canonical;window.history.replaceState({},'',parts.join('/')+window.location.search+window.location.hash);}},[]);
   const [activeEventId,setActiveEventId]=useState(getActiveEventId);
   const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
   const clearEvent=()=>{resetActiveEventId();setActiveEventId('');};
