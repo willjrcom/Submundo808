@@ -6,6 +6,40 @@ export const DEMO_EVENT_NAME='SUBMUNDO 808 — Edição Demo';
 export const DEMO_MAP_NAME='Pista principal — DEMO';
 const DEMO_KEY='default_demo_event_id';
 
+// Migra somente mapas automáticos NÃO editados: layouts personalizados,
+// marcadores extras e qualquer calibração manual ficam preservados.
+const PREVIOUS_POINT_LAYOUTS=[
+ {'Bar principal':[40,37.5],'Banheiros':[60,37.5],'Palco':[40,62.5],'Entrada':[60,62.5]},
+ {'Bar principal':[20,25],'Banheiros':[78,30],'Palco':[45,12],'Entrada':[45,90]}
+];
+export function updateUntouchedDemoLayout(db,mapId){
+ const row=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(mapId);
+ if(!row)return false;
+ let markers;
+ try{markers=JSON.parse(row.markers_json);}catch{return false;}
+ if(!Array.isArray(markers)||markers.length!==4)return false;
+ const matches=PREVIOUS_POINT_LAYOUTS.some(layout=>markers.every(m=>{
+  const coords=layout[m.name];
+  return coords&&m.x===coords[0]&&m.y===coords[1]&&
+   m.type===(m.name==='Banheiros'?'banheiro':m.name==='Palco'?'palco':m.name==='Entrada'?'entrada':'bar');
+ }));
+ if(!matches||new Set(markers.map(m=>m.name)).size!==4)return false;
+ const areas=db.prepare('SELECT id,name,x,y,width,height,gps_json FROM map_areas WHERE map_id=?').all(mapId);
+ if(areas.some(a=>{
+  const gps=JSON.parse(a.gps_json||'{}');
+  return gps.mode==='manual'||['tl','tr','bl','br'].some(k=>gps[k]&&gps.mode!=='demo-auto');
+ }))return false;
+ const updated=DEMO_MARKERS.map(template=>{
+  const old=markers.find(marker=>marker.name===template.name);
+  return old?{...old,x:template.x,y:template.y,shape:'square',size:42}:{...template,id:randomUUID()};
+ });
+ db.prepare('UPDATE map_markers SET markers_json=? WHERE map_id=?').run(JSON.stringify(updated),mapId);
+ // Ajusta apenas a sala original e intocada para a metade superior da planta.
+ const defaultArea=areas.find(a=>a.name==='Pista principal'&&a.x===8&&a.y===10&&a.width===75&&a.height===75);
+ if(defaultArea)db.prepare('UPDATE map_areas SET x=0,y=0,width=100,height=55 WHERE id=?').run(defaultArea.id);
+ return true;
+}
+
 function dateForInput(d){
  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')
   +'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
@@ -37,9 +71,10 @@ export function ensureDemoData(db,{location=null,now=Date.now()}={}){
    const products=seedDemoProducts(db,existing.id,now);
    db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(DEMO_KEY,existing.id);
    const map=db.prepare('SELECT vm.id FROM event_maps em JOIN venue_maps vm ON vm.id=em.map_id WHERE em.event_id=? ORDER BY CASE WHEN vm.name=? THEN 0 ELSE 1 END, vm.created_at LIMIT 1').get(existing.id,DEMO_MAP_NAME);
+   const layoutUpdated=map?updateUntouchedDemoLayout(db,map.id):false;
    const gps=map?applyDemoCalibration(db,map.id,location,now):{gpsStatus:'no-demo-map',markersRepositioned:false};
    db.exec('COMMIT');
-   return {id:existing.id,created:false,...products,...gps};
+   return {id:existing.id,created:false,layoutUpdated,...products,...gps};
   }
   const venueId=randomUUID(),mapId=randomUUID(),eventId=randomUUID();
   const {start,lineup}=futureLineup(now);
