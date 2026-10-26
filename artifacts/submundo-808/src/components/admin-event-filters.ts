@@ -7,12 +7,12 @@ const localDay=(d:Date)=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'
 export function eventStatus(event:EventRecord,now=new Date()):EventStatus{
  const start=parse(event.starts_at);if(!start)return 'undated';
  const end=parse(event.ends_at);
- if(end&&end>start){if(now>=start&&now<end)return 'live';return now>=end?'past':'upcoming';}
- return now>=start?'past':'upcoming';
+ if(end&&end.getTime()>start.getTime()){if(now.getTime()>=start.getTime()&&now.getTime()<end.getTime())return 'live';return now.getTime()>=end.getTime()?'past':'upcoming';}
+ return now.getTime()>=start.getTime()?'past':'upcoming';
 }
 export function isEventOnDay(event:EventRecord,day:string):boolean{
  const start=parse(event.starts_at);if(!start)return false;
- const end=parse(event.ends_at);const last=end&&end>start?end:start;
+ const end=parse(event.ends_at);const last=end&&end.getTime()>start.getTime()?end:start;
  return localDay(start)<=day&&day<=localDay(last);
 }
 const fold=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
