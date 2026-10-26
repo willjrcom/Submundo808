@@ -1,3 +1,4 @@
+import FriendQR from './friend-qr';
 import { useEffect, useRef, useState } from 'react';
 import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
 import PageLoading from './page-loading';
@@ -6,7 +7,7 @@ type Friend={id:string;name:string};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
 export default function Friends(){
-  const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
+  const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [showMyQR,setShowMyQR]=useState(false);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
   const video=useRef<HTMLVideoElement>(null);const stream=useRef<MediaStream|null>(null);const scanning=useRef(false);const locked=useRef(false);
   async function load(){
@@ -93,6 +94,8 @@ export default function Friends(){
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/[.04] p-5">
         <h3 className="mb-2 flex items-center gap-2 font-bold"><UserPlus className="text-[#c4ff40]" size={19}/> Novo amigo</h3>
         <p className="mb-4 text-xs text-white/55">Escaneie o QR Code de outra pessoa ou cole o link de convite.</p>
+        <button type="button" onClick={()=>setShowMyQR(v=>!v)} className="mb-4 w-full rounded-xl border border-[#c4ff40]/40 px-4 py-3 text-sm font-bold text-[#c4ff40]">{showMyQR?'Ocultar meu QR Code':'Ver meu QR Code'}</button>
+        {showMyQR&&<div className="mb-4"><FriendQR/></div>}
         {!scan?<button onClick={()=>void start()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black"><ScanLine size={19}/> Adicionar amigo</button>:<><video ref={video} autoPlay muted playsInline className="aspect-square w-full rounded-xl bg-black object-cover"/><button onClick={stop} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-sm"><CameraOff size={17}/> Fechar câmera</button></>}
         <div className="mt-5 border-t border-white/10 pt-4"><label className="mb-2 block text-xs font-bold text-white/70"><Link2 size={14} className="mr-1 inline"/> Ou cole o link recebido</label><div className="flex gap-2"><input value={link} onChange={e=>setLink(e.target.value)} placeholder="Link do amigo" className="min-w-0 flex-1 rounded-xl border border-white/15 bg-black/30 px-3 py-3 text-xs outline-none focus:border-[#c4ff40]"/><button disabled={busy||!link.trim()} onClick={()=>void add(link)} className="rounded-xl bg-[#c4ff40] px-4 text-xs font-black text-black disabled:opacity-40">Adicionar</button></div></div>
         {error&&<p role="alert" className="mt-3 text-xs text-red-300">{error}</p>}{status&&<p role="status" className="mt-3 text-xs text-[#c4ff40]">{status}</p>}
