@@ -196,6 +196,7 @@ http.createServer(async (req,res)=>{
         const pref=db.prepare('SELECT share_enabled,share_expires_at,share_event_id FROM location_preferences WHERE user_id=?').get(user.id);
         if(!pref?.share_enabled)return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
         if(!pref.share_event_id)return json(res,403,{error:'Escolha um evento e reative o compartilhamento.'});
+        if(typeof b.eventId!=='string'||b.eventId!==pref.share_event_id)return json(res,409,{error:'Sua localização está vinculada a outra festa. Ative novamente no evento correto.'});
         if(!pref.share_expires_at||pref.share_expires_at<=now){
           expireLocationShares(db,now);
           return json(res,410,{error:'O prazo de compartilhamento terminou. Ative novamente para continuar.'});
