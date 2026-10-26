@@ -175,7 +175,28 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }
   if(d.kind==='frame-move')setFrame(moveMapFrame(d.snapshot.frame,p.x-d.startX,p.y-d.startY));
   else if(d.kind==='frame-resize'&&d.frameHandle)setFrame(resizeMapFrame(d.snapshot.frame,d.frameHandle,p.x-d.startX,p.y-d.startY));
-  else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>m.id===d.id?moveMarker(m,p.x-d.offsetX,p.y-d.offsetY):m));
+  else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>{
+   if(m.id!==d.id)return m;
+   const x=p.x-d.offsetX,y=p.y-d.offsetY;
+   if(m.type!=='passagem'||!m.from_area_id||!m.to_area_id)return moveMarker(m,x,y);
+   const a=d.snapshot.areas.find(area=>area.id===m.from_area_id);
+   const b=d.snapshot.areas.find(area=>area.id===m.to_area_id);
+   if(!a||!b)return m; // Never release a passage into free movement.
+   const margin=.05;
+   const horizontal=Math.abs(a.y+a.height-b.y)<margin||Math.abs(b.y+b.height-a.y)<margin;
+   const vertical=Math.abs(a.x+a.width-b.x)<margin||Math.abs(b.x+b.width-a.x)<margin;
+   if(horizontal){
+    const low=Math.max(a.x,b.x),high=Math.min(a.x+a.width,b.x+b.width);
+    if(high<=low)return m;
+    return {...m,x:Math.max(low,Math.min(high,x)),y:Math.abs(a.y+a.height-b.y)<margin?b.y:a.y};
+   }
+   if(vertical){
+    const low=Math.max(a.y,b.y),high=Math.min(a.y+a.height,b.y+b.height);
+    if(high<=low)return m;
+    return {...m,x:Math.abs(a.x+a.width-b.x)<margin?b.x:a.x,y:Math.max(low,Math.min(high,y))};
+   }
+   return m;
+  }));
   else if(d.kind==='resize'&&d.edge){
    const delta=d.edge==='left'||d.edge==='right'?p.x-d.startX:p.y-d.startY;
    setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap));
@@ -345,9 +366,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <p className="text-[11px] text-white/45">Ao redimensionar uma borda compartilhada, o vizinho acompanha o ajuste. Arrastar o interior move somente o ambiente selecionado.</p>
      {areas.some(a=>a.id!==active.id&&sharesBorder(a,active))&&<p className="text-[11px] text-[#c4ff40]">Este ambiente compartilha bordas com outros.</p>}
 
-    </div>:selectedMarker?<div className="space-y-4">
+    </div> :selectedMarker?<div className="space-y-4">
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
-     {selectedMarker.type==='passagem'&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 p-3 text-xs"><p className="font-semibold text-[#c4ff40]">Passagem entre ambientes</p><p className="text-white/60">{areas.find(a=>a.id===selectedMarker.from_area_id)?.name||'Ambiente A'} ↔ {areas.find(a=>a.id===selectedMarker.to_area_id)?.name||'Ambiente B'}</p><label className="block space-y-1">Tipo de acesso<select className={input} value={selectedMarker.access_type||'livre'} onChange={e=>updateMarker({access_type:e.target.value})}><option value="livre">Livre</option><option value="vip">VIP / Controlado</option><option value="saida">Somente saída</option><option value="staff">Equipe / Staff</option></select></label></div>}
+     {selectedMarker.type==='passagem'&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 p-3 text-xs"><p className="font-semibold text-[#c4ff40]">Passagem entre ambientes</p><p className="text-white/55">A passagem só pode deslizar ao longo da divisória compartilhada, sem sair para dentro dos ambientes.</p><p className="text-white/60">{areas.find(a=>a.id===selectedMarker.from_area_id)?.name||'Ambiente A'} ↔ {areas.find(a=>a.id===selectedMarker.to_area_id)?.name||'Ambiente B'}</p><label className="block space-y-1">Tipo de acesso<select className={input} value={selectedMarker.access_type||'livre'} onChange={e=>updateMarker({access_type:e.target.value})}><option value="livre">Livre</option><option value="vip">VIP / Controlado</option><option value="saida">Somente saída</option><option value="staff">Equipe / Staff</option></select></label></div>}
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
