@@ -54,6 +54,12 @@ function ParticipantApp() {
   const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
   const clearEvent=()=>{resetActiveEventId();setActiveEventId('');};
   useEffect(()=>{
+    // Keep deep-link selection when a participant opens /programacao/:id
+    // directly, then changes tab or installs/restarts the PWA.
+    const eventFromLink=eventIdFromPath(window.location.pathname);
+    if(eventFromLink)saveActiveEventId(eventFromLink);
+  },[]);
+  useEffect(()=>{
     const sync=()=>setActiveEventId(getActiveEventId());
     const onStorage=(event:StorageEvent)=>{if(event.key===ACTIVE_EVENT_KEY)sync();};
     window.addEventListener(ACTIVE_EVENT_CHANGED,sync);
