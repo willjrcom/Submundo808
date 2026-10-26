@@ -10,6 +10,8 @@ GOOGLE_REDIRECT_URI=https://submundo.menudevendas.com.br/api/auth/google/callbac
 MEAPLE_CLIENT_ID=
 MEAPLE_REDIRECT_URI=https://submundo.menudevendas.com.br/api/auth/meaple/callback
 MEAPLE_API_URL=https://api.meaple.com.br
+# Opcional: preencher somente após confirmação oficial de outro domínio OAuth
+# MEAPLE_OAUTH_BASE_URL=https://dominio-confirmado-pela-meaple
 ```
 
 O serviço já precisa manter o segredo JWT persistente (arquivo gerenciado sob `DATA_DIR` ou `JWT_SECRET` conforme a configuração atual). Ele também protege, com AES-GCM, os tokens obtidos da Meaple. **Não altere o segredo sem planejar a rotação dos tokens.**
@@ -35,3 +37,9 @@ O login convencional por e-mail/senha permanece disponível. Para vincular Googl
 - A API OAuth mantém o estado PKCE em memória durante 5 minutos: callbacks iniciados antes de um restart ou enviados a outra réplica não funcionarão. Use armazenamento central de estados para execução com múltiplas réplicas.
 - Google e Meaple serão mostrados no login somente quando as variáveis necessárias estiverem configuradas.
 - Faça os testes reais de login e ingressos com credenciais válidas depois do deploy; estes testes não podem ser concluídos apenas com dados demonstrativos.
+
+## Problema de DNS no login Meaple
+
+A documentação oficial apresenta `https://whitelabel.meaple.app/api/oauth/authorize`, mas esse hostname pode não resolver DNS na rede. O erro `ERR_NAME_NOT_RESOLVED` ocorre antes de qualquer validação OAuth e **não** é causado pelo redirect URI nem pelo PKCE. O backend oferece `MEAPLE_OAUTH_BASE_URL` para alterar a origem da autorização e do token, mas **não invente um domínio alternativo**: confirme com o suporte da Meaple qual é o endereço de produção, cadastre o redirect e use o hostname fornecido. A variável deve conter somente a origem HTTPS, sem `/api/oauth/authorize`.
+
+O `MEAPLE_CLIENT_ID` precisa ser o identificador real atribuído ao canal/aplicativo; não use o valor `123` ilustrativo. O header correto para buscar o perfil na API é `X-Client-Id`.
