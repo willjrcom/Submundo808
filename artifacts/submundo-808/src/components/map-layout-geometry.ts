@@ -18,7 +18,7 @@ export function sharesBorder(a:MapRect,b:MapRect){
 function valid(a:MapRect){return a.x>=PASTEBOARD_MIN-EPS&&a.y>=PASTEBOARD_MIN-EPS&&a.width>=MIN-EPS&&a.height>=MIN-EPS&&a.x+a.width<=PASTEBOARD_MAX+EPS&&a.y+a.height<=PASTEBOARD_MAX+EPS;}
 // Dragging a shared edge adjusts the adjacent rectangles in the same operation,
 // so a resize does not create a gap or overlap at the shared partition.
-export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,delta:number):T[]{
+export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,delta:number,snap=false):T[]{
  const selected=areas.find(a=>a.id===id);
  if(!selected||!Number.isFinite(delta)||!delta)return areas;
  const neighbors=areas.filter(b=>b.id!==id&&(
@@ -27,6 +27,27 @@ export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,de
  edge==='bottom'?Math.abs(selected.y+selected.height-b.y)<EPS&&overlap(selected.x,selected.x+selected.width,b.x,b.x+b.width)>EPS:
  Math.abs(b.y+b.height-selected.y)<EPS&&overlap(selected.x,selected.x+selected.width,b.x,b.x+b.width)>EPS
  ));
+ // Snap the dragged edge to the OTHER rooms or any of the four outer
+ // boundaries (0% / 100%). Never snap to its own original shared partition:
+ // the adjacent room moves in the same operation.
+ if(snap){
+  const vertical=edge==='left'||edge==='right';
+  const edgeNow=vertical?(edge==='left'?selected.x:selected.x+selected.width):(edge==='top'?selected.y:selected.y+selected.height);
+  const target=edgeNow+delta;
+  const candidates=[0,100];
+  for(const other of areas){
+   if(other.id===id||neighbors.some(n=>n.id===other.id))continue;
+   const perpendicularOverlap=vertical
+    ?overlap(selected.y,selected.y+selected.height,other.y,other.y+other.height)
+    :overlap(selected.x,selected.x+selected.width,other.x,other.x+other.width);
+   if(perpendicularOverlap<=EPS)continue;
+   if(vertical)candidates.push(other.x,other.x+other.width);
+   else candidates.push(other.y,other.y+other.height);
+  }
+  const nearest=candidates.filter(pos=>Math.abs(pos-target)<=1.5)
+   .sort((a,b)=>Math.abs(a-target)-Math.abs(b-target))[0];
+  if(nearest!==undefined)delta=nearest-edgeNow;
+ }
  const result=areas.map(a=>{
   if(a.id===id){
    if(edge==='right')return {...a,width:a.width+delta};
@@ -54,8 +75,9 @@ export function moveArea<T extends MapRect>(areas:T[],id:string,x:number,y:numbe
  let px=limit(x,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.width);
  let py=limit(y,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.height);
  if(snap){
-  const xCandidates=[0,100-selected.width];
-  const yCandidates=[0,100-selected.height];
+  // Either side of the environment may touch the map's external edges.
+  const xCandidates=[-selected.width,0,100-selected.width,100];
+  const yCandidates=[-selected.height,0,100-selected.height,100];
   for(const other of areas){
    if(other.id===id)continue;
    if(overlap(py,py+selected.height,other.y,other.y+other.height)>EPS){
