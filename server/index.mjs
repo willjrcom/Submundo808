@@ -111,7 +111,7 @@ const createSession=(req,res,id)=>{
   if(!user)throw Error('Usuário não encontrado');
   res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET),undefined,req));
 };
-const oauthHandler=createOauth({db,getUser,createSession,passwordHash});
+const oauthHandler=createOauth({db,getUser,createSession,passwordHash,secret:JWT_SECRET});
 const attempts = new Map();
 function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
 async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>200000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
