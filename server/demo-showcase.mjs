@@ -72,7 +72,7 @@ const POINT_PROFILES={
  'Food trucks':{categories:['Lanches','Porções'],opens_at:'22:00',closes_at:'03:00'},
  'Alimentação':{categories:['Comidas','Lanches'],opens_at:'17:00',closes_at:'23:30'},
  'Lanchonete':{categories:['Lanches','Bebidas'],opens_at:'20:00',closes_at:'03:00'},
- 'Espetinhos':{categories:['Espetinhos','Bebidas'],opens_at:'20:00',closes_at:'02:00'},
+ 'Espetinhos':{categories:['Espetinhos'],opens_at:'20:00',closes_at:'02:00'},
  'Porções':{categories:['Porções','Comidas'],opens_at:'21:00',closes_at:'04:00'}
 };
 const EXTRA_POINTS={
@@ -98,6 +98,8 @@ function provisionDemoPointMenus(db,now){
    if(!profile||marker.type!=='bar'&&marker.type!=='alimentacao'&&marker.type!=='cozinha')continue;
    // Só complementa dados ausentes. Alterações manuais têm precedência.
    if(!Array.isArray(marker.categories)||!marker.categories.length){marker.categories=[...profile.categories];changed=true;pointsAssociated++;}
+   // Corrige exclusivamente o perfil antigo do demo, preservando seleções personalizadas.
+   else if(marker.name==='Espetinhos'&&marker.categories.length===2&&marker.categories.includes('Espetinhos')&&marker.categories.includes('Bebidas')){marker.categories=['Espetinhos'];changed=true;pointsAssociated++;}
    if(marker.opens_at===undefined&&marker.closes_at===undefined){marker.opens_at=profile.opens_at;marker.closes_at=profile.closes_at;changed=true;}
   }
   for(const [i,template] of (EXTRA_POINTS[event.slug]||[]).entries()){
