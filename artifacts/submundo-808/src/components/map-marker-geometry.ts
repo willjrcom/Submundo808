@@ -23,7 +23,7 @@ export function closestMapEdge(x:number,y:number):MarkerAnchor{
  return {side:options[0].side,offset:clamp(options[0].offset)};
 }
 export function anchorMarker<T extends PositionedMarker>(marker:T,side:MapSide):T{
- const offset=clamp(side==='top'||side==='bottom'?marker.x:marker.y);
+ const offset=clamp(marker.anchor?.offset??(side==='top'||side==='bottom'?marker.x:marker.y));
  return {...marker,...positionOnEdge(side,offset),anchor:{side,offset}};
 }
 export function freeMarker<T extends PositionedMarker>(marker:T):T{
