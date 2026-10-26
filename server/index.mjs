@@ -435,9 +435,11 @@ http.createServer(async (req,res)=>{
           db.prepare('UPDATE events SET is_published=? WHERE id=?').run(publish?1:0,id);
           return json(res,200,{ok:true,is_published:publish?1:0});
         }
+        const validDjSocial=(d)=>['instagram','spotify'].every(k=>{const value=d?.[k];if(!value)return true;if(typeof value!=='string')return false;try{const url=new URL(value);return url.protocol==='https:'&&(k==='instagram'?['www.instagram.com','instagram.com'].includes(url.hostname):url.hostname==='open.spotify.com')&&url.pathname!=='/';}catch{return false;}});
         if(req.method==='POST'&&key==='events'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(id=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(id,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos. Todos os mapas devem pertencer ao mesmo estabelecimento.'});
+          if(Array.isArray(b.lineup)&&b.lineup.some(d=>!validDjSocial(d)))return json(res,400,{error:'Use URLs HTTPS completas do Instagram e Spotify no lineup.'});
           const id=randomUUID();db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
@@ -476,7 +478,7 @@ http.createServer(async (req,res)=>{
           if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
           if(db.prepare('SELECT is_published FROM events WHERE id=?').get(id).is_published && (!ids.length||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
-           if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120))return json(res,400,{error:'Lineup inválido.'});
+           if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120||!validDjSocial(d)))return json(res,400,{error:'Lineup inválido.'});
           db.exec('BEGIN');try{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
