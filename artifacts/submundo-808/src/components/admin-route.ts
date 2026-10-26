@@ -1,7 +1,7 @@
 // A URL é a fonte de verdade para a navegação administrativa.
 // Mantém seções, formulários e editores abertos após recarregar a página.
 export type AdminSection='Visão geral'|'Estabelecimentos'|'Mapas e ambientes'|'Eventos'|'Produtos e cardápios';
-export type AdminRoute={section:AdminSection;id:string|null;creating:boolean};
+export type AdminRoute={section:AdminSection;id:string|null;creating:boolean;mapId?:string};
 const roots:Record<AdminSection,string>={
  'Visão geral':'/',
  'Estabelecimentos':'/estabelecimentos',
