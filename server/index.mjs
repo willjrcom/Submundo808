@@ -1,5 +1,6 @@
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
+import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
@@ -330,7 +331,7 @@ http.createServer(async (req,res)=>{
           db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO venue_maps(id,venue_id,name,created_at) VALUES(?,?,?,?)').run(id,venue,name,Date.now());
-            db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),id,'Pista principal','principal',0,0,100,55);
+            insertDefaultMapAreas(db,id,randomUUID);
             db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?)').run(id,JSON.stringify(DEMO_MARKERS.map(marker=>({...marker,id:randomUUID()}))));
             db.exec('COMMIT');
           }catch(error){db.exec('ROLLBACK');throw error;}
