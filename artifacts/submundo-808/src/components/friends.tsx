@@ -22,13 +22,29 @@ export default function Friends(){
   useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
   function stop(){scanning.current=false;locked.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
   async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
+  function logCameraFailure(err:unknown,stage:string){
+    const exception=err as {name?:string;message?:string;constraint?:string};
+    const displayMode=window.matchMedia('(display-mode: standalone)').matches?'standalone':window.matchMedia('(display-mode: fullscreen)').matches?'fullscreen':'browser';
+    const payload={page:window.location.pathname,component:'friends-camera',code:'camera_access_error',errorType:exception?.name||'Error',diagnostic:[stage,displayMode,window.isSecureContext?'secure':'insecure',exception?.constraint||'none',String(exception?.message||'').slice(0,110)].join(' | ')};
+    console.error('[Submundo808] Camera failure',payload);
+    void fetch('/api/client-errors',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(payload)}).catch(()=>{});
+  }
   async function start(){
     if(scanning.current)return;
     setError('');setStatus('');
     if(!navigator.mediaDevices?.getUserMedia){setError('A câmera exige HTTPS e um navegador compatível. Use o link do convite como alternativa.');return;}
     scanning.current=true;
+    let cameraStage='getUserMedia';
     try{
-      const media=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      let media:MediaStream;
+      try{
+        media=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+      }catch(e){
+        // Retry without constraints only if the requested device settings are unsupported.
+        if((e as DOMException)?.name!=='OverconstrainedError')throw e;
+        cameraStage='getUserMedia-fallback';
+        media=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+      }
       if(!scanning.current){media.getTracks().forEach(t=>t.stop());return;}
       stream.current=media;
       setScan(true);
@@ -40,8 +56,10 @@ export default function Friends(){
         await new Promise<void>(resolve=>window.setTimeout(resolve,50));
       }
       if(!element){throw Error('Não foi possível iniciar a visualização da câmera.');}
+      cameraStage='video-playback';
       element.srcObject=media;
       await element.play();
+      cameraStage='qr-decoder';
       const Detector=(window as unknown as {BarcodeDetector?:new (options:{formats:string[]})=>{detect:(source:HTMLVideoElement)=>Promise<Array<{rawValue:string}>>}}).BarcodeDetector;
       let detector:InstanceType<NonNullable<typeof Detector>>|null=null;
       try{if(Detector)detector=new Detector({formats:['qr_code']});}catch{}
@@ -81,6 +99,7 @@ export default function Friends(){
         await new Promise<void>(resolve=>window.setTimeout(resolve,250));
       }
     }catch(e){
+      logCameraFailure(e,cameraStage);
       stop();
       const exception=e as DOMException;
       if(exception?.name==='NotAllowedError'||exception?.name==='PermissionDeniedError'||/permission denied|not allowed|permissão negada/i.test(exception?.message||'')){
