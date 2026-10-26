@@ -10,11 +10,11 @@ const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 export default function AdminProducts({events}:{events:Event[]}){
  const [initialReady,setInitialReady]=useState(false),[initialFailed,setInitialFailed]=useState(false);
  const [loadedAssignmentsFor,setLoadedAssignmentsFor]=useState(''),[assignmentError,setAssignmentError]=useState(''),[assignmentReload,setAssignmentReload]=useState(0);
- const [productSearch,setProductSearch]=useState(''),[categoryFilter,setCategoryFilter]=useState(''),[products,setProducts]=useState<Product[]>([]),[editing,setEditing]=useState<string|null>(null),[name,setName]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('Bebidas'),[price,setPrice]=useState('0,00'),[eventId,setEventId]=useState(''),[assigned,setAssigned]=useState<Record<string,{enabled:boolean;price:string}>>({}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[confirm,setConfirm]=useState<Product|null>(null);
- async function refresh(){const r=await api('products');setProducts(r.items);}
+ const [productSearch,setProductSearch]=useState(''),[categoryFilter,setCategoryFilter]=useState(''),[catalogResults,setCatalogResults]=useState<Product[]>([]),[products,setProducts]=useState<Product[]>([]),[editing,setEditing]=useState<string|null>(null),[name,setName]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('Bebidas'),[price,setPrice]=useState('0,00'),[eventId,setEventId]=useState(''),[assigned,setAssigned]=useState<Record<string,{enabled:boolean;price:string}>>({}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[confirm,setConfirm]=useState<Product|null>(null);
+ async function refresh(){const r=await api('products');setProducts(r.items);const filtered=await api('products?q='+encodeURIComponent(productSearch)+'&category='+encodeURIComponent(categoryFilter));setCatalogResults(filtered.items);}
  useEffect(()=>{
   let alive=true;
-  void api('products').then(result=>{if(alive)setProducts(result.items||[]);})
+  void api('products').then(result=>{if(alive){setProducts(result.items||[]);setCatalogResults(result.items||[]);}})
    .catch(e=>{if(alive){setInitialFailed(true);setError(e instanceof Error?e.message:'Falha ao carregar produtos.');}})
    .finally(()=>{if(alive)setInitialReady(true);});
   return()=>{alive=false;};
@@ -33,13 +33,14 @@ export default function AdminProducts({events}:{events:Event[]}){
    .catch(e=>{if(active){setAssignmentError(e instanceof Error?e.message:'Falha ao carregar cardápio.');setLoadedAssignmentsFor('');}});
   return()=>{active=false;};
  },[eventId,assignmentReload]);
+ useEffect(()=>{let active=true;const controller=new AbortController();const timer=setTimeout(()=>{fetch('/api/admin/products?q='+encodeURIComponent(productSearch)+'&category='+encodeURIComponent(categoryFilter),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao filtrar produtos');return j;}).then(j=>{if(active)setCatalogResults(j.items||[]);}).catch(e=>{if(active&&e.name!=='AbortError')setError(String(e));});},250);return()=>{active=false;controller.abort();clearTimeout(timer);};},[productSearch,categoryFilter,products]);
  function edit(p?:Product){setEditing(p?.id||'new');setName(p?.name||'');setDescription(p?.description||'');setCategory(p?.category||'Bebidas');setPrice(p?(p.default_price_cents/100).toFixed(2).replace('.',','):'0,00');}
  function cents(v:string){const n=Number(v.replace(',','.'));return Number.isFinite(n)&&n>=0?Math.round(n*100):NaN;}
  async function save(){setBusy(true);setError('');try{await api('save-product',{id:editing==='new'?undefined:editing,name,description,category,default_price_cents:cents(price)});await refresh();setEditing(null);setNotice('Produto salvo.');}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function remove(){if(!confirm)return;setBusy(true);try{await api('delete-product',{id:confirm.id});await refresh();setConfirm(null);setNotice('Produto excluído.');}catch(e){setError(String(e));}finally{setBusy(false);}}
  async function saveEvent(){setBusy(true);setError('');try{await api('save-event-products',{event_id:eventId,items:products.filter(p=>assigned[p.id]?.enabled).map(p=>({product_id:p.id,price_cents:assigned[p.id].price.trim()===''?null:cents(assigned[p.id].price)}))});setNotice('Cardápio do evento salvo.');}catch(e){setError(String(e));}finally{setBusy(false);}}
  const categories=[...new Set(products.map(p=>p.category))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
- const visibleProducts=products.filter(p=>(!categoryFilter||p.category===categoryFilter)&&(!productSearch||[p.name,p.category,p.description].some(v=>v.toLocaleLowerCase('pt-BR').includes(productSearch.toLocaleLowerCase('pt-BR')))));
+ const visibleProducts=catalogResults;
  const showInitialLoading=useMinimumLoading(!initialReady);
  const showAssignmentLoading=useMinimumLoading(!!eventId&&loadedAssignmentsFor!==eventId&&!assignmentError);
  if(showInitialLoading)return <PageLoading label="Carregando produtos" description="Buscando o catálogo e os cardápios cadastrados."/>;
