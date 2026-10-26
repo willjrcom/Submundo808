@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
-import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
+import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
 
 type GPS={lat:number;lng:number;accuracy:number};
@@ -225,7 +225,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <div className="min-w-0 space-y-3">
     {loading?<p className="rounded-xl border border-white/10 p-6 text-white/60">Carregando ambientes...</p>:<div
       ref={pasteboard} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag}
-      className="relative aspect-[4/3] w-full select-none overflow-hidden rounded-xl border border-white/20 bg-[#0f0d16]"
+      className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      ><div ref={setCanvasRef}
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
@@ -282,8 +282,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         :'top-full left-1/2 -translate-x-1/2 mt-1';
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
-       className={'absolute z-10 -translate-x-1/2 -translate-y-1/2 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
-       style={{left:m.x+'%',top:m.y+'%',width:size,height:size}}>
+       className={'z-10 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
+       style={markerIconStyle(m,size)}>
        <span className={'flex h-full w-full items-center justify-center border-2 shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(chosen?' ring-2 ring-white/80':'')} style={{color,borderColor:color,backgroundColor:'#15101be8'}}><Icon size={Math.max(15,size*.5)}/></span>
        <span className={'pointer-events-none absolute z-20 w-max max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold leading-tight '+labelPosition}>{m.name}</span>
       </button>;
