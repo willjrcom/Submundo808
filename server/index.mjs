@@ -290,6 +290,16 @@ http.createServer(async (req,res)=>{
               !['square','circle',undefined].includes(m.shape)||!(m.size===undefined||(Number.isFinite(m.size)&&m.size>=24&&m.size<=72))||
               !validColor(m.color)||typeof(m.description||'')!=='string'||String(m.description||'').length>500
             )return json(res,400,{error:'Ponto inválido: verifique nome, formato, tamanho e posição.'});
+            if(m.type==='entrada'&&!m.anchor)return json(res,400,{error:'Entradas precisam estar ancoradas a uma borda do mapa.'});
+            if(m.anchor!==undefined){
+              const anchor=m.anchor;
+              if(!anchor||!['top','right','bottom','left'].includes(anchor.side)||typeof anchor.offset!=='number'||!Number.isFinite(anchor.offset)||anchor.offset<0||anchor.offset>100||
+                 (anchor.side==='top'&&(Math.abs(m.x-anchor.offset)>0.001||Math.abs(m.y)>0.001))||
+                 (anchor.side==='bottom'&&(Math.abs(m.x-anchor.offset)>0.001||Math.abs(m.y-100)>0.001))||
+                 (anchor.side==='left'&&(Math.abs(m.x)>0.001||Math.abs(m.y-anchor.offset)>0.001))||
+                 (anchor.side==='right'&&(Math.abs(m.x-100)>0.001||Math.abs(m.y-anchor.offset)>0.001))
+              )return json(res,400,{error:'Ponto ancorado fora da borda selecionada.'});
+            }
             markerIds.add(m.id);
           }
           db.exec('BEGIN');
