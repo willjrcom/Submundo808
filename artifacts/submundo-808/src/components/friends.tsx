@@ -82,7 +82,18 @@ export default function Friends(){
       }
     }catch(e){
       stop();
-      setError(e instanceof Error?e.message:'Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+      const exception=e as DOMException;
+      if(exception?.name==='NotAllowedError'||exception?.name==='PermissionDeniedError'||/permission denied|not allowed|permissão negada/i.test(exception?.message||'')){
+        setError('Acesso à câmera bloqueado para este aplicativo. Abra as configurações do Android → Apps → Submundo 808 (ou Chrome) → Permissões → Câmera e selecione Permitir. Se continuar bloqueado, verifique também as permissões do site no Chrome. Depois, volte e tente novamente.');
+      }else if(exception?.name==='NotFoundError'||exception?.name==='DevicesNotFoundError'){
+        setError('Nenhuma câmera foi encontrada no dispositivo. Você também pode adicionar um amigo pelo link de convite.');
+      }else if(exception?.name==='NotReadableError'||exception?.name==='TrackStartError'){
+        setError('A câmera está ocupada ou indisponível. Feche outros aplicativos que estejam usando a câmera e tente novamente.');
+      }else if(exception?.name==='OverconstrainedError'){
+        setError('A câmera não atende às configurações solicitadas. Tente novamente ou use o link do convite.');
+      }else{
+        setError(exception?.message||'Não foi possível abrir a câmera. Confira as permissões do aplicativo.');
+      }
     }
   }
   const showLoading=useMinimumLoading(access==='loading');
