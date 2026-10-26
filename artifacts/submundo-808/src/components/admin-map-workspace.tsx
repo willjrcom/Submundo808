@@ -334,7 +334,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
          {MAP_SIDES.map(side=><option key={side} value={side}>{{top:'Superior',right:'Direita',bottom:'Inferior',left:'Esquerda'}[side]}</option>)}
         </select>
        </label>}
-       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas precisam ficar em uma borda. Você pode cadastrar várias entradas.':selectedMarker.anchor?'Arraste este ponto ao longo da lateral selecionada.':'Deixe o ponto livre ou fixe-o em qualquer lateral.'}</p>
+       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas precisam ficar em uma borda. Você pode cadastrar várias entradas.':selectedMarker.anchor?'O ícone fica centralizado na linha, metade para dentro e metade para fora. Arraste ao longo da borda.':'Deixe o ponto livre ou fixe-o em qualquer lateral.'}</p>
       </div>
       <div className="space-y-2 text-xs text-white/65">Formato<div className="grid grid-cols-2 gap-2"><button onClick={()=>updateMarker({shape:'square'})} className={button+' '+(selectedMarker.shape!=='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Quadrado</button><button onClick={()=>updateMarker({shape:'circle'})} className={button+' '+(selectedMarker.shape==='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button></div></div>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(pointColor(selectedMarker),color=>updateMarker({color}))}</div>
