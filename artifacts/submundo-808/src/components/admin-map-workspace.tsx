@@ -15,17 +15,17 @@ import useMapLabels from './use-map-labels';
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
-type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[]};
+type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
 type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
 const input='w-full rounded-xl border border-white/15 bg-[#1b1624] px-3 py-2.5 text-sm text-white outline-none focus:border-[#c4ff40]';
 const button='inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-3 py-2.5 text-sm font-semibold transition hover:border-white/40 disabled:cursor-not-allowed disabled:opacity-35';
 const colors=['#9747FF','#3B82F6','#00BDD6','#A3E635','#FF9F43','#FF456C','#EAB308'];
-const types=['principal','pista','palco','vip','backstage','recepcao','entrada','descanso','cozinha','alimentacao','bar','banheiro','saida','posto-medico','outro'];
-const typeNames:Record<string,string>={principal:'Área principal',backstage:'Backstage',pista:'Pista',palco:'Palco',vip:'Área VIP',recepcao:'Recepção',entrada:'Entrada',descanso:'Área de descanso',cozinha:'Cozinha',alimentacao:'Alimentação',bar:'Bar',banheiro:'Banheiro',saida:'Saída','posto-medico':'Posto médico',outro:'Outro'};
+const types=['principal','pista','palco','vip','backstage','recepcao','entrada','descanso','cozinha','alimentacao','bar','banheiro','saida','posto-medico','passagem','outro'];
+const typeNames:Record<string,string>={principal:'Área principal',backstage:'Backstage',pista:'Pista',palco:'Palco',vip:'Área VIP',recepcao:'Recepção',entrada:'Entrada',descanso:'Área de descanso',cozinha:'Cozinha',alimentacao:'Alimentação',bar:'Bar',banheiro:'Banheiro',saida:'Saída','posto-medico':'Posto médico',passagem:'Passagem entre ambientes',outro:'Outro'};
 const iconFor=(type:string)=>{
- const icons:Record<string,typeof MapPin>={principal:Music2,backstage:Warehouse,pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope,outro:MapPin};
+ const icons:Record<string,typeof MapPin>={principal:Music2,backstage:Warehouse,pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope,passagem:DoorOpen,outro:MapPin};
  return icons[type]||MapPin;
 };
 const areaColor=(a:Area)=>/^#[0-9a-fA-F]{6}$/.test(a.color||'')?a.color!:'#9747FF';
@@ -33,6 +33,20 @@ const pointColor=(p:Marker)=>/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color!:'#C4
 async function api(route:string,payload?:object){
  const r=await fetch('/api/admin/'+route,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao carregar o mapa');return j;
+}
+// Locate overlapping shared edges without introducing gaps in the stored room layout.
+function sharedEdges(areas:Area[]){
+ const edges:{a:Area;b:Area;x:number;y:number;vertical:boolean}[]=[];
+ for(let i=0;i<areas.length;i++)for(let j=i+1;j<areas.length;j++){
+  const a=areas[i],b=areas[j],eps=.05;
+  const y1=Math.max(a.y,b.y),y2=Math.min(a.y+a.height,b.y+b.height);
+  const x1=Math.max(a.x,b.x),x2=Math.min(a.x+a.width,b.x+b.width);
+  if(y2-y1>=8&&(Math.abs(a.x+a.width-b.x)<eps||Math.abs(b.x+b.width-a.x)<eps))
+   edges.push({a,b,x:Math.abs(a.x+a.width-b.x)<eps?b.x:a.x,y:(y1+y2)/2,vertical:true});
+  if(x2-x1>=8&&(Math.abs(a.y+a.height-b.y)<eps||Math.abs(b.y+b.height-a.y)<eps))
+   edges.push({a,b,x:(x1+x2)/2,y:Math.abs(a.y+a.height-b.y)<eps?b.y:a.y,vertical:false});
+ }
+ return edges;
 }
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
  const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false);
@@ -53,6 +67,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const active=areas.find(a=>a.id===selected);
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
+ const passages=sharedEdges(areas);
  const areasOutside=areas.filter(a=>a.x<0||a.y<0||a.x+a.width>100||a.y+a.height>100).length;
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
@@ -98,6 +113,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   const id=crypto.randomUUID();
   setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},icon:'outro',color:'#9747FF',description:''}]);
   setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Selecione Mover ou Redimensionar para ajustar o ambiente.');
+ }
+ function createPassage(a:Area,b:Area,x:number,y:number){
+  checkpoint();const id=crypto.randomUUID();
+  setMarkers(v=>[...v,{id,name:'Passagem '+a.name+' / '+b.name,type:'passagem',x,y,from_area_id:a.id,to_area_id:b.id,access_type:'livre',shape:'square',size:30,color:'#C4FF40',description:''}]);
+  setSelected(id);setEditLayout(false);setResizeId(null);setFrameEditing(false);setNotice('Passagem criada sobre a divisão. Ajuste o tipo de acesso e salve o mapa.');
  }
  function createMarker(){
   checkpoint();const id=crypto.randomUUID();
@@ -260,6 +280,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         className={'absolute z-50 h-4 w-4 touch-none -translate-x-1/2 -translate-y-1/2 rounded border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+(handle==='left'||handle==='right'?'cursor-ew-resize':handle==='top'||handle==='bottom'?'cursor-ns-resize':handle==='tl'||handle==='br'?'cursor-nwse-resize':'cursor-nesw-resize')}
         style={{left,top}}/>)}
       </>}
+     {!frameEditing&&passages.map(edge=>{const already=markers.some(m=>m.type==='passagem'&&((m.from_area_id===edge.a.id&&m.to_area_id===edge.b.id)||(m.from_area_id===edge.b.id&&m.to_area_id===edge.a.id))&&Math.hypot(m.x-edge.x,m.y-edge.y)<7);return already?null:<button type="button" key={edge.a.id+'-'+edge.b.id} title={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} aria-label={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();createPassage(edge.a,edge.b,edge.x,edge.y);}} className="group absolute z-[25] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border border-[#c4ff40]/65 bg-[#17111e]/95 text-lg font-semibold text-[#c4ff40] opacity-75 shadow-lg transition hover:scale-110 hover:opacity-100 focus:opacity-100 sm:opacity-30 sm:hover:opacity-100" style={{left:edge.x+'%',top:edge.y+'%'}}><Plus size={18}/></button>})}
      {areas.map(a=>{
       const Icon=iconFor(a.icon||a.kind);const color=areaColor(a);const chosen=selected===a.id;
       return <div key={a.id} onPointerDown={e=>startDrag(e,a.id,'area')} onClick={e=>{e.stopPropagation();if(selected!==a.id){setEditLayout(false);setResizeId(null);}setSelected(a.id);}} title={a.description||a.name}
@@ -332,6 +353,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
 
     </div>:selectedMarker?<div className="space-y-4">
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
+     {selectedMarker.type==='passagem'&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 p-3 text-xs"><p className="font-semibold text-[#c4ff40]">Passagem entre ambientes</p><p className="text-white/60">{areas.find(a=>a.id===selectedMarker.from_area_id)?.name||'Ambiente A'} ↔ {areas.find(a=>a.id===selectedMarker.to_area_id)?.name||'Ambiente B'}</p><label className="block space-y-1">Tipo de acesso<select className={input} value={selectedMarker.access_type||'livre'} onChange={e=>updateMarker({access_type:e.target.value})}><option value="livre">Livre</option><option value="vip">VIP / Controlado</option><option value="saida">Somente saída</option><option value="staff">Equipe / Staff</option></select></label></div>}
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
