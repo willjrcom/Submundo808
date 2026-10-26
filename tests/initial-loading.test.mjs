@@ -30,7 +30,7 @@ test('mapa aguarda primeira carga de mapas, preferências e amigos',()=>{
  assert.match(source,/\[mapsReady,setMapsReady\]=useState\(false\)/);
  assert.match(source,/\[friendsReady,setFriendsReady\]=useState\(false\)/);
  assert.match(source,/finally\{if\(alive\)setFriendsReady\(true\);\}/);
- assert.match(source,/!mapsReady\|\|!mapResolved\|\|!prefsReady\|\|!friendsReady/);
+ assert.match(source,/!mapsReady\|\|loadedForEventId!==activeEventId\|\|!mapResolved\|\|!prefsReady\|\|!friendsReady/);
  assert.match(source,/return <PageLoading label="Carregando mapa"/);
 });
 test('painel administrativo só mostra dados depois de carregar autenticação e métricas',()=>{
@@ -79,7 +79,7 @@ test('carregamento respeita mínimo de 500 ms em todas as telas',()=>{
 });
 test('mapa mostra ativar localização no começo do conteúdo',()=>{
  const source=component('venue-map');
- const start=source.indexOf('return <section className="space-y-4">');
+ const start=source.indexOf('return <section className="space-y-3">');
  const gps=source.indexOf("Ativar localização",start);
  const map=source.indexOf("Mapa do evento",start);
  assert.ok(start>=0&&gps>start&&map>gps);
