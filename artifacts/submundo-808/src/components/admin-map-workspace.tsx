@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
@@ -10,6 +10,7 @@ import {
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
+import useMapLabels from './use-map-labels';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
@@ -44,6 +45,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
+ const {labels:roomLabels,setMapElement}=useMapLabels(areas,markers);
+ const setCanvasRef=useCallback((element:HTMLDivElement|null)=>{canvas.current=element;setMapElement(element);},[setMapElement]);
  const active=areas.find(a=>a.id===selected);
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
@@ -215,7 +218,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       ref={pasteboard} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag}
       className="relative aspect-[4/3] w-full select-none overflow-hidden rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
-     ><div ref={canvas}
+     ><div ref={setCanvasRef}
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
       style={{left:frame.x+'%',top:frame.y+'%',width:frame.width+'%',height:frame.height+'%',backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
       onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');else{setSelected('');setResizeId(null);}}}
@@ -237,8 +240,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       return <div key={a.id} onPointerDown={e=>startDrag(e,a.id,'area')} onClick={e=>{e.stopPropagation();setSelected(a.id);}} title={a.description||a.name}
        className={'absolute flex min-h-0 flex-col items-center justify-center border-2 px-1 py-1 text-center '+(frameEditing?'pointer-events-none ':'')+(editing&&resizeId!==a.id?'cursor-move':'cursor-pointer')+(chosen?' z-[2]':' z-0')}
        style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:chosen?'#c4ff40':color,backgroundColor:color+'33'}}>
-       <Icon size={Math.max(13,Math.min(27,a.width/2+9))} style={{color}} className="pointer-events-none mb-1 shrink-0"/>
-       <span className="pointer-events-none max-w-full overflow-hidden text-ellipsis text-[10px] font-black leading-tight sm:text-xs">{a.name}</span>
+       <span className="sr-only">{a.name}</span>
        {chosen&&!editing&&<button type="button" aria-label={'Redimensionar '+a.name} title="Redimensionar este ambiente"
         onPointerDown={e=>e.stopPropagation()}
         onClick={e=>{e.stopPropagation();setSelected(a.id);setEditLayout(true);setResizeId(a.id);}}
@@ -249,7 +251,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         style={{left:edge==='left'?'0%':edge==='right'?'100%':'50%',top:edge==='top'?'0%':edge==='bottom'?'100%':'50%'}}/>)}
       </div>;
      })}
-     {markers.map(m=>{
+     {roomLabels.map(label=>{
+       const room=areas.find(area=>area.id===label.id);
+       if(!room)return null;
+       const Icon=iconFor(room.icon||room.kind);
+       return <div key={'label-'+label.id}
+        className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border border-white/15 bg-[#100d18]/90 px-2 py-1 text-center text-[11px] font-bold text-white shadow-sm"
+        style={{left:label.x+'%',top:label.y+'%',maxWidth:Math.max(room.width,10)+'%'}}>
+        <Icon size={13} className="shrink-0" style={{color:areaColor(room)}}/>
+        <span className="truncate">{room.name}</span>
+       </div>;
+      })}
+      {markers.map(m=>{
       const Icon=iconFor(m.type);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
