@@ -128,8 +128,48 @@ export default function AdminShell(){
  {section==='Produtos e cardápios'&&<AdminProducts events={events}/>}
  {section==='Visão geral'&&<div className="mt-6 rounded-2xl border border-[#c4ff40]/20 bg-white/5 p-5"><h3 className="font-bold">Geração rápida</h3><p className="mt-2 text-sm text-white/60">Prepare cinco eventos adicionais em quatro datas, incluindo dois no mesmo dia, com três estabelecimentos ao todo, seis mapas e cardápios completos. Os dados personalizados são preservados.</p><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/15 p-3 text-sm"><input type="checkbox" checked={useDemoGps} disabled={seedBusy} onChange={e=>setUseDemoGps(e.target.checked)} className="mt-1 h-4 w-4 accent-[#c4ff40]"/><span><span className="font-semibold">Calibrar mapa pelo GPS</span><span className="mt-1 block text-xs text-white/55">Usa sua localização para estimar uma área de 50 × 40 m. A calibração manual não será substituída.</span></span></label><button disabled={seedBusy} onClick={()=>void seedDemo()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-50">{seedBusy?seedStage:'Gerar / conferir todos os cenários'}</button>{seedMessage&&<p className="mt-3 text-sm text-[#c4ff40]">{seedMessage}</p>}</div>}
  {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
- {(section==='Estabelecimentos'||section==='Mapas e ambientes')&&!(section==='Mapas e ambientes'&&editing)&&<div className={'mt-8 grid gap-5 '+(editing||creating?'max-w-xl':'lg:grid-cols-2')}>{(editing||creating)&&<form onSubmit={save} className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold">{editing?'Editar':'Novo'} {section==='Estabelecimentos'?'estabelecimento':'mapa'}</h3>{section==='Mapas e ambientes'&&<select required value={venue} onChange={e=>setVenue(e.target.value)} className={input}><option value="">Selecione o estabelecimento</option>{venues.map(v=><option key={v.id} value={v.id} >{displayLabel(v.name)}</option>)}</select>}<input required placeholder="Nome" value={name} onChange={e=>setName(e.target.value)} className={input}/>{section==='Estabelecimentos'&&<><input placeholder="Endereço" value={address} onChange={e=>setAddress(e.target.value)} className={input}/><input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></>}<button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Plus size={18}/>{editing?'Salvar alterações':'Cadastrar'}</button></form>}{!editing&&!creating&&<div className="rounded-2xl border border-white/10 p-5"><div className="mb-4 flex items-center justify-between gap-2"><h3 className="font-bold">Cadastrados</h3><button onClick={()=>go({section,id:null,creating:true})} className="rounded-xl bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black">+ Criar</button></div>{(section==='Estabelecimentos'?venues:maps).map(x=><div key={x.id} className="flex items-center justify-between gap-3 border-b border-white/10 py-3"><div><p className="font-medium">{displayLabel(x.name)}</p><p className="text-xs text-white/50">{section==='Estabelecimentos'?x.city:venues.find(v=>v.id===x.venue_id)?.name}</p></div><div className="flex gap-2"><button onClick={()=>edit(x)} className="flex items-center gap-2 rounded-xl border border-white/20 px-3 py-2 text-xs font-bold"><Pencil size={15}/> Editar</button><button aria-label={'Excluir '+x.name} onClick={()=>setConfirmDelete({id:x.id,name:x.name,entity:section==='Estabelecimentos'?'venue':'map'})} className="rounded-xl border border-red-400/40 px-3 py-2 text-red-300"><Trash2 size={15}/></button></div></div>)}</div>}</div>}
- {section==='Eventos'&&(editing||creating?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>:<div className="mt-8 space-y-3"><button onClick={()=>go({section:'Eventos',id:null,creating:true})} className="rounded-xl bg-[#c4ff40] px-4 py-3 font-bold text-black">+ Criar evento</button>{events.map(e=><div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 p-4"><span>{displayLabel(e.name)}</span><div className="flex gap-2"><button onClick={()=>edit(e)} className="rounded-xl border border-white/20 px-3 py-2 text-sm">Editar</button><button onClick={()=>setConfirmDelete({id:e.id,name:e.name,entity:'event'})} className="rounded-xl border border-red-400/40 px-3 py-2 text-sm text-red-300">Excluir</button></div></div>)}</div>)}
+ {section==='Estabelecimentos'&&(editing||creating?
+ <div className="mt-8 space-y-5">
+  <div className={'grid gap-5 '+(editing?'lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]':'max-w-xl')}>
+   <form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+    <h3 className="font-bold">{editing?'Dados do estabelecimento':'Cadastrar estabelecimento'}</h3>
+    <label className="block space-y-1 text-xs text-white/60">Nome<input required maxLength={100} placeholder="Nome do estabelecimento" value={name} onChange={e=>setName(e.target.value)} className={input}/></label>
+    <label className="block space-y-1 text-xs text-white/60">Endereço<input placeholder="Endereço" value={address} onChange={e=>setAddress(e.target.value)} className={input}/></label>
+    <label className="block space-y-1 text-xs text-white/60">Cidade<input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></label>
+    <button disabled={busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Pencil size={17}/>{busy?'Salvando...':editing?'Salvar estabelecimento':'Cadastrar e abrir'}</button>
+    {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
+   </form>
+   {editing&&<AdminVenueMaps key={editing.id} venue={editing} maps={maps} events={events}
+    onOpen={openMap} onChanged={reload}
+    onDelete={map=>setConfirmDelete({id:map.id,name:map.name,entity:'map'})}/>}
+  </div>
+ </div>
+ :<div className="mt-8 space-y-4">
+  <div className="flex items-center justify-between gap-3">
+   <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Acesse um estabelecimento para gerenciar seus mapas e ambientes.</p></div>
+   <button type="button" onClick={()=>go({section:'Estabelecimentos',id:null,creating:true})} className="shrink-0 rounded-xl bg-[#c4ff40] px-3 py-2.5 text-xs font-bold text-black"><Plus size={14} className="mr-1 inline-block"/> Novo</button>
+  </div>
+  {venues.length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
+  :<div className="grid gap-3 md:grid-cols-2">{venues.map(item=>{
+   const mapCount=maps.filter(map=>map.venue_id===item.id).length;
+   const eventCount=events.filter(event=>event.venue_id===item.id).length;
+   return <article key={item.id} className="rounded-xl border border-white/10 bg-white/[.035] p-4">
+    <h3 className="font-bold">{displayLabel(item.name)}</h3>
+    <p className="mt-1 text-xs text-white/50">{[item.city,item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
+    <p className="mt-3 flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{mapCount} {mapCount===1?'mapa':'mapas'}</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{eventCount} {eventCount===1?'evento':'eventos'}</span></p>
+    <div className="mt-4 flex gap-2">
+     <button onClick={()=>edit(item)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Pencil size={14}/> Abrir estabelecimento</button>
+     <button aria-label={'Excluir '+item.name} title="Excluir estabelecimento" onClick={()=>setConfirmDelete({id:item.id,name:item.name,entity:'venue'})} className="rounded-xl border border-red-400/40 px-3 py-2 text-red-300"><Trash2 size={15}/></button>
+    </div>
+   </article>;
+  })}</div>}
+ </div>)}
+ {section==='Eventos'&&(editing||creating
+  ?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>
+  :<AdminEventList events={events} venues={venues}
+    onCreate={()=>go({section:'Eventos',id:null,creating:true})}
+    onEdit={item=>edit(item)}
+    onDelete={item=>setConfirmDelete({id:item.id,name:item.name,entity:'event'})}/>)}
  {confirmDelete&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><div className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#241b2c] p-6"><h3 className="text-lg font-bold">Confirmar exclusão?</h3><p className="text-sm text-white/70">Excluir {displayLabel(confirmDelete.name)}? Esta ação não pode ser desfeita.</p><div className="flex justify-end gap-3"><button onClick={()=>setConfirmDelete(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button><button disabled={busy} onClick={()=>void removeConfirmed()} className="rounded-xl bg-red-600 px-4 py-2 font-bold">Excluir</button></div></div></div>}
  {error&&<p role="alert" className="mt-5 text-sm text-red-300">{error}</p>}</>}
  </main></div>;
