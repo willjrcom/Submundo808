@@ -177,6 +177,7 @@ export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
     const finish=e.end<=e.start?e.offset+1:e.offset;
     db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
       .run(eventId,venueIds[e.venue],e.title,e.description,dateAt(baseDate,e.offset,e.start),dateAt(baseDate,finish,e.end),'','','',JSON.stringify(buildLineup(e,baseDate)),now);
+    db.prepare('UPDATE events SET is_published=1 WHERE id=?').run(eventId);
     eventsAdded++;
    }
    db.prepare('INSERT OR IGNORE INTO event_maps(event_id,map_id) VALUES(?,?)').run(eventId,mapId);
