@@ -60,3 +60,43 @@ test('new area is positioned next to existing boundaries',()=>{
  assert.equal(p.x,40);
  assert.equal(p.y,10);
 });
+
+test('resize snaps to outer map boundary on all four sides when enabled',()=>{
+ const cases=[
+  [{id:'a',x:12,y:20,width:40,height:30},'left',-11.3,'x',0],
+  [{id:'a',x:30,y:20,width:40,height:30},'right',29.2,'width',70],
+  [{id:'a',x:12,y:20,width:40,height:30},'top',-19.2,'y',0],
+  [{id:'a',x:12,y:20,width:40,height:30},'bottom',49.4,'height',80]
+ ];
+ for(const [room,edge,delta,field,expected] of cases){
+  const result=resizeShared([room],'a',edge,delta,true)[0];
+  assert.equal(result[field],expected,edge);
+ }
+});
+test('resize snaps to another independent room edge without moving it',()=>{
+ const rooms=[{id:'a',x:10,y:10,width:20,height:30},{id:'b',x:50,y:10,width:20,height:30}];
+ const changed=resizeShared(rooms,'a','right',19.2,true);
+ assert.equal(changed[0].x+changed[0].width,50);
+ assert.deepEqual(changed[1],rooms[1]);
+});
+test('snap switch disables resize snapping to outer and inner edges',()=>{
+ const room={id:'a',x:12,y:20,width:40,height:30};
+ const free=resizeShared([room],'a','left',-11.3,false)[0];
+ assert.ok(Math.abs(free.x-.7)<1e-9);
+});
+test('shared border follows resize and can align with map exterior',()=>{
+ const rooms=[{id:'a',x:10,y:10,width:40,height:40},{id:'b',x:50,y:10,width:30,height:40}];
+ const out=resizeShared(rooms,'a','right',49.5,true);
+ // This movement would make its neighbor too small, so it is rejected.
+ assert.deepEqual(out,rooms);
+ const valid=resizeShared(rooms,'a','right',9.4,true);
+ assert.equal(valid[0].width,49.4);
+ assert.equal(valid[1].x,59.4);
+ assert.ok(sharesBorder(valid[0],valid[1]));
+});
+test('moving can snap either left or right side to external boundary',()=>{
+ const room=[{id:'a',x:20,y:20,width:25,height:25}];
+ assert.equal(moveArea(room,'a',.8,20,true)[0].x,0);
+ assert.equal(moveArea(room,'a',74.4,20,true)[0].x,75);
+ assert.equal(moveArea(room,'a',99.5,20,true)[0].x,100);
+});
