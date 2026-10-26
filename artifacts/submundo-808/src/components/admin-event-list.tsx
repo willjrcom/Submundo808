@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {CalendarDays,Clock3,Map,MapPin,Music2,Plus,Search,Pencil,Trash2,X} from 'lucide-react';
+import {CalendarDays,Clock3,Map as MapIcon,MapPin,Music2,Plus,Search,Pencil,Trash2,X} from 'lucide-react';
 import {displayLabel} from './display-label';
 import {filterAdminEvents,groupAdminEvents,eventStatus,availableEventMonths,type EventPeriod,type EventRecord} from './admin-event-filters';
 
@@ -87,7 +87,7 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/60">
          <span className="inline-flex items-center gap-1"><Clock3 size={13}/>{when}</span>
          <span className="inline-flex items-center gap-1"><MapPin size={13}/>{displayLabel(venueById.get(event.venue_id||'')||'Estabelecimento não encontrado')}</span>
-         <span className="inline-flex items-center gap-1"><Map size={13}/>{event.map_ids?.length||0} mapa(s)</span>
+         <span className="inline-flex items-center gap-1"><MapIcon size={13}/>{event.map_ids?.length||0} mapa(s)</span>
          <span className="inline-flex items-center gap-1"><Music2 size={13}/>{event.lineup?.length||0} DJs</span>
         </div>
        </div>
