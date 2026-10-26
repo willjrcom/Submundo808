@@ -5,7 +5,7 @@ import useMinimumLoading from './use-minimum-loading';
 import {ArrowLeft,CalendarDays,Clock3,MapPin,Music2,ExternalLink,Ticket,Instagram,ChevronRight} from 'lucide-react';
 import {eventProgramPath} from './active-event';
 
-type DJ={nome:string;instagram?:string;inicio?:string;fim?:string};
+type DJ={nome:string;instagram?:string;spotify?:string;inicio?:string;fim?:string};
 type EventItem={id:string;name:string;description:string;starts_at:string;ends_at:string;site_url:string;tickets_url:string;instagram_url:string;doors_at?:string;cover_image?:string;services?:string;venue:{name:string;address:string;city:string;services?:string};map_ids:string[];lineup:DJ[]};
 
 const date=(value:string)=>{
@@ -110,7 +110,10 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
     {event.lineup.map((dj,i)=><div key={i} className="flex gap-4 border-b border-white/10 p-4 last:border-0">
      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#c4ff40]/10 font-black text-[#c4ff40]">{dj.nome?.charAt(0)||<Music2/>}</div>
      <div className="min-w-0 flex-1"><p className="font-bold">{dj.nome}</p><p className="mt-1 flex items-center gap-1 text-xs text-white/50"><Clock3 size={13}/>{hour(dj.inicio)} — {hour(dj.fim)}</p>
-      {dj.instagram&&<a href={dj.instagram.startsWith('http')?dj.instagram:'https://instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-[#c4ff40]"><Instagram size={13}/> {dj.instagram}</a>}
+      <div className="mt-3 flex flex-wrap gap-2">
+       {dj.instagram&&<a href={dj.instagram.startsWith('https://')?dj.instagram:'https://www.instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Instagram size={15}/> Instagram</a>}
+       {dj.spotify?.startsWith('https://open.spotify.com/')&&<a href={dj.spotify} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> Spotify</a>}
+      </div>
      </div>
     </div>)}
    </div>:<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/50">Programação ainda não cadastrada.</p>}
