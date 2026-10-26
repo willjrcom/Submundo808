@@ -41,7 +41,16 @@ for(const table of ['venues','events'])for(const [col,def] of (table==='venues'?
  if(!db.prepare('PRAGMA table_info('+table+')').all().some(row=>row.name===col))db.exec('ALTER TABLE '+table+' ADD COLUMN '+col+' '+def);
 }
 db.exec('CREATE TABLE IF NOT EXISTS event_general_settings(id INTEGER PRIMARY KEY CHECK(id=1),minimum_age INTEGER NOT NULL DEFAULT 18,entry_rules TEXT NOT NULL DEFAULT \'\',accepted_documents TEXT NOT NULL DEFAULT \'\',cancellation_policy TEXT NOT NULL DEFAULT \'\')');
-db.prepare('INSERT OR IGNORE INTO event_general_settings(id) VALUES(1)').run();
+const DEFAULT_EVENT_PREFERENCES={
+ minimum_age:18,
+ entry_rules:"Entrada proibida para menores de 18 anos.\nNão são permitidas camisetas de times nacionais (permitidas camisetas de times internacionais e seleções).\nNão são permitidos chinelos ou calçados que não estejam presos aos pés.\nNão são permitidas câmeras profissionais.\nNão são permitidos produtos inflamáveis.\nNão é permitida a entrada com bebidas de qualquer tipo.\nNão são permitidos perfumes e desodorantes aerossóis.\nNão são permitidos copos térmicos, recipientes de alumínio, metal ou vidro.\nNão são permitidos objetos cortantes, inclusive tesouras pequenas.\nNão são permitidas drogas ilícitas, armas brancas ou armas de fogo.\nO evento não é open bar.",
+ accepted_documents:"A entrada exige documento original com foto ou documento digital exibido em aplicativo oficial.\nNão são aceitas fotos de documentos ou arquivos PDF fora dos aplicativos oficiais.\nDocumentos aceitos: RG, CIN, CNH, Carteira de Trabalho (somente física), Passaporte, Título de Eleitor (somente pelo aplicativo e-Título) e Carteira de Reservista.",
+ cancellation_policy:"Cancelamentos de pedidos pagos serão aceitos até 7 dias após a compra, desde que a solicitação seja enviada até 48 horas antes do início do evento."
+};
+db.prepare('INSERT OR IGNORE INTO event_general_settings(id,minimum_age,entry_rules,accepted_documents,cancellation_policy) VALUES(1,?,?,?,?)').run(DEFAULT_EVENT_PREFERENCES.minimum_age,DEFAULT_EVENT_PREFERENCES.entry_rules,DEFAULT_EVENT_PREFERENCES.accepted_documents,DEFAULT_EVENT_PREFERENCES.cancellation_policy);
+// Atualiza apenas instalações ainda com os três campos vazios (estado inicial antigo).
+// Não reverte personalizações do administrador em inicializações posteriores.
+db.prepare("UPDATE event_general_settings SET entry_rules=?,accepted_documents=?,cancellation_policy=? WHERE id=1 AND entry_rules='' AND accepted_documents='' AND cancellation_policy=''").run(DEFAULT_EVENT_PREFERENCES.entry_rules,DEFAULT_EVENT_PREFERENCES.accepted_documents,DEFAULT_EVENT_PREFERENCES.cancellation_policy);
 db.exec("CREATE TABLE IF NOT EXISTS app_branding(id INTEGER PRIMARY KEY CHECK(id=1),logo_data TEXT NOT NULL DEFAULT '')");
 db.prepare('INSERT OR IGNORE INTO app_branding(id) VALUES(1)').run();
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
