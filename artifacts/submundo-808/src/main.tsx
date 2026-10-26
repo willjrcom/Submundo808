@@ -4,6 +4,10 @@ import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
 
 import './index.css';
+import {applyAccentColor,loadAccentColor,DEFAULT_COLOR} from './theme-accent';
+applyAccentColor(DEFAULT_COLOR);
+void loadAccentColor();
+window.addEventListener('focus',()=>void loadAccentColor());
 
 // Avoid caching Vite's development modules; offline support is for the published build.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
