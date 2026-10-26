@@ -2,12 +2,14 @@ import AdminProducts from './admin-products';
 import { useEffect, useState } from 'react';
 import { EventEditor } from './admin-editors';
 import AdminMapWorkspace from './admin-map-workspace';
+import AdminVenueMaps from './admin-venue-maps';
+import AdminEventList from './admin-event-list';
 import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
 import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag } from 'lucide-react';
-type Item={id:string;name:string;venue_id?:string;city?:string;address?:string};
+type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[]};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
@@ -16,19 +18,35 @@ export default function AdminShell(){
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
- const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[venue,setVenue]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+ const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
  const section=route.section,creating=route.creating;
- const editing=(section==='Estabelecimentos'?venues:section==='Mapas e ambientes'?maps:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
- const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Mapas e ambientes',Icon:Map},{name:'Eventos',Icon:CalendarDays},{name:'Produtos e cardápios',Icon:ShoppingBag}];
+ const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
+ const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
+ const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Eventos',Icon:CalendarDays},{name:'Produtos e cardápios',Icon:ShoppingBag}];
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
  useEffect(()=>{const onPop=()=>{setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
- useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setVenue(editing?.venue_id||'');},[section,route.id,route.creating,editing?.id]);
+ useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');},[section,route.id,route.creating,editing?.id]);
  useEffect(()=>{if(section!=='Visão geral'||!user?.isAdmin)return;const t=setInterval(()=>void api('overview').then(setStats).catch(()=>{}),30000);return ()=>clearInterval(t);},[section,user?.isAdmin]);
- function go(next:AdminRoute){const path=adminRoutePath(next);if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setConfirmDelete(null);}
+ // Preserve old /mapas/:id bookmarks while removing the standalone menu.
+ useEffect(()=>{
+  if(section!=='Mapas e ambientes'||!listsLoaded)return;
+  const map=maps.find(item=>item.id===route.id);
+  const next:AdminRoute=map?.venue_id
+   ?{section:'Estabelecimentos',id:map.venue_id,creating:false,mapId:map.id}
+   :{section:'Estabelecimentos',id:null,creating:false};
+  const path=adminRoutePath(next);
+  window.history.replaceState({},'',path);
+  setRoute(next);
+ },[section,route.id,listsLoaded,maps]);
+ function go(next:AdminRoute){const path=adminRoutePath(next);if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
- function back(){go({section,id:null,creating:false});}
+ function back(){
+  if(route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});return;}
+  go({section,id:null,creating:false});
+ }
+ function openMap(mapId:string){if(!route.id)return;go({section:'Estabelecimentos',id:route.id,creating:false,mapId});}
  async function seedDemo(){
   setSeedBusy(true);setError('');setSeedMessage('');
   let location:{latitude:number;longitude:number;accuracy:number}|null=null;
@@ -77,8 +95,28 @@ export default function AdminShell(){
   }catch(e){setError(e instanceof Error?e.message:'Erro ao gerar evento');}
   finally{setSeedBusy(false);setSeedStage('Criando...');}
  }
- async function removeConfirmed(){if(!confirmDelete)return;setBusy(true);setError('');try{await api('delete',{id:confirmDelete.id,entity:confirmDelete.entity});setConfirmDelete(null);await reload();if(route.id)back();}catch(e){setError(e instanceof Error?e.message:'Erro ao excluir');setConfirmDelete(null);}finally{setBusy(false);}}
- async function save(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{if(section==='Estabelecimentos')await api(editing?'edit-venue':'venues',{id:editing?.id,name,address,city});else await api(editing?'edit-map':'maps',{id:editing?.id,name,venue_id:venue});await reload();if(editing||creating)back();else setName('');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}finally{setBusy(false);}}
+ async function removeConfirmed(){
+  if(!confirmDelete)return;
+  const item=confirmDelete;
+  setBusy(true);setError('');
+  try{
+   await api('delete',{id:item.id,entity:item.entity});
+   setConfirmDelete(null);await reload();
+   if((item.entity==='venue'&&route.id===item.id)||(item.entity==='map'&&route.mapId===item.id)||(item.entity==='event'&&route.id===item.id))back();
+  }catch(e){setError(e instanceof Error?e.message:'Erro ao excluir');setConfirmDelete(null);}
+  finally{setBusy(false);}
+ }
+ async function save(e:React.FormEvent){
+  e.preventDefault();setBusy(true);setError('');setNotice('');
+  try{
+   if(section!=='Estabelecimentos')return;
+   const response=await api(editing?'edit-venue':'venues',{id:editing?.id,name,address,city});
+   await reload();
+   if(!editing&&response.id)go({section:'Estabelecimentos',id:response.id,creating:false});
+   else setNotice('Estabelecimento atualizado com sucesso.');
+  }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}
+  finally{setBusy(false);}
+ }
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
