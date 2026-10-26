@@ -1,3 +1,4 @@
+import {createOauth} from './oauth.mjs';
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
@@ -110,6 +111,7 @@ const createSession=(req,res,id)=>{
   if(!user)throw Error('Usuário não encontrado');
   res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET),undefined,req));
 };
+const oauthHandler=createOauth({db,getUser,createSession,passwordHash});
 const attempts = new Map();
 function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
 async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>200000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
@@ -136,6 +138,7 @@ http.createServer(async (req,res)=>{
   const url = new URL(req.url || '/', 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) {
+      if(await oauthHandler(req,res,url)!==false)return;
       if (req.method === 'POST') {
         const origin=req.headers.origin;
         const host=req.headers['x-forwarded-host'] || req.headers.host;
