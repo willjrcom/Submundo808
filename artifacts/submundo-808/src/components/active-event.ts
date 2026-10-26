@@ -4,7 +4,7 @@ export const ACTIVE_EVENT_KEY='submundo-event-id';
 export const ACTIVE_EVENT_CHANGED='submundo-event-selected';
 export function eventIdFromPath(pathname:string):string{
  const parts=pathname.split('/').filter(Boolean);
- if(parts[0]!=='programacao'||parts.length!==2)return '';
+ if(!['programacao','schedule'].includes(parts[0])||parts.length!==2)return '';
  try{return decodeURIComponent(parts[1]);}catch{return '';}
 }
 export function getActiveEventId():string{
@@ -20,5 +20,5 @@ export function clearActiveEventId():void{
  window.dispatchEvent(new Event(ACTIVE_EVENT_CHANGED));
 }
 export function eventProgramPath(id:string):string{
- return '/programacao/'+encodeURIComponent(id);
+ return '/schedule/'+encodeURIComponent(id);
 }
