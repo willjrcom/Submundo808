@@ -163,15 +163,24 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
     if(p.shareEnabled){
-     sharingRef.current=true;setSharing(true);
-     void checkPermission();
+     if(!activeEventRef.current||p.eventId!==activeEventRef.current){
+      // Do not resume GPS from a different festival or a legacy unscoped session.
+      void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
+      void requestLocation('stop',{}).catch(()=>{});
+      setSharingExpiresAt(null);setSharingEventId(null);
+     }else{
+      sharingRef.current=true;setSharing(true);
+      void checkPermission();
+     }
     }
    }).catch(()=>{if(alive)setPrefsReady(true);});
    const refresh=async()=>{
+    const eventId=activeEventRef.current;
+    if(!eventId){if(alive){setFriends([]);setFriendsReady(true);}return;}
     try{
-     const data=await requestLocation('friends');
-     if(alive){setFriends(data.friends);setAuthRequired(false);}
-    }catch(e){if(alive)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
+     const data=await requestLocation('friends?event_id='+encodeURIComponent(eventId));
+     if(alive&&activeEventRef.current===eventId){setFriends(data.friends);setAuthRequired(false);setFriendError('');}
+    }catch(e){if(alive&&activeEventRef.current===eventId)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
     finally{if(alive)setFriendsReady(true);}
    };
    void refresh();
@@ -285,6 +294,24 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
    setGpsStarting(false);
    setGeoError('Busca de localização cancelada.');
   };
+  const previousEventId=useRef(activeEventId);
+  useEffect(()=>{
+   const oldId=previousEventId.current;
+   previousEventId.current=activeEventId;
+   if(oldId===activeEventId)return;
+   setFriends([]);setFriendError('');setLocationSetupOpen(false);
+   // Changing the active party must remove coordinates from the previous map.
+   if(sharingRef.current||gpsActivatingRef.current||watch.current!==null){
+    endLocalSharing('Compartilhamento encerrado ao trocar de evento.');
+    void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
+    void requestLocation('stop',{}).catch(()=>{});
+   }
+   if(activeEventId){
+    void requestLocation('friends?event_id='+encodeURIComponent(activeEventId))
+     .then(result=>{if(activeEventRef.current===activeEventId)setFriends(result.friends||[]);})
+     .catch(()=>{});
+   }
+  },[activeEventId]);
   const stopSharing=async()=>{
    cancelGpsStartup();
    try{
@@ -309,7 +336,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
    if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
    if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
-   if(!sharingRef.current&&shareMode==='event'&&!activeEventId){
+   if(!sharingRef.current&&!activeEventId){
     setGeoError('Selecione uma festa para compartilhar até o encerramento.');return;
    }
    setLocationSetupOpen(false);
