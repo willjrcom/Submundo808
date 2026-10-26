@@ -447,7 +447,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  </div>
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
-  {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}}
+  {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
  </div>
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
