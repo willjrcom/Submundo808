@@ -523,7 +523,7 @@ http.createServer(async (req,res)=>{
         if(!process.env.RESEND_API_KEY || !process.env.RESET_FROM_EMAIL) return json(res,503,{error:'Recuperação por e-mail ainda não configurada pelo administrador.'});
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const user=db.prepare('SELECT id,email FROM users WHERE email=?').get(email);
         if(user) {const token=randomBytes(32).toString('hex');const tokenHash=hashToken(token);db.prepare('INSERT INTO resets VALUES(?,?,?)').run(tokenHash,user.id,Date.now()+1800000);
-          const proto=req.headers['x-forwarded-proto']==='https'?'https':'https';const host=req.headers['x-forwarded-host']||req.headers.host;const link=`${proto}://${host}/?reset=${encodeURIComponent(token)}`;
+          const proto=req.headers['x-forwarded-proto']==='https'?'https':'https';const host=req.headers['x-forwarded-host']||req.headers.host;const link=`${proto}://${host}/reset-password?reset=${encodeURIComponent(token)}`;
           try { await sendReset(user.email,link); } catch(e) {db.prepare('DELETE FROM resets WHERE token_hash=?').run(tokenHash);console.error('Reset email delivery failed',e);return json(res,502,{error:'Não foi possível enviar o e-mail agora.'});}
         }
         return json(res,200,{ok:true,message:'Se o e-mail estiver cadastrado, você receberá um link de recuperação.'});
