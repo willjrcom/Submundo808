@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS friend_codes (token_hash TEXT PRIMARY KEY, user_id TE
 CREATE TABLE IF NOT EXISTS friendships (user_a TEXT NOT NULL, user_b TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY(user_a,user_b));
 CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash TEXT NOT NULL UNIQUE);
 CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
+for(const [column,def] of [['phone',"TEXT NOT NULL DEFAULT ''"],['instagram',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===column))db.exec('ALTER TABLE users ADD COLUMN '+column+' '+def);}
 db.exec('CREATE TABLE IF NOT EXISTS admin_users(user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
 db.exec(`CREATE TABLE IF NOT EXISTS venues(id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT DEFAULT '',city TEXT DEFAULT '',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,created_at INTEGER NOT NULL);
@@ -490,11 +491,18 @@ http.createServer(async (req,res)=>{
         createSession(req,res,id);
         return json(res,201,{user:{id,name,email},password});
       }
+      if(url.pathname==='/api/auth/profile'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const b=await body(req),name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9]/g,''),instagram=String(b.instagram||'').trim().replace(/^@/,'').slice(0,30);
+        if(name.length<2||phone.length!==0&&(phone.length<10||phone.length>13)||instagram&&!/^[a-zA-Z0-9._]+$/.test(instagram))return json(res,400,{error:'Nome, celular ou Instagram inválido.'});
+        db.prepare('UPDATE users SET name=?,phone=?,instagram=? WHERE id=?').run(name,phone,instagram,user.id);
+        return json(res,200,{ok:true});
+      }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
-        const b=await body(req);const name=String(b.name||'').trim().slice(0,60),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||'');
-        if(name.length<2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128) return json(res,400,{error:'Informe nome, e-mail válido e senha de 10 a 128 caracteres.'});
+        const b=await body(req),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||''),name=String(b.name||'').trim().slice(0,60)||email.split('@')[0].slice(0,60),phone=String(b.phone||'').replace(/[^0-9]/g,'');
+        if(name.length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length<10||phone.length>13)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
-        const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(pass),Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
+        const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,phone,created_at) VALUES(?,?,?,?,?,?)').run(id,name,email,passwordHash(pass),phone,Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
       }
       if (url.pathname==='/api/auth/login' && req.method==='POST') {
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const pass=String(b.password||'');const user=db.prepare('SELECT * FROM users WHERE email=?').get(email);
