@@ -92,6 +92,7 @@ export function ensureDemoData(db,{location=null,now=Date.now()}={}){
     dateForInput(start),dateForInput(new Date(start.getTime()+6*55*60000)),
     '','','',JSON.stringify(lineup),now);
   db.prepare('INSERT INTO event_maps(event_id,map_id) VALUES(?,?)').run(eventId,mapId);
+  db.prepare('UPDATE events SET is_published=1 WHERE id=?').run(eventId);
   db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run(DEMO_KEY,eventId);
   const products=seedDemoProducts(db,eventId,now);
   const gps=applyDemoCalibration(db,mapId,location,now);
