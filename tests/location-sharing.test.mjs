@@ -29,8 +29,17 @@ test('os três prazos são opções válidas e o fim da festa é padrão',()=>{
 test('1 hora e 4 horas sempre expiram em horário absoluto do servidor',()=>{
  const db=fixture();
  try{
-  assert.deepEqual(resolveSharingExpiry(db,{mode:'1h',now:NOW}),{mode:'1h',eventId:null,expiresAt:NOW+HOUR});
-  assert.deepEqual(resolveSharingExpiry(db,{mode:'4h',now:NOW}),{mode:'4h',eventId:null,expiresAt:NOW+4*HOUR});
+  assert.deepEqual(resolveSharingExpiry(db,{mode:'1h',eventId:'festival',now:NOW}),{mode:'1h',eventId:'festival',expiresAt:NOW+HOUR});
+  assert.deepEqual(resolveSharingExpiry(db,{mode:'4h',eventId:'festival',now:NOW}),{mode:'4h',eventId:'festival',expiresAt:NOW+4*HOUR});
+ }finally{db.close();}
+});
+test('qualquer duração exige um único evento cadastrado',()=>{
+ const db=fixture();
+ try{
+  for(const mode of ['1h','4h','event']){
+   assert.throws(()=>resolveSharingExpiry(db,{mode,now:NOW}),/Escolha primeiro a festa/);
+   assert.throws(()=>resolveSharingExpiry(db,{mode,eventId:'inexistente',now:NOW}),/não encontrado/);
+  }
  }finally{db.close();}
 });
 test('fim da festa respeita horário local de São Paulo, mesmo se o servidor estiver em UTC',()=>{
@@ -80,7 +89,7 @@ test('expiração revoga compartilhamento e apaga localização automaticamente'
 test('usuário ativo continua visível, mas uma posição com mais de 90 segundos expira',()=>{
  const db=fixture();
  try{
-  db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('active',1,1,'4h',NOW+4*HOUR,null,NOW);
+  db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('active',1,1,'4h',NOW+4*HOUR,'festival',NOW);
   db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run('active',-23.55,-46.63,6,NOW-2000);
   db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('stale',1,1,'event',NOW+HOUR,'festival',NOW);
   db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run('stale',-23.55,-46.63,6,NOW-LOCATION_FRESH_MS-1);
@@ -88,6 +97,16 @@ test('usuário ativo continua visível, mas uma posição com mais de 90 segundo
   assert.ok(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('active'));
   assert.equal(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('stale'),undefined);
   assert.equal(db.prepare('SELECT share_enabled FROM location_preferences WHERE user_id=?').get('active').share_enabled,1);
+ }finally{db.close();}
+});
+test('sessão antiga sem evento não continua divulgando GPS após migração',()=>{
+ const db=fixture();
+ try{
+  db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('legacy-unscoped',1,1,'4h',NOW+HOUR,null,NOW);
+  db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run('legacy-unscoped',-23.5,-46.6,8,NOW);
+  expireLocationShares(db,NOW);
+  assert.equal(db.prepare("SELECT share_enabled FROM location_preferences WHERE user_id='legacy-unscoped'").get().share_enabled,0);
+  assert.equal(db.prepare("SELECT 1 FROM live_locations WHERE user_id='legacy-unscoped'").get(),undefined);
  }finally{db.close();}
 });
 test('sessões legadas sem expiração são encerradas com segurança',()=>{
