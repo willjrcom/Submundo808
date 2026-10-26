@@ -15,10 +15,10 @@ test('o mapa oferece as três opções na ordem correta, com fim da festa como p
  assert.doesNotMatch(frontend,/Intervalo desejado entre atualizações/);
 });
 test('opção até o fim usa o evento atualmente selecionado',()=>{
- assert.match(frontend,/localStorage\.getItem\('submundo-event-id'\)/);
- assert.match(frontend,/setSelectedEventId\(event\?\.id\|\|''\)/);
- assert.match(frontend,/savePrefs\(true,true,shareMode,shareMode==='event'\?selectedEventId:null\)/);
- assert.match(frontend,/if\(!sharingRef\.current&&shareMode==='event'&&!selectedEventId\)/);
+ assert.match(frontend,/activeEventId/);
+ assert.match(frontend,/const eventForSharing=activeEvent/);
+ assert.match(frontend,/savePrefs\(true,true,shareMode,activeEventId\)/);
+ assert.match(frontend,/if\(!sharingRef\.current&&!activeEventId\)/);
 });
 test('seleção permanece estável durante o compartilhamento e restaura o prazo salvo',()=>{
  assert.match(frontend,/\{locationSetupOpen&&!sharing&&<div/);
@@ -52,5 +52,12 @@ test('o mapa permanece visível antes de pedir o prazo e o GPS só começa na co
  assert.match(frontend,/Confirmar e ativar/);
  assert.match(frontend,/onClick=\{startSharing\}/);
  assert.match(frontend,/onClick=\{\(\)=>\{if\(gpsStarting\)cancelGpsStartup\(\);else if\(gpsActive\)void stopSharing\(\);else if\(sharing\)startSharing\(\);else setLocationSetupOpen\(true\);\}\}/);
- assert.match(frontend,/aria-label="Escolher evento do mapa"/);
+ assert.doesNotMatch(frontend,/aria-label="Escolher evento do mapa"/);
+});
+
+test('friends on the map are filtered by festival even for 1h or 4h sharing',()=>{
+ assert.match(frontend,/friends\?event_id='\+encodeURIComponent\(eventId\)/);
+ assert.match(frontend,/p\.eventId!==activeEventRef\.current/);
+ assert.match(backend,/p\.share_event_id=\?/);
+ assert.match(backend,/b\.shareEnabled\?b\.eventId:null/);
 });
