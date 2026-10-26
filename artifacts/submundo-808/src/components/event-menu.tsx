@@ -50,7 +50,7 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
    <p className="mt-2 text-sm font-semibold text-white/70">{displayLabel(eventName)||'Evento selecionado'}</p>
   </div>
   {showLoading?<PageLoading compact label="Carregando produtos" description="Preparando o cardápio deste evento."/>
-   :error?<p role="alert" className="rounded-2xl border border-red-400/25 p-5 text-sm text-red-300">{error}</p>
+   :error?<div className="space-y-4 rounded-2xl border border-white/15 bg-white/5 p-5" role="status"><p className="text-sm text-white/70">Este evento não está disponível. Escolha outro para consultar o cardápio.</p><button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black"><CalendarDays size={17}/> Escolher outro evento</button></div>
    :!items.length?<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/60">Ainda não há produtos cadastrados para este evento.</p>
    :categories.map(category=><div key={category}>
     <h2 className="mb-3 font-bold uppercase">{category}</h2>
@@ -61,6 +61,6 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
      </div>)}
     </div>
    </div>)}
-  <button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 text-xs text-white/60 underline underline-offset-4"><ArrowLeft size={14}/> Ver evento no Início</button>
+  <button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 text-xs text-white/60 underline underline-offset-4"><ArrowLeft size={14}/> Escolher outro evento</button>
  </section>;
 }
