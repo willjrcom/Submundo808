@@ -5,6 +5,7 @@ import VenueMap from './components/venue-map';
 import AdminShell from './components/admin-shell';
 import Account from './components/account';
 import Friends from './components/friends';
+import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
@@ -49,12 +50,30 @@ export default function App() {
 }
 function ParticipantApp() {
   const [tab, setTab] = useState<Tab>(tabFromUrl);
+  const [activeEventId,setActiveEventId]=useState(getActiveEventId);
+  const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
+  const clearEvent=()=>{resetActiveEventId();setActiveEventId('');};
+  useEffect(()=>{
+    const sync=()=>setActiveEventId(getActiveEventId());
+    const onStorage=(event:StorageEvent)=>{if(event.key===ACTIVE_EVENT_KEY)sync();};
+    window.addEventListener(ACTIVE_EVENT_CHANGED,sync);
+    window.addEventListener('storage',onStorage);
+    return()=>{window.removeEventListener(ACTIVE_EVENT_CHANGED,sync);window.removeEventListener('storage',onStorage);};
+  },[]);
   // Preserva o rastreador GPS ao navegar entre Perfil, Amigos e Mapa.
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?'/':'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
-  useEffect(()=>{const onPop=()=>{const next=tabFromUrl();if(next==='mapa')setMapMounted(true);setTab(next);window.scrollTo(0,0);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
+  useEffect(()=>{const onPop=()=>{
+    const next=tabFromUrl();
+    const fromPath=eventIdFromPath(window.location.pathname);
+    if(fromPath)saveActiveEventId(fromPath);
+    else if(window.location.pathname==='/')resetActiveEventId();
+    setActiveEventId(getActiveEventId());
+    if(next==='mapa')setMapMounted(true);
+    setTab(next);window.scrollTo(0,0);
+  };window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
   const [homeMode, setHomeMode] = useState<HomeMode>('proxima');
   const [filter, setFilter] = useState('Todos');
   const [friends, setFriends] = useState<Friend[]>(readFriends);
@@ -75,9 +94,9 @@ function ParticipantApp() {
         <button aria-label="Avisos" onClick={() => message('Nenhum comunicado oficial cadastrado.')} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
       </header>
       <main className="px-5 pt-7">
-        {tab === 'inicio' && <PublicEvents/>}
-        {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap/></div>}
-        {tab === 'cardapio' && <EventMenu/>}
+        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
+        {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/></div>}
+        {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
       </main>
