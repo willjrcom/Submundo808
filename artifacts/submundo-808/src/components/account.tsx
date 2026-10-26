@@ -1,3 +1,4 @@
+import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
@@ -17,14 +18,6 @@ async function request(path:string, payload?:object) {
   const res=await fetch('/api/auth/'+path,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'Não foi possível continuar.');return data;
 }
-function formatMobile(value:string):string{
- const digits=value.replace(/\D/g,'').slice(0,11);
- if(!digits)return '';
- if(digits.length<=2)return '('+digits;
- if(digits.length<=7)return '('+digits.slice(0,2)+') '+digits.slice(2);
- return '('+digits.slice(0,2)+') '+digits.slice(2,7)+'-'+digits.slice(7);
-}
-const mobileDigits=(value:string)=>value.replace(/\D/g,'').slice(0,11);
 const field='w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-[#c4ff40]';
 const btn='w-full rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black disabled:opacity-50';
 export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
