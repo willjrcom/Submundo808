@@ -54,6 +54,7 @@ db.prepare('INSERT OR IGNORE INTO event_general_settings(id,minimum_age,entry_ru
 db.prepare("UPDATE event_general_settings SET entry_rules=?,accepted_documents=?,cancellation_policy=? WHERE id=1 AND entry_rules='' AND accepted_documents='' AND cancellation_policy=''").run(DEFAULT_EVENT_PREFERENCES.entry_rules,DEFAULT_EVENT_PREFERENCES.accepted_documents,DEFAULT_EVENT_PREFERENCES.cancellation_policy);
 db.exec("CREATE TABLE IF NOT EXISTS app_branding(id INTEGER PRIMARY KEY CHECK(id=1),logo_data TEXT NOT NULL DEFAULT '')");
 db.prepare('INSERT OR IGNORE INTO app_branding(id) VALUES(1)').run();
+if(!db.prepare('PRAGMA table_info(app_branding)').all().some(c=>c.name==='accent_color'))db.exec("ALTER TABLE app_branding ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#c4ff40'");
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
@@ -252,7 +253,7 @@ http.createServer(async (req,res)=>{
         return json(res,200,{friends:rows});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
-      if(url.pathname==='/api/public/branding'&&req.method==='GET')return json(res,200,{logo:db.prepare('SELECT logo_data FROM app_branding WHERE id=1').get()?.logo_data||''});
+      if(url.pathname==='/api/public/branding'&&req.method==='GET')return json(res,200,{logo:db.prepare('SELECT logo_data,accent_color FROM app_branding WHERE id=1').get()?.logo_data||'',color:db.prepare('SELECT accent_color FROM app_branding WHERE id=1').get()?.accent_color||'#c4ff40'});
       if(url.pathname==='/api/public/event-settings'&&req.method==='GET'){
         return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy,contact_name,contact_phone FROM event_general_settings WHERE id=1').get()});
       }
@@ -309,7 +310,13 @@ http.createServer(async (req,res)=>{
           const seen=new Set();for(const p of items){if(!p||typeof p.product_id!=='string'||seen.has(p.product_id)||!db.prepare('SELECT 1 FROM products WHERE id=?').get(p.product_id)||!(p.price_cents===null||(Number.isSafeInteger(p.price_cents)&&p.price_cents>=0&&p.price_cents<=100000000)))return json(res,400,{error:'Produto ou preço inválido.'});seen.add(p.product_id);}
           db.exec('BEGIN');try{db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);for(const p of items)db.prepare('INSERT INTO event_products VALUES(?,?,?)').run(id,p.product_id,p.price_cents);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return json(res,200,{ok:true});
         }
-        if(req.method==='GET'&&key==='branding')return json(res,200,{logo:db.prepare('SELECT logo_data FROM app_branding WHERE id=1').get()?.logo_data||''});
+        if(req.method==='GET'&&key==='branding')return json(res,200,{logo:db.prepare('SELECT logo_data FROM app_branding WHERE id=1').get()?.logo_data||'',color:db.prepare('SELECT accent_color FROM app_branding WHERE id=1').get()?.accent_color||'#c4ff40'});
+        if(req.method==='POST'&&key==='accent-color'){
+          const b=await body(req),color=String(b.color||'').trim().toLowerCase();
+          if(!/^#[0-9a-f]{6}$/.test(color))return json(res,400,{error:'Escolha uma cor hexadecimal válida.'});
+          db.prepare('UPDATE app_branding SET accent_color=? WHERE id=1').run(color);
+          return json(res,200,{ok:true,color});
+        }
         if(req.method==='POST'&&key==='branding'){
           const b=await body(req),logo=b.logo;
           if(typeof logo!=='string'||logo.length>120000||(logo&&!/^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(logo)))return json(res,400,{error:'Use uma imagem PNG, JPG ou WebP de até 90 KB.'});
