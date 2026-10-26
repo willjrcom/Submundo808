@@ -31,7 +31,7 @@ test('na primeira inicialização cria evento, 6 DJs, mapa, ambiente, pontos e 1
   const event=db.prepare('SELECT lineup_json FROM events WHERE id=?').get(result.id);
   assert.equal(JSON.parse(event.lineup_json).length,6);
   const marker=db.prepare('SELECT markers_json FROM map_markers').get();
-  assert.equal(JSON.parse(marker.markers_json).length,4);
+  assert.equal(JSON.parse(marker.markers_json).length,5);
   assert.equal(result.gpsStatus,'not-requested');
  }finally{db.close();}
 });
