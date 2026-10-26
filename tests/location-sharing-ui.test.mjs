@@ -21,10 +21,12 @@ test('opção até o fim usa o evento atualmente selecionado',()=>{
  assert.match(frontend,/if\(!sharingRef\.current&&shareMode==='event'&&!selectedEventId\)/);
 });
 test('seleção permanece estável durante o compartilhamento e restaura o prazo salvo',()=>{
- assert.match(frontend,/fieldset disabled=\{sharing\|\|gpsStarting\|\|prefsSaving\}/);
+ assert.match(frontend,/\{locationSetupOpen&&!sharing&&<div/);
+ assert.match(frontend,/setLocationSetupOpen\(true\)/);
+ assert.match(frontend,/setLocationSetupOpen\(false\)/);
  assert.match(frontend,/setShareMode\(p\.mode==='4h'\|\|p\.mode==='1h'\?p\.mode:'event'\)/);
  assert.match(frontend,/setSharingExpiresAt\(p\.expiresAt\|\|null\)/);
- assert.match(frontend,/Compartilhamento ativo até \{sharingDeadline\}/);
+ assert.match(frontend,/Compartilhando até \{sharingDeadline\}/);
 });
 test('GPS é interrompido quando o prazo vence localmente ou o servidor rejeita atualização',()=>{
  assert.match(frontend,/Date\.now\(\)>=sharingExpiresAt/);
@@ -43,4 +45,12 @@ test('desligar manualmente apaga localização e encerra o prazo',()=>{
  assert.match(frontend,/await savePrefs\(false,false\)/);
  assert.match(backend,/if\(!b\.shareEnabled\)db\.prepare\('DELETE FROM live_locations WHERE user_id=\?'\)/);
  assert.match(backend,/share_expires_at=NULL,share_event_id=NULL/);
+});
+
+test('o mapa permanece visível antes de pedir o prazo e o GPS só começa na confirmação',()=>{
+ assert.match(frontend,/locationSetupOpen&&!sharing/);
+ assert.match(frontend,/Confirmar e ativar/);
+ assert.match(frontend,/onClick=\{startSharing\}/);
+ assert.match(frontend,/onClick=\{\(\)=>\{if\(gpsStarting\)cancelGpsStartup\(\);else if\(gpsActive\)void stopSharing\(\);else if\(sharing\)startSharing\(\);else setLocationSetupOpen\(true\);\}\}/);
+ assert.match(frontend,/aria-label="Escolher evento do mapa"/);
 });
