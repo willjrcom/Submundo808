@@ -15,7 +15,7 @@ import useMapLabels from './use-map-labels';
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
-type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number};
+type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[]};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
 type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
@@ -95,13 +95,13 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   checkpoint();setError('');
   const id=crypto.randomUUID();
   setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},icon:'outro',color:'#9747FF',description:''}]);
-  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(id);setNotice('Novo ambiente criado. Arraste suas bordas e depois salve o mapa.');
+  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Selecione Mover ou Redimensionar para ajustar o ambiente.');
  }
  function createMarker(){
   checkpoint();const id=crypto.randomUUID();
   const x=active?active.x+active.width/2:50,y=active?active.y+active.height/2:50;
   setMarkers(v=>[...v,{id,name:'Novo ponto',type:'outro',x,y,shape:'square',size:42,color:'#C4FF40',description:''}]);
-  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(null);setNotice('Arraste o ponto para posicionar. Salve o mapa ao terminar.');
+  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Ative a movimentação antes de arrastar.');
  }
  function removeSelected(){
   const item=active?{id:active.id,name:active.name,kind:'area' as const}:selectedMarker?{id:selectedMarker.id,name:selectedMarker.name,kind:'marker' as const}:null;
@@ -122,9 +122,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
  }
  function startDrag(e:React.PointerEvent,id:string,kind:Drag['kind'],edge?:Edge){
-  e.stopPropagation();setSelected(id);
+  e.stopPropagation();if(selected!==id){setSelected(id);setEditLayout(false);setResizeId(null);return;}
   if(!editing)return;
-  if(kind==='area'&&resizeId!==id)setResizeId(null);
+  if(kind==='area'&&resizeId===id)return;
+  if(kind==='resize'&&resizeId!==id)return;
   const p=coord(e);if(!p||frameEditing)return;
   const item=kind==='marker'?markers.find(m=>m.id===id):areas.find(a=>a.id===id);if(!item)return;
   e.preventDefault();
@@ -200,7 +201,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  }
  function back(){if(dirty&&!window.confirm('Há alterações não salvas. Sair e descartar essas alterações?'))return;onBack();}
  function activateResize(){
-  if(!active)return;setFrameEditing(false);setEditLayout(true);setResizeId(id=>id===active.id?null:active.id);
+  if(!active)return;setFrameEditing(false);if(editing&&resizeId===active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(active.id);}
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
  const showLoading=useMinimumLoading(loading);
@@ -217,10 +218,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={()=>void discard()} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
   </div>
   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2">
-   <button onClick={()=>{setEditLayout(v=>!v);setResizeId(null);setFrameEditing(false);}} aria-pressed={editing} className={button+' '+(editing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Pencil size={16}/>{editing?'Concluir edição':'Editar layout'}</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
-   <button onClick={()=>{setEditLayout(true);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
+   <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
    <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
    <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
@@ -234,13 +234,13 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      >
       {active&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
-       <button type="button" title="Mover ambiente selecionado" aria-label="Mover ambiente selecionado" aria-pressed={editing&&resizeId!==active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setEditLayout(true);setResizeId(null);}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/> Mover</button>
+       <button type="button" title="Mover ambiente selecionado" aria-label="Mover ambiente selecionado" aria-pressed={editing&&resizeId!==active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();if(editing&&resizeId!==active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(null);}}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/> {editing&&resizeId!==active.id?'Concluir':'Mover'}</button>
        <button type="button" title="Redimensionar ambiente selecionado" aria-label="Redimensionar ambiente selecionado" aria-pressed={editing&&resizeId===active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();activateResize();}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId===active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Maximize2 size={15}/> {editing&&resizeId===active.id?'Concluir':'Redimensionar'}</button>
       </div>}
      <div ref={setCanvasRef}
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
       style={{left:frame.x+'%',top:frame.y+'%',width:frame.width+'%',height:frame.height+'%',backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
-      onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');else{setSelected('');setResizeId(null);}}}
+      onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');else{setSelected('');setResizeId(null);setEditLayout(false);}}}
      ><span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-bold text-[#c4ff40]/80">Área do mapa</span>
       {editing&&frameEditing&&<>
        <button type="button" onPointerDown={e=>startFrameDrag(e,'frame-move')} className="absolute left-2 top-2 z-40 flex touch-none items-center gap-1 rounded-lg border border-[#c4ff40]/50 bg-[#191321] px-2 py-1 text-[11px] font-bold text-[#c4ff40]"><Move size={13}/> Mover área</button>
@@ -256,7 +256,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       </>}
      {areas.map(a=>{
       const Icon=iconFor(a.icon||a.kind);const color=areaColor(a);const chosen=selected===a.id;
-      return <div key={a.id} onPointerDown={e=>startDrag(e,a.id,'area')} onClick={e=>{e.stopPropagation();setSelected(a.id);}} title={a.description||a.name}
+      return <div key={a.id} onPointerDown={e=>startDrag(e,a.id,'area')} onClick={e=>{e.stopPropagation();if(selected!==a.id){setEditLayout(false);setResizeId(null);}setSelected(a.id);}} title={a.description||a.name}
        className={'absolute flex min-h-0 flex-col items-center justify-center border-2 px-1 py-1 text-center '+(frameEditing?'pointer-events-none ':'')+(editing&&resizeId!==a.id?'cursor-move':'cursor-pointer')+(chosen?' z-[2]':' z-0')}
        style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:chosen?'#c4ff40':color,backgroundColor:color+'33'}}>
        <span className="sr-only">{a.name}</span>
@@ -290,7 +290,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         :side==='left'?'left-full top-1/2 -translate-y-1/2 ml-1'
         :side==='right'?'right-full top-1/2 -translate-y-1/2 mr-1'
         :'top-full left-1/2 -translate-x-1/2 mt-1';
-      return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();setSelected(m.id);setResizeId(null);}}
+      return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();if(selected!==m.id)setEditLayout(false);setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
        className={'z-10 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
        style={markerIconStyle(m,size)}>
@@ -302,8 +302,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
     <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{editing?'Arraste qualquer ambiente, inclusive para a área externa ao quadro, e depois encaixe novamente. Selecione o ambiente e clique em Redimensionar; bordas em comum alteram os dois ambientes.':'Selecione qualquer ambiente, inclusive os já salvos. Use Editar layout ou os botões do painel lateral para movê-lo ou redimensioná-lo.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
-     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({areas.length})</h3><div className="flex flex-wrap gap-2">{areas.map(a=><button key={a.id} onClick={()=>{setSelected(a.id);setResizeId(null);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
-     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><MapPin size={16} className="text-[#c4ff40]"/> Pontos ({markers.length})</h3><div className="flex flex-wrap gap-2">{markers.map(m=><button key={m.id} onClick={()=>{setSelected(m.id);setResizeId(null);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===m.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}>{m.name}</button>)}{markers.length===0&&<p className="text-xs text-white/45">Nenhum ponto cadastrado.</p>}</div></div>
+     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({areas.length})</h3><div className="flex flex-wrap gap-2">{areas.map(a=><button key={a.id} onClick={()=>{setSelected(a.id);setResizeId(null);setEditLayout(false);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
+     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><MapPin size={16} className="text-[#c4ff40]"/> Pontos ({markers.length})</h3><div className="flex flex-wrap gap-2">{markers.map(m=><button key={m.id} onClick={()=>{setSelected(m.id);setResizeId(null);setEditLayout(false);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===m.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}>{m.name}</button>)}{markers.length===0&&<p className="text-xs text-white/45">Nenhum ponto cadastrado.</p>}</div></div>
     </div>
    </div>
    <aside className="min-w-0 space-y-4 self-start rounded-xl border border-white/10 bg-[#16111e] p-4">
@@ -345,7 +345,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(pointColor(selectedMarker),color=>updateMarker({color}))}</div>
      <label className="block space-y-2 text-xs text-white/65">Tamanho do ícone <span className="float-right">{selectedMarker.size||42}px</span><input aria-label="Tamanho do ponto" type="range" min="24" max="72" step="2" value={selectedMarker.size||42} onChange={e=>updateMarker({size:Number(e.target.value)})} className="w-full accent-[#c4ff40]"/></label>
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={selectedMarker.description||''} onChange={e=>updateMarker({description:e.target.value})} placeholder="Informações úteis sobre este ponto..."/></label>
-     {!editing&&<button onClick={()=>setEditLayout(true)} className={'w-full '+button}><Move size={16}/> Habilitar movimentação</button>}
+     <div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Funcionamento (opcional)</p><p className="text-[11px] text-white/50">Sem horário, funciona durante todo o evento. O fechamento pode ocorrer após a meia-noite.</p><div className="grid grid-cols-2 gap-2"><label className="space-y-1 text-xs">Abre<input type="time" className={input} value={selectedMarker.opens_at||''} onChange={e=>updateMarker({opens_at:e.target.value})}/></label><label className="space-y-1 text-xs">Fecha<input type="time" className={input} value={selectedMarker.closes_at||''} onChange={e=>updateMarker({closes_at:e.target.value})}/></label></div><button type="button" className="text-xs underline text-white/60" onClick={()=>updateMarker({opens_at:'',closes_at:''})}>Remover horários</button></div>
+     {['bar','alimentacao','cozinha'].includes(selectedMarker.type)&&<div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Categorias vendidas neste ponto</p><p className="text-[11px] text-white/50">Use os mesmos nomes das categorias do catálogo de produtos. Separe por vírgula.</p><input className={input} placeholder="Ex.: Cervejas, Drinks, Refrigerantes" value={(selectedMarker.categories||[]).join(', ')} onChange={e=>updateMarker({categories:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})}/></div>}
+     {!editing&&<button onClick={()=>{setEditLayout(true);setResizeId(null);}} className={'w-full '+button}><Move size={16}/> Mover ponto</button>}
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
   </div>
