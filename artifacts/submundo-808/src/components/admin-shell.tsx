@@ -14,7 +14,7 @@ type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
 export default function AdminShell(){
- const [venueTab,setVenueTab]=useState<'maps'|'info'>('maps');
+ const [venueTab,setVenueTab]=useState<'maps'|'info'>('info');
  const [seedBusy,setSeedBusy]=useState(false),[seedMessage,setSeedMessage]=useState(''),[seedStage,setSeedStage]=useState('Criando...'),[useDemoGps,setUseDemoGps]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
@@ -40,7 +40,7 @@ export default function AdminShell(){
   window.history.replaceState({},'',path);
   setRoute(next);
  },[section,route.id,listsLoaded,maps]);
- function go(next:AdminRoute){const path=adminRoutePath(next);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('maps');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
+ function go(next:AdminRoute){const path=adminRoutePath(next);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
@@ -170,7 +170,7 @@ export default function AdminShell(){
   })}</div>}
  </div>)}
  {section==='Eventos'&&(editing||creating
-  ?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>
+  ?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onPublicationChanged={()=>{void reload();}} onSaved={()=>{void reload();back();}}/>
   :<AdminEventList events={events} venues={venues}
     onCreate={()=>go({section:'Eventos',id:null,creating:true})}
     onEdit={item=>edit(item)}
