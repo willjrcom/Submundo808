@@ -79,12 +79,17 @@ export class ErrorBoundary extends Component<
     console.error('[Submundo808] React render failure:', normalized, info.componentStack);
     // The server receives only a route path and a classification, never raw error
     // messages, query parameters, stacks, user contacts, or authentication tokens.
+    const diagnostic=normalized.message
+      .replace(/https?:\/\/\S+/gi,'[url]')
+      .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,'[email]')
+      .replace(/\b\d{10,}\b/g,'[number]')
+      .slice(0,220);
     const page=window.location.pathname;
     const component=info.componentStack?.split('\n').find(line=>line.trim().startsWith('at '))?.trim().slice(3,90)||'unknown';
     void fetch('/api/client-errors',{
       method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({page,component,code:'react_render_error'})
+      body:JSON.stringify({page,component,code:'react_render_error',errorType:normalized.name,diagnostic})
     }).catch(()=>{});
 
   }
