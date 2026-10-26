@@ -59,6 +59,24 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   return()=>{alive=false;};
  },[map.id]);
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
+ useEffect(()=>{
+  const onKeyboard=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'&&calibrationOpen){
+    event.preventDefault();event.stopPropagation();setCalibrationOpen(false);return;
+   }
+   if(!(event.ctrlKey||event.metaKey)||event.altKey||drag.current)return;
+   const target=event.target as HTMLElement|null;
+   if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
+   const key=event.key.toLowerCase();
+   const doUndo=key==='z'&&!event.shiftKey;
+   const doRedo=(key==='z'&&event.shiftKey)||key==='y';
+   if(doUndo&&history.length){event.preventDefault();undo();}
+   else if(doRedo&&future.length){event.preventDefault();redo();}
+  };
+  window.addEventListener('keydown',onKeyboard);
+  return()=>window.removeEventListener('keydown',onKeyboard);
+ },[calibrationOpen,history,future,areas,markers,frame]);
+
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
  function redo(){if(!future.length)return;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers,frame}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setFrame(next.frame);setDirty(true);setResizeId(null);}
@@ -187,8 +205,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(true);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
    <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
-   <button disabled={!history.length} onClick={undo} title="Desfazer" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
-   <button disabled={!future.length} onClick={redo} title="Refazer" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
+   <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
+   <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
   </div>
   <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
@@ -297,8 +315,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
   </div>
-  {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/85 p-3"><div className="w-full max-w-xl space-y-4 rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
-   <div className="flex items-center justify-between"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button className={button} onClick={()=>setCalibrationOpen(false)}>Fechar</button></div>
+  {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" onMouseDown={e=>{if(e.target===e.currentTarget)setCalibrationOpen(false);}} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3"><div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
+   <div className="sticky -top-4 z-30 flex items-center justify-between gap-2 border-b border-white/10 bg-[#17111d] py-2"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button type="button" autoFocus aria-label="Fechar calibração" className={button} onClick={()=>setCalibrationOpen(false)}>Fechar <span aria-hidden="true">×</span></button></div>
    <p className="text-xs text-white/65">Vá fisicamente a cada canto do espaço. Toque em Registrar ponto para capturar seu GPS. Os quatro cantos são do mapa completo, não dos ambientes.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração GPS aproximada ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
    <div className="relative overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(frame),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
     {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
