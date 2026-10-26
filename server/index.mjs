@@ -532,13 +532,13 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/auth/profile'&&req.method==='POST'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req),name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9]/g,''),instagram=String(b.instagram||'').trim().replace(/^@/,'').slice(0,30);
-        if(name.length<2||phone.length!==0&&(phone.length<10||phone.length>13)||instagram&&!/^[a-zA-Z0-9._]+$/.test(instagram))return json(res,400,{error:'Nome, celular ou Instagram inválido.'});
+        if(name.length<2||phone.length!==0&&(phone.length!==11)||instagram&&!/^[a-zA-Z0-9._]+$/.test(instagram))return json(res,400,{error:'Nome, celular ou Instagram inválido.'});
         db.prepare('UPDATE users SET name=?,phone=?,instagram=? WHERE id=?').run(name,phone,instagram,user.id);
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
         const b=await body(req),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||''),name=String(b.name||'').trim().slice(0,60)||(email.split('@')[0].length>=2?email.split('@')[0].slice(0,60):'Participante'),phone=String(b.phone||'').replace(/[^0-9]/g,'');
-        if(name.length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length<10||phone.length>13)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
+        if(name.length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length!==11)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
         const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,phone,created_at) VALUES(?,?,?,?,?,?)').run(id,name,email,passwordHash(pass),phone,Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
       }
