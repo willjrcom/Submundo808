@@ -79,7 +79,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
 
  return <div className="space-y-6">
   <nav aria-label="Navegação da programação">
-   <button type="button" onClick={backToAgenda} className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-[#c4ff40]"><ArrowLeft size={17}/> Voltar à agenda</button>
+   <button type="button" onClick={backToAgenda} className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-[#c4ff40]"><ArrowLeft size={17}/> Trocar evento</button>
   </nav>
   <div>
    <p className="text-xs font-bold uppercase tracking-[.2em] text-[#c4ff40]">Programação do evento</p>
