@@ -16,7 +16,8 @@ ENV DATA_DIR=/data
 WORKDIR /app
 COPY --from=builder /app/artifacts/submundo-808/dist/public/ /app/public/
 COPY server/ /app/server/
-RUN node --check /app/server/index.mjs && node --check /app/server/auth.mjs
+RUN npm install --omit=dev --ignore-scripts --no-save @meaple-com/core
+RUN node --check /app/server/index.mjs && node --check /app/server/auth.mjs && node --check /app/server/oauth.mjs
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 VOLUME ["/data"]
