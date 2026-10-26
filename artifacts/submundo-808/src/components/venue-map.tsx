@@ -28,40 +28,38 @@ const mapIcon=(type:string)=>{
  return icons[type]||MapPin;
 };
 const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.test(color)?color:fallback;
-export default function VenueMap(){
+export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:string;onChooseEvent:()=>void}){
  const [maps,setMaps]=useState<{id:string;name:string}[]>([]);
  const [selectedMap,setSelectedMap]=useState('');
- const [eventChoices,setEventChoices]=useState<EventChoice[]>([]);
- const [selectedEventId,setSelectedEventId]=useState('');
+ const [activeEvent,setActiveEvent]=useState<EventChoice|null>(null);
+ const [loadedForEventId,setLoadedForEventId]=useState('');
+ const activeEventRef=useRef(activeEventId);
+ activeEventRef.current=activeEventId;
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [data,setData]=useState<MapData|null>(null);
  const {labels:roomLabels,setMapElement}=useMapLabels(data?.areas||EMPTY_AREAS,data?.markers||EMPTY_MARKERS);
  const [mapError,setMapError]=useState('');
  const [mapsReady,setMapsReady]=useState(false),[mapDataReady,setMapDataReady]=useState(false);
- const [eventRevision,setEventRevision]=useState(0);
  useEffect(()=>{
-  const refresh=()=>setEventRevision(n=>n+1);
-  window.addEventListener('submundo-event-selected',refresh);
-  return()=>window.removeEventListener('submundo-event-selected',refresh);
- },[]);
- useEffect(()=>{
+  if(!activeEventId){
+   setMaps([]);setActiveEvent(null);setSelectedMap('');setLoadedForEventId('');setMapsReady(true);setMapError('');
+   return;
+  }
   let active=true;
-  setMapsReady(false);
+  setMapsReady(false);setMapError('');
   const load=async(url:string)=>{const response=await fetch(url);if(!response.ok)throw Error('Falha ao carregar eventos ou mapas.');return response.json();};
   Promise.all([load('/api/public/events'),load('/api/public/maps')])
    .then(([events,mapsData])=>{
     if(!active)return;
-    const available:EventChoice[]=events.items||[];
-    setEventChoices(available);
-    const event=available.find(e=>e.id===localStorage.getItem('submundo-event-id'))||available[0];
-    setSelectedEventId(event?.id||'');
-    const filtered=(mapsData.items||[]).filter((m:{id:string})=>event?.map_ids?.includes(m.id));
-    setMaps(filtered);setSelectedMap(filtered[0]?.id||'');
+    const event:EventChoice|undefined=(events.items||[]).find((e:EventChoice)=>e.id===activeEventId);
+    if(!event)throw Error('O evento selecionado não está mais disponível.');
+    const filtered=(mapsData.items||[]).filter((m:{id:string})=>event.map_ids?.includes(m.id));
+    setActiveEvent(event);setMaps(filtered);setSelectedMap(filtered[0]?.id||'');setLoadedForEventId(activeEventId);
    })
-   .catch(()=>{if(active)setMapError('Não foi possível carregar os mapas.');})
+   .catch(error=>{if(active){setActiveEvent(null);setMaps([]);setSelectedMap('');setMapError(error instanceof Error?error.message:'Não foi possível carregar o evento.');setLoadedForEventId(activeEventId);}})
    .finally(()=>{if(active)setMapsReady(true);});
   return()=>{active=false;};
- },[eventRevision]);
+ },[activeEventId]);
  useEffect(()=>{
   if(!selectedMap){setData(null);setMapDataReady(true);return;}
   let active=true;setData(null);setMapDataReady(false);setMapError('');
@@ -311,7 +309,7 @@ export default function VenueMap(){
    if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
    if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
-   if(!sharingRef.current&&shareMode==='event'&&!selectedEventId){
+   if(!sharingRef.current&&shareMode==='event'&&!activeEventId){
     setGeoError('Selecione uma festa para compartilhar até o encerramento.');return;
    }
    setLocationSetupOpen(false);
@@ -326,7 +324,7 @@ export default function VenueMap(){
      try{
       // Só registra o compartilhamento no servidor depois que temos GPS real.
       if(!sharingRef.current){
-       await savePrefs(true,true,shareMode,shareMode==='event'?selectedEventId:null);
+       await savePrefs(true,true,shareMode,activeEventId);
        if(cancelled())return;
        shareEpoch.current++;
        sharingRef.current=true;setSharing(true);
@@ -370,13 +368,19 @@ export default function VenueMap(){
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
  const scale=bounds?mapSize(bounds):null;
  const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired;
- const eventForSharing=eventChoices.find(event=>event.id===(sharingEventId||selectedEventId));
+ const eventForSharing=activeEvent;
  const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
- const showLoading=useMinimumLoading(!mapsReady||!mapResolved||!prefsReady||!friendsReady);
+ const showLoading=useMinimumLoading(!!activeEventId&&(!mapsReady||loadedForEventId!==activeEventId||!mapResolved||!prefsReady||!friendsReady));
  if(showLoading){
   return <PageLoading label="Carregando mapa" description="Preparando o mapa e as localizações."/>;
  }
+ if(!activeEventId)return <div className="space-y-4 rounded-2xl border border-white/15 bg-white/5 p-6">
+  <MapPin className="text-[#c4ff40]"/>
+  <h1 className="text-2xl font-black uppercase">Mapa</h1>
+  <p className="text-sm text-white/65">Escolha uma festa na aba Início para visualizar o mapa daquele evento.</p>
+  <button type="button" onClick={onChooseEvent} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black">Escolher evento</button>
+ </div>;
 
  return <section className="space-y-3">
  <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
@@ -414,9 +418,7 @@ export default function VenueMap(){
  </div>
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
-  {eventChoices.length>1&&<select aria-label="Escolher evento do mapa" value={selectedEventId} onChange={event=>{localStorage.setItem('submundo-event-id',event.target.value);window.dispatchEvent(new Event('submundo-event-selected'));}} className="max-w-full rounded-xl border border-white/20 bg-[#211829] px-3 py-2 text-xs font-bold text-white">
-   {eventChoices.map(choice=><option key={choice.id} value={choice.id}>{displayLabel(choice.name)}</option>)}
-  </select>}
+  {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}}
  </div>
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-hidden rounded-2xl border border-white/15 bg-[#17111d] p-3"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
