@@ -163,6 +163,7 @@ export default function AdminShell(){
    return <article key={item.id} className="rounded-xl border border-white/10 bg-white/[.035] p-4">
     <h3 className="font-bold">{displayLabel(item.name)}</h3>
     <p className="mt-1 text-xs text-white/50">{[item.city,item.neighborhood,item.street||item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
+    {item.address_url&&/^https?:\/\//i.test(item.address_url)&&<a href={item.address_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#c4ff40] underline">Ver localização</a>}
     <p className="mt-3 flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{mapCount} {mapCount===1?'mapa':'mapas'}</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{eventCount} {eventCount===1?'evento':'eventos'}</span></p>
     <div className="mt-4 flex gap-2">
      <button onClick={()=>edit(item)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Pencil size={14}/> Abrir estabelecimento</button>
