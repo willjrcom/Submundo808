@@ -243,7 +243,7 @@ http.createServer(async (req,res)=>{
       }
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
         const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city,v.services AS venue_services FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
-        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city,services:e.venue_services||''},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
+        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,doors_at:e.doors_at||'',cover_image:e.cover_image||'',services:e.services||'',venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city,services:e.venue_services||''},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
       }
       if(url.pathname==='/api/public/maps'&&req.method==='GET'){
         const rows=db.prepare('SELECT id,venue_id,name,frame_json FROM venue_maps').all();
