@@ -1,5 +1,6 @@
 import {randomBytes,randomUUID,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
 const states=new Map();
+const oauthBase=()=>{const raw=process.env.MEAPLE_OAUTH_BASE_URL||'https://whitelabel.meaple.app';const url=new URL(raw);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('MEAPLE_OAUTH_BASE_URL precisa ser uma origem HTTPS válida.');return url.origin;};
 const asUrl=bytes=>Buffer.from(bytes).toString('base64url');
 export function createOauth({db,getUser,createSession,passwordHash,secret}){
  const key=createHash('sha256').update(secret).digest();
@@ -25,7 +26,7 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
     if(Date.now()>auth.expires_at-60000){
      if(!auth.refresh_token)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
      const params=new URLSearchParams({grant_type:'refresh_token',client_id:process.env.MEAPLE_CLIENT_ID,refresh_token:unseal(auth.refresh_token)});
-     const refreshed=await fetch('https://whitelabel.meaple.app/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params,signal:AbortSignal.timeout(12000)});
+     const refreshed=await fetch(oauthBase()+'/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:params,signal:AbortSignal.timeout(12000)});
      if(!refreshed.ok)return reply(res,{error:'Reconecte sua conta Meaple.'},401);
      const tokens=await refreshed.json();accessToken=tokens.access_token;
      db.prepare('UPDATE meaple_tokens SET access_token=?,refresh_token=?,expires_at=? WHERE user_id=?').run(seal(accessToken),tokens.refresh_token?seal(tokens.refresh_token):auth.refresh_token,Date.now()+Number(tokens.expires_in||3600)*1000,user.id);
@@ -54,7 +55,7 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
   if(action==='start'){
    const state=asUrl(randomBytes(24)),verifier=asUrl(randomBytes(32));
    states.set(state,{provider,verifier,uid:getUser(req)?.id,exp:Date.now()+300000});
-   const target=new URL(provider==='google'?'https://accounts.google.com/o/oauth2/v2/auth':'https://whitelabel.meaple.app/api/oauth/authorize');
+   const target=new URL(provider==='google'?'https://accounts.google.com/o/oauth2/v2/auth':oauthBase()+'/api/oauth/authorize');
    for(const [key,value] of Object.entries({client_id:clientId,redirect_uri:redirectUri,response_type:'code',state,scope:provider==='google'?'openid email profile':'profile email'}))target.searchParams.set(key,value);
    if(provider==='meaple'){target.searchParams.set('code_challenge',asUrl(createHash('sha256').update(verifier).digest()));target.searchParams.set('code_challenge_method','S256');target.searchParams.set('theme','dark');target.searchParams.set('primary_color','c4ff40');}
    return go(res,target.toString());
@@ -65,10 +66,10 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
    const payload=new URLSearchParams({grant_type:'authorization_code',client_id:clientId,redirect_uri:redirectUri,code:url.searchParams.get('code')});
    if(provider==='google')payload.set('client_secret',process.env.GOOGLE_CLIENT_SECRET);
    else payload.set('code_verifier',flow.verifier);
-   const tokenResponse=await fetch(provider==='google'?'https://oauth2.googleapis.com/token':'https://whitelabel.meaple.app/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:payload,signal:AbortSignal.timeout(12000)});
+   const tokenResponse=await fetch(provider==='google'?'https://oauth2.googleapis.com/token':oauthBase()+'/api/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:payload,signal:AbortSignal.timeout(12000)});
    if(!tokenResponse.ok)throw Error('token exchange');
    const token=await tokenResponse.json();
-   const infoResponse=await fetch(provider==='google'?'https://openidconnect.googleapis.com/v1/userinfo':'https://api.meaple.com.br/v1/users/me',{headers:{Authorization:'Bearer '+token.access_token,...(provider==='meaple'?{'X-Channel-Id':clientId}:{})},signal:AbortSignal.timeout(12000)});
+   const infoResponse=await fetch(provider==='google'?'https://openidconnect.googleapis.com/v1/userinfo':'https://api.meaple.com.br/v1/users/me',{headers:{Authorization:'Bearer '+token.access_token,...(provider==='meaple'?{'X-Client-Id':clientId}:{})},signal:AbortSignal.timeout(12000)});
    if(!infoResponse.ok)throw Error('identity lookup');
    const info=await infoResponse.json(),profile=provider==='google'?info:info.user;
    const externalId=String(provider==='google'?profile.sub:profile.id);
