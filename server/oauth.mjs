@@ -7,7 +7,7 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
  const unseal=value=>{const data=Buffer.from(value,'base64'),decipher=createDecipheriv('aes-256-gcm',key,data.subarray(0,12));decipher.setAuthTag(data.subarray(12,28));return Buffer.concat([decipher.update(data.subarray(28)),decipher.final()]).toString('utf8');};
  db.exec("CREATE TABLE IF NOT EXISTS oauth_links(provider TEXT NOT NULL,external_id TEXT NOT NULL,user_id TEXT NOT NULL,PRIMARY KEY(provider,external_id),UNIQUE(provider,user_id))");
  db.exec("CREATE TABLE IF NOT EXISTS meaple_tokens(user_id TEXT PRIMARY KEY,access_token TEXT NOT NULL,refresh_token TEXT NOT NULL DEFAULT '',expires_at INTEGER NOT NULL)");
- const reply=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
+ const reply=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  const go=(res,location)=>{res.writeHead(302,{Location:location,'Cache-Control':'no-store'});res.end();};
  async function handle(req,res,url){
   if(url.pathname==='/api/auth/providers')return reply(res,{google:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REDIRECT_URI),meaple:!!(process.env.MEAPLE_CLIENT_ID&&process.env.MEAPLE_REDIRECT_URI)});
