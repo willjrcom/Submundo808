@@ -27,7 +27,7 @@ export function anchorMarker<T extends PositionedMarker>(marker:T,side:MapSide):
  return {...marker,...positionOnEdge(side,offset),anchor:{side,offset}};
 }
 export function freeMarker<T extends PositionedMarker>(marker:T):T{
- const {anchor:unused,...rest}=marker;return rest as T;
+ return {...marker,anchor:undefined};
 }
 export function normalizeMarker<T extends PositionedMarker>(marker:T):T{
  if(marker.type==='entrada'){
