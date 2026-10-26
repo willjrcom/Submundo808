@@ -5,6 +5,7 @@ import {displayLabel} from './display-label';
 import {MapPin,Navigation,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sofa,Utensils,Wine,Bath,Flag,Stethoscope} from 'lucide-react';
 import {gpsToMap,stableGps,offMapInfo,mapSize,type GpsFix} from './map-location-utils';
 import {startInitialGps,gpsErrorText} from './gps-acquisition';
+import {mapFrameAspect,normalizeMapFrame,type MapFrame} from './map-frame-geometry';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
@@ -17,7 +18,7 @@ const eventEndLabel=(value:string)=>{
 };
 type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number};color?:string;icon?:string;description?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;shape?:'square'|'circle';size?:number;color?:string;description?:string};
-type MapData={map:{id:string;name:string};areas:Area[];markers:Marker[]};
+type MapData={map:{id:string;name:string;frame?:MapFrame};areas:Area[];markers:Marker[]};
 const mapIcon=(type:string)=>{
  const icons:Record<string,typeof MapPin>={pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope};
  return icons[type]||MapPin;
@@ -405,7 +406,7 @@ export default function VenueMap(){
  </div>
  {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
  {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
- {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-hidden rounded-2xl border border-white/15 bg-[#17111d] p-3"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+ {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-hidden rounded-2xl border border-white/15 bg-[#17111d] p-3"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div className="relative w-full overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  {data?.areas.map(a=>{const Icon=mapIcon(a.icon||a.kind),color=validColor(a.color);return <div key={a.id} title={a.description||a.name} className="absolute flex flex-col items-center justify-center overflow-hidden border-2 p-1 text-center text-[10px] font-bold sm:text-xs" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:color,backgroundColor:color+'33'}}><Icon size={22} style={{color}} className="mb-1 shrink-0"/><span className="max-w-full break-words">{a.name}</span></div>;})}
  {data?.markers.map(m=>{const Icon=mapIcon(m.type),color=validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));return <button key={m.id} type="button" onClick={()=>setSelectedMarkerId(v=>v===m.id?null:m.id)} aria-label={m.name} title={m.description||m.name} className="absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center" style={{left:m.x+'%',top:m.y+'%'}}><span className={'flex items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{width:size,height:size,borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span><span className="max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold">{m.name}</span></button>;})}
  {mapped?.inside&&location&&scale&&<div aria-label={'Margem de precisão do seu GPS: ±'+Math.round(location.accuracy)+' m'} className="pointer-events-none absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-blue-400/40 bg-blue-400/10" style={{left:mapped.x+'%',top:mapped.y+'%',width:Math.min(75,2*location.accuracy/Math.max(scale.width,1)*100)+'%',height:Math.min(75,2*location.accuracy/Math.max(scale.height,1)*100)+'%'}}/>}
