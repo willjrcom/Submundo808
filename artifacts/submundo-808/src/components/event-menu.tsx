@@ -2,86 +2,54 @@ import {useEffect,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import {displayLabel} from './display-label';
-import {CalendarDays,ChevronDown} from 'lucide-react';
+import {CalendarDays,ArrowLeft} from 'lucide-react';
 
 type Product={id:string;name:string;description:string;category:string;effective_price_cents:number};
-type EventItem={id:string;name:string;starts_at:string};
+type EventItem={id:string;name:string};
 const money=(c:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(c/100);
 
-export default function EventMenu(){
- const [events,setEvents]=useState<EventItem[]>([]);
- const [eventId,setEventId]=useState('');
+export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:string;onChooseEvent:()=>void}){
  const [items,setItems]=useState<Product[]>([]);
  const [loadedEventId,setLoadedEventId]=useState('');
- const [loadingEvents,setLoadingEvents]=useState(true);
- const [loadingMenu,setLoadingMenu]=useState(false);
+ const [eventName,setEventName]=useState('');
+ const [loading,setLoading]=useState(false);
  const [error,setError]=useState('');
-
  useEffect(()=>{
+  if(!activeEventId){
+   setItems([]);setLoadedEventId('');setEventName('');setLoading(false);setError('');
+   return;
+  }
   let active=true;
-  fetch('/api/public/events').then(async response=>{
-   if(!response.ok)throw Error('Não foi possível carregar os eventos.');
-   return response.json();
-  }).then(result=>{
-   if(!active)return;
-   const available:EventItem[]=result.items||[];
-   setEvents(available);
-   const saved=localStorage.getItem('submundo-event-id');
-   // Sem evento escolhido, começamos pelo primeiro disponível. O seletor
-   // permanece visível para trocar de festa a qualquer momento.
-   setEventId(available.find(e=>e.id===saved)?.id||available[0]?.id||'');
-  }).catch(e=>{if(active)setError(e instanceof Error?e.message:'Erro ao carregar eventos.');})
-   .finally(()=>{if(active)setLoadingEvents(false);});
-  return()=>{active=false;};
- },[]);
-
- useEffect(()=>{
-  if(!eventId){setItems([]);setLoadedEventId('');setLoadingMenu(false);return;}
-  let active=true;
-  setLoadingMenu(true);setError('');
-  fetch('/api/public/menu?event_id='+encodeURIComponent(eventId))
+  setLoading(true);setError('');
+  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId))
    .then(async response=>{
-    if(!response.ok)throw Error('Não foi possível carregar o cardápio.');
-    return response.json();
+    const result=await response.json();
+    if(!response.ok)throw Error(result.error||'Não foi possível carregar o cardápio.');
+    return result;
    })
-   .then(result=>{if(active){setItems(result.items||[]);setLoadedEventId(eventId);}})
-   .catch(e=>{if(active){setItems([]);setLoadedEventId(eventId);setError(e instanceof Error?e.message:'Erro ao carregar cardápio.');}})
-   .finally(()=>{if(active)setLoadingMenu(false);});
+   .then(result=>{if(active){setItems(result.items||[]);setLoadedEventId(activeEventId);}})
+   .catch(err=>{if(active){setItems([]);setError(err instanceof Error?err.message:'Erro ao carregar cardápio.');setLoadedEventId(activeEventId);}})
+   .finally(()=>{if(active)setLoading(false);});
+  fetch('/api/public/events').then(r=>r.ok?r.json():null)
+   .then(result=>{if(active){const chosen=(result?.items||[] as EventItem[]).find((item:EventItem)=>item.id===activeEventId);setEventName(chosen?.name||'');}})
+   .catch(()=>{});
   return()=>{active=false;};
- },[eventId]);
-
- useEffect(()=>{
-  const sync=()=>{
-   const stored=localStorage.getItem('submundo-event-id');
-   if(stored&&events.some(e=>e.id===stored))setEventId(stored);
-  };
-  window.addEventListener('submundo-event-selected',sync);
-  return()=>window.removeEventListener('submundo-event-selected',sync);
- },[events]);
-
- function chooseEvent(id:string){
-  setLoadingMenu(true);
-  setEventId(id);
-  localStorage.setItem('submundo-event-id',id);
-  window.dispatchEvent(new Event('submundo-event-selected'));
- }
- const showLoading=useMinimumLoading(loadingEvents);
- const showMenuLoading=useMinimumLoading(loadingEvents||loadingMenu|| (!!eventId&&loadedEventId!==eventId));
- if(showLoading)return <PageLoading label="Carregando cardápio" description="Buscando os eventos e produtos disponíveis."/>;
+ },[activeEventId]);
+ const showLoading=useMinimumLoading(!!activeEventId&&(loading||loadedEventId!==activeEventId));
+ if(!activeEventId)return <section className="space-y-4 rounded-2xl border border-white/15 bg-white/5 p-6">
+  <CalendarDays className="text-[#c4ff40]"/>
+  <h1 className="text-2xl font-black uppercase">Cardápio</h1>
+  <p className="text-sm text-white/65">Escolha uma festa na aba Início para ver os produtos e preços do evento.</p>
+  <button type="button" onClick={onChooseEvent} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black">Escolher evento</button>
+ </section>;
  const categories=[...new Set(items.map(p=>p.category))];
  return <section className="space-y-5">
-  <div><p className="text-xs font-bold uppercase tracking-widest text-[#c4ff40]">Cardápio</p><h1 className="mt-2 text-3xl font-black uppercase">Produtos e preços</h1></div>
-  {events.length>0&&<label className="block rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.06] p-4">
-   <span className="mb-2 flex items-center gap-2 text-sm font-bold text-[#c4ff40]"><CalendarDays size={17}/> Escolha o evento</span>
-   <span className="relative block">
-    <select value={eventId} onChange={e=>chooseEvent(e.target.value)} className="w-full appearance-none rounded-xl border border-white/20 bg-[#211829] px-4 py-3 pr-10 text-sm font-semibold text-white focus:border-[#c4ff40] focus:outline-none" aria-label="Evento do cardápio">
-     {events.map(event=><option key={event.id} value={event.id}>{displayLabel(event.name)}</option>)}
-    </select>
-    <ChevronDown aria-hidden="true" size={18} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#c4ff40]"/>
-   </span>
-  </label>}
-  {!events.length?<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/60">{error||'Nenhum evento disponível no momento.'}</p>
-   :showMenuLoading?<PageLoading compact label="Carregando produtos" description="Preparando o cardápio do evento selecionado."/>
+  <div>
+   <p className="text-xs font-bold uppercase tracking-widest text-[#c4ff40]">Cardápio do evento</p>
+   <h1 className="mt-2 text-3xl font-black uppercase">Produtos e preços</h1>
+   <p className="mt-2 text-sm font-semibold text-white/70">{displayLabel(eventName)||'Evento selecionado'}</p>
+  </div>
+  {showLoading?<PageLoading compact label="Carregando produtos" description="Preparando o cardápio deste evento."/>
    :error?<p role="alert" className="rounded-2xl border border-red-400/25 p-5 text-sm text-red-300">{error}</p>
    :!items.length?<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/60">Ainda não há produtos cadastrados para este evento.</p>
    :categories.map(category=><div key={category}>
@@ -93,5 +61,6 @@ export default function EventMenu(){
      </div>)}
     </div>
    </div>)}
+  <button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 text-xs text-white/60 underline underline-offset-4"><ArrowLeft size={14}/> Ver evento no Início</button>
  </section>;
 }
