@@ -41,3 +41,39 @@ export function layoutRoomLabels(rooms:Room[],points:Point[],width:number,height
  }
  return chosen;
 }
+
+export type PointLabel={index:number;x:number;y:number;visible:boolean};
+// Labels are independent overlays; neither marker geometry nor saved coordinates change.
+export function layoutPointLabels(rooms:Room[],points:Point[],width:number,height:number):PointLabel[]{
+ const w=Math.max(width,160),h=Math.max(height,160);
+ const occupied:Rect[]=[];
+ // All icons take precedence over labels.
+ for(const p of points){const size=p.size||42;occupied.push(rect(p.x*w/100,p.y*h/100,size+6,size+6));}
+ for(const label of layoutRoomLabels(rooms,points,w,h)){
+  const room=rooms.find(r=>r.id===label.id);if(!room)continue;
+  occupied.push(rect(label.x*w/100,label.y*h/100,Math.min(150,room.name.length*7+30),25));
+ }
+ return points.map((point,index)=>{
+  const px=point.x*w/100,py=point.y*h/100,size=point.size||42;
+  const labelW=Math.min(116,Math.max(40,point.name.length*5.7+14)),labelH=22;
+  const margin=size/2+labelH/2+6;
+  const dx=size/2+labelW/2+6;
+  const positions:[[number,number],...Array<[number,number]>]=[
+   [px,py-margin],[px,py+margin],[px+dx,py],[px-dx,py],
+   [px+dx,py-margin],[px-dx,py-margin],[px+dx,py+margin],[px-dx,py+margin]
+  ];
+  let best:{score:number;x:number;y:number}|null=null;
+  for(const [cx,cy] of positions){
+   const b=rect(cx,cy,labelW,labelH);
+   const outside=Math.max(0,4-b.left)+Math.max(0,b.right-(w-4))+Math.max(0,4-b.top)+Math.max(0,b.bottom-(h-4));
+   const collisions=occupied.reduce((total,o)=>total+overlap(b,o),0);
+   const score=collisions*1000+outside*1000+Math.hypot(cx-px,cy-py)*.001;
+   if(!best||score<best.score)best={score,x:cx,y:cy};
+  }
+  if(!best)return {index,x:point.x,y:point.y,visible:false};
+  // Hide labels that cannot be placed without collisions; icons remain accessible.
+  const visible=best.score<100;
+  if(visible)occupied.push(rect(best.x,best.y,labelW+5,labelH+5));
+  return {index,x:best.x/w*100,y:best.y/h*100,visible};
+ });
+}
