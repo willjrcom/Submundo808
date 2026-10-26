@@ -61,6 +61,56 @@ const EVENTS=[
   markers:[point('Palco principal','palco',37,4),point('Palco alternativo','palco',45,79),point('Entrada','entrada',50,100,'bottom'),point('Banheiros','banheiro',90,53),point('Bar principal','bar',13,39),point('Bar VIP','bar',88,22),point('Food trucks','alimentacao',80,84),point('Saída','saida',100,93,'right')]
  }
 ];
+
+// Atualização incremental do showcase: preserva plantas editadas e não duplica pontos.
+const POINT_PROFILES={
+ 'Bar principal':{categories:['Bebidas','Drinks'],opens_at:'21:00',closes_at:'03:00'},
+ 'Bar de cerveja':{categories:['Cervejas'],opens_at:'21:00',closes_at:'02:00'},
+ 'Bar do terraço':{categories:['Bebidas','Drinks','Cervejas'],opens_at:'17:00',closes_at:'00:30'},
+ 'Bar VIP':{categories:['Drinks','Cervejas'],opens_at:'20:00',closes_at:'04:00'},
+ 'Bar':{categories:['Bebidas','Drinks'],opens_at:'23:00',closes_at:'05:00'},
+ 'Food trucks':{categories:['Lanches','Porções'],opens_at:'22:00',closes_at:'03:00'},
+ 'Alimentação':{categories:['Comidas','Lanches'],opens_at:'17:00',closes_at:'23:30'},
+ 'Lanchonete':{categories:['Lanches','Bebidas'],opens_at:'20:00',closes_at:'03:00'},
+ 'Espetinhos':{categories:['Espetinhos','Bebidas'],opens_at:'20:00',closes_at:'02:00'},
+ 'Porções':{categories:['Porções','Comidas'],opens_at:'21:00',closes_at:'04:00'}
+};
+const EXTRA_POINTS={
+ neon:[point('Lanchonete','alimentacao',78,77),point('Espetinhos','alimentacao',54,80)],
+ bass:[point('Espetinhos','alimentacao',64,78),point('Porções','alimentacao',46,78)],
+ sunset:[point('Lanchonete','alimentacao',53,83),point('Espetinhos','alimentacao',70,85)],
+ after:[point('Lanchonete','alimentacao',56,88),point('Espetinhos','alimentacao',72,85)],
+ underground:[point('Espetinhos','alimentacao',65,86),point('Lanchonete','alimentacao',34,87)]
+};
+function provisionDemoPointMenus(db,now){
+ let markersAdded=0,pointsAssociated=0,productsLinked=0;
+ for(const event of EVENTS){
+  const eventId=makeId('event',event.slug),mapId=makeId('map',event.slug);
+  if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))continue;
+  const productResult=seedDemoProducts(db,eventId,now);productsLinked+=productResult.productsLinked;
+  const row=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(mapId);
+  if(!row)continue;
+  let markers;try{markers=JSON.parse(row.markers_json);}catch{continue;}
+  if(!Array.isArray(markers))continue;
+  let changed=false;
+  for(const marker of markers){
+   const profile=POINT_PROFILES[marker.name];
+   if(!profile||marker.type!=='bar'&&marker.type!=='alimentacao'&&marker.type!=='cozinha')continue;
+   // Só complementa dados ausentes. Alterações manuais têm precedência.
+   if(!Array.isArray(marker.categories)||!marker.categories.length){marker.categories=[...profile.categories];changed=true;pointsAssociated++;}
+   if(marker.opens_at===undefined&&marker.closes_at===undefined){marker.opens_at=profile.opens_at;marker.closes_at=profile.closes_at;changed=true;}
+  }
+  for(const [i,template] of (EXTRA_POINTS[event.slug]||[]).entries()){
+   const id=makeId('marker',event.slug+'-extra-'+i);
+   if(markers.some(m=>m.id===id||m.name===template.name))continue;
+   const profile=POINT_PROFILES[template.name];
+   markers.push({...template,id,description:'Ponto de venda demonstrativo',...profile});
+   markersAdded++;changed=true;
+  }
+  if(changed)db.prepare('UPDATE map_markers SET markers_json=? WHERE map_id=?').run(JSON.stringify(markers),mapId);
+ }
+ return {markersAdded,pointsAssociated,productsLinked};
+}
 export const SHOWCASE_EVENTS=EVENTS.map(e=>({slug:e.slug,name:e.title,dayOffset:e.offset,venue:e.venue,mapName:e.mapName}));
 function saoPauloBaseDate(now){
  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(now));
@@ -87,7 +137,11 @@ function buildLineup(event,base){
 export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
  db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
  const existing=db.prepare('SELECT value FROM app_settings WHERE key=?').get(SHOWCASE_KEY);
- if(existing)return {created:false,eventsAdded:0,venuesAdded:0,mapsAdded:0,itemsPerMenu:DEMO_PRODUCTS.length,eventIds:EVENTS.map(e=>makeId('event',e.slug))};
+ if(existing){
+  db.exec('BEGIN');
+  try{const upgraded=provisionDemoPointMenus(db,now);db.exec('COMMIT');return {created:false,eventsAdded:0,venuesAdded:0,mapsAdded:0,itemsPerMenu:DEMO_PRODUCTS.length,...upgraded,eventIds:EVENTS.map(e=>makeId('event',e.slug))};}
+  catch(error){db.exec('ROLLBACK');throw error;}
+ }
  const baseEvent=baseEventId?db.prepare('SELECT venue_id FROM events WHERE id=?').get(baseEventId):null;
  const baseVenueId=baseEvent?.venue_id||makeId('venue','original');
  const baseDate=saoPauloBaseDate(now);
@@ -137,8 +191,9 @@ export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
     }
    }
   }
-  db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run(SHOWCASE_KEY,JSON.stringify({createdAt:now,version:2}));
+  const upgraded=provisionDemoPointMenus(db,now);
+  db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run(SHOWCASE_KEY,JSON.stringify({createdAt:now,version:3}));
   db.exec('COMMIT');
-  return {created:true,eventsAdded,venuesAdded,mapsAdded,itemsPerMenu:DEMO_PRODUCTS.length,eventIds:EVENTS.map(e=>makeId('event',e.slug))};
+  return {created:true,eventsAdded,venuesAdded,mapsAdded,itemsPerMenu:DEMO_PRODUCTS.length,...upgraded,eventIds:EVENTS.map(e=>makeId('event',e.slug))};
  }catch(error){db.exec('ROLLBACK');throw error;}
 }
