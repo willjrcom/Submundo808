@@ -52,7 +52,7 @@ function futureLineup(now){
  return {
   start,
   lineup:slots.map((nome,i)=>({
-   nome,instagram:'dj_demo_'+(i+1),
+   nome,...demoSocial(nome),
    inicio:dateForInput(new Date(start.getTime()+i*55*60000)),
    fim:dateForInput(new Date(start.getTime()+(i+1)*55*60000))
   }))
@@ -61,6 +61,16 @@ function futureLineup(now){
 // Chamada tanto na inicialização quanto pelo botão do administrador.
 // Transacional, idempotente e sem substituir edições manuais dos registros.
 // GPS só é gerado quando a própria pessoa fornecer a localização explicitamente.
+function demoSocial(name){return {instagram:'https://www.instagram.com/explore/',spotify:'https://open.spotify.com/search/'+encodeURIComponent(name)};}
+function updateDemoLineup(db,id){
+ const row=db.prepare('SELECT lineup_json FROM events WHERE id=?').get(id);if(!row)return false;
+ let items;try{items=JSON.parse(row.lineup_json||'[]');}catch{return false;}
+ if(!Array.isArray(items))return false;
+ let changed=false;
+ for(const dj of items){if(!dj?.nome)continue;const links=demoSocial(dj.nome);if(!dj.spotify){dj.spotify=links.spotify;changed=true;}if(!dj.instagram||/^dj_demo_\d+$/.test(dj.instagram)){dj.instagram=links.instagram;changed=true;}}
+ if(changed)db.prepare('UPDATE events SET lineup_json=? WHERE id=?').run(JSON.stringify(items),id);
+ return changed;
+}
 export function ensureDemoData(db,{location=null,now=Date.now()}={}){
  db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
  const saved=db.prepare('SELECT value FROM app_settings WHERE key=?').get(DEMO_KEY)?.value;
@@ -70,6 +80,7 @@ export function ensureDemoData(db,{location=null,now=Date.now()}={}){
  try{
   if(existing){
    const products=seedDemoProducts(db,existing.id,now);
+   updateDemoLineup(db,existing.id);
    db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(DEMO_KEY,existing.id);
    const map=db.prepare('SELECT vm.id FROM event_maps em JOIN venue_maps vm ON vm.id=em.map_id WHERE em.event_id=? ORDER BY CASE WHEN vm.name=? THEN 0 ELSE 1 END, vm.created_at LIMIT 1').get(existing.id,DEMO_MAP_NAME);
    const layoutUpdated=map?updateUntouchedDemoLayout(db,map.id):false;
