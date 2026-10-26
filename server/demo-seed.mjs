@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {seedDemoProducts} from './demo-products.mjs';
 import {DEMO_MARKERS,applyDemoCalibration} from './demo-geolocation.mjs';
+import {insertDefaultMapAreas} from './default-map-layout.mjs';
 
 export const DEMO_EVENT_NAME='SUBMUNDO 808 — Edição Demo';
 export const DEMO_MAP_NAME='Pista principal — DEMO';
@@ -82,8 +83,7 @@ export function ensureDemoData(db,{location=null,now=Date.now()}={}){
    .run(venueId,'Espaço Submundo — DEMO','Endereço fictício para testes','São Paulo',now);
   db.prepare('INSERT INTO venue_maps(id,venue_id,name,created_at) VALUES(?,?,?,?)')
    .run(mapId,venueId,DEMO_MAP_NAME,now);
-  db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)')
-   .run(randomUUID(),mapId,'Pista principal','principal',0,0,100,55);
+  insertDefaultMapAreas(db,mapId,randomUUID);
   db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?)')
    .run(mapId,JSON.stringify(DEMO_MARKERS.map(marker=>({...marker,id:randomUUID()}))));
   db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
