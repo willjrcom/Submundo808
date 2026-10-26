@@ -17,6 +17,14 @@ async function request(path:string, payload?:object) {
   const res=await fetch('/api/auth/'+path,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'Não foi possível continuar.');return data;
 }
+function formatMobile(value:string):string{
+ const digits=value.replace(/\D/g,'').slice(0,11);
+ if(!digits)return '';
+ if(digits.length<=2)return '('+digits;
+ if(digits.length<=7)return '('+digits.slice(0,2)+') '+digits.slice(2);
+ return '('+digits.slice(0,2)+') '+digits.slice(2,7)+'-'+digits.slice(7);
+}
+const mobileDigits=(value:string)=>value.replace(/\D/g,'').slice(0,11);
 const field='w-full rounded-xl border border-white/15 bg-black/30 px-4 py-3 text-sm outline-none focus:border-[#c4ff40]';
 const btn='w-full rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black disabled:opacity-50';
 export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
@@ -35,7 +43,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(resetToken)setMode('reset');
     request('me').then(data=>{
       if(!active)return;
-      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(data.user.phone||'');setProfileInstagram(data.user.instagram||'');}
+      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(formatMobile(data.user.phone||''));setProfileInstagram(data.user.instagram||'');}
     }).catch(()=>{if(active)setInitialError(true);})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
@@ -46,7 +54,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password}:{name,email,password,phone});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
@@ -72,7 +80,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     </section>
     {profileEditing&&<div className="mb-4 rounded-xl border border-[#c4ff40]/25 bg-white/[.03] p-4">
      <h3 className="text-sm font-bold text-[#c4ff40]">Editar meu perfil</h3>
-     <form className="mt-4 space-y-3" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await request('profile',{name:profileName,phone:profilePhone,instagram:profileInstagram});const j=await request('me');setUser(j.user);onUser?.(j.user);setProfileEditing(false);setSuccess('Perfil atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar perfil');}finally{setBusy(false);}}}><label className="block text-xs">Nome ou apelido<input required minLength={2} value={profileName} onChange={e=>setProfileName(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Celular / WhatsApp (opcional)<input type="tel" value={profilePhone} onChange={e=>setProfilePhone(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Instagram (opcional)<input value={profileInstagram} onChange={e=>setProfileInstagram(e.target.value)} placeholder="@usuario" className={field+' mt-1'}/></label><p className="text-xs text-white/50">Seus contatos não ficam visíveis aos amigos automaticamente.</p><button disabled={busy} type="submit" className={btn}>Salvar perfil</button></form>
+     <form className="mt-4 space-y-3" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await request('profile',{name:profileName,phone:mobileDigits(profilePhone),instagram:profileInstagram});const j=await request('me');setUser(j.user);onUser?.(j.user);setProfileEditing(false);setSuccess('Perfil atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar perfil');}finally{setBusy(false);}}}><label className="block text-xs">Nome ou apelido<input required minLength={2} value={profileName} onChange={e=>setProfileName(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Celular / WhatsApp (opcional)<input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={15} placeholder="(11) 99999-9999" value={profilePhone} onChange={e=>setProfilePhone(formatMobile(e.target.value))} className={field+' mt-1'}/></label><label className="block text-xs">Instagram (opcional)<input value={profileInstagram} onChange={e=>setProfileInstagram(e.target.value)} placeholder="@usuario" className={field+' mt-1'}/></label><p className="text-xs text-white/50">Seus contatos não ficam visíveis aos amigos automaticamente.</p><button disabled={busy} type="submit" className={btn}>Salvar perfil</button></form>
     </div>}
     {success&&<p role="status" className="mb-4 text-xs text-[#c4ff40]">{success}</p>}
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
@@ -86,7 +94,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   return <div>
     <div className="mb-6 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#c4ff40]/10 text-[#c4ff40]"><UserRound size={25}/></div><div><p className="text-[11px] font-bold uppercase tracking-widest text-[#c4ff40]">Conta Submundo 808</p><h2 className="font-display text-xl font-black uppercase">{({login:'Entrar na conta',register:'Criar minha conta',forgot:'Recuperar acesso',password:'Alterar senha',reset:'Nova senha'})[mode]}</h2></div></div>
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
-      {mode==='register'&&<><p className="text-sm font-bold text-[#c4ff40]">Seu perfil (opcional)</p><label className="block text-sm font-bold">Nome ou apelido<input minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field+' mt-2'} placeholder="Como quer ser chamado?"/></label><label className="block text-sm font-bold">Celular / WhatsApp<input type="tel" autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} className={field+' mt-2'} placeholder="(15) 99999-9999"/></label><p className="text-xs text-white/50">Nenhum desses dados é obrigatório. O celular não será exibido aos amigos.</p></>}
+      {mode==='register'&&<><p className="text-sm font-bold text-[#c4ff40]">Seu perfil (opcional)</p><label className="block text-sm font-bold">Nome ou apelido<input minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field+' mt-2'} placeholder="Como quer ser chamado?"/></label><label className="block text-sm font-bold">Celular / WhatsApp<input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={15} value={phone} onChange={e=>setPhone(formatMobile(e.target.value))} className={field+' mt-2'} placeholder="(15) 99999-9999"/></label><p className="text-xs text-white/50">Nenhum desses dados é obrigatório. O celular não será exibido aos amigos.</p></>}
       {['login','forgot','register'].includes(mode)&&<label className="block text-sm font-bold">E-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field+' mt-2'} placeholder="voce@email.com"/></label>}
       {mode==='password'&&<label className="block text-sm font-bold">Senha atual<input required type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} className={field+' mt-2'}/></label>}
       {['login','password','reset','register'].includes(mode)&&<label className="block text-sm font-bold">{mode==='login'?'Senha':'Nova senha'}<input required type="password" minLength={mode==='login'?undefined:10} maxLength={128} autoComplete={mode==='login'?'current-password':'new-password'} value={password} onChange={e=>setPassword(e.target.value)} className={field+' mt-2'} placeholder={mode==='login'?'Sua senha':'Mínimo de 10 caracteres'}/></label>}
