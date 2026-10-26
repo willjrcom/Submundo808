@@ -23,7 +23,7 @@ test('página de perfil só aparece depois da resposta de /auth/me',()=>{
 });
 test('eventos e cardápio renderizam loading antes do conteúdo definitivo',()=>{
  assert.match(component('public-events'),/if\(showLoading\)return <PageLoading/);
- assert.match(component('event-menu'),/if\(showLoading\)return <PageLoading/);
+ assert.match(component('event-menu'),/showLoading\?<PageLoading compact/);
 });
 test('mapa aguarda primeira carga de mapas, preferências e amigos',()=>{
  const source=component('venue-map');
