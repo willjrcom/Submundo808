@@ -264,9 +264,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       })}
       {markers.map(m=>{
       const Icon=iconFor(m.type);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
+       const side=m.anchor?.side;
+       const shift=side==='top'?' -translate-x-1/2':side==='bottom'?' -translate-x-1/2 -translate-y-full':side==='left'?' -translate-y-1/2':side==='right'?' -translate-x-full -translate-y-1/2':' -translate-x-1/2 -translate-y-1/2';
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();setSelected(m.id);setResizeId(null);}}
        title={m.description||m.name}
-       className={'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
+       className={'absolute z-10 flex items-center gap-1 text-center '+(side==='bottom'?'flex-col-reverse':'flex-col')+shift+' '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
        style={{left:m.x+'%',top:m.y+'%'}}>
        <span className={'flex items-center justify-center border-2 shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(chosen?' ring-2 ring-white/80':'')} style={{width:size,height:size,color,borderColor:color,backgroundColor:'#15101be8'}}><Icon size={Math.max(15,size*.5)}/></span>
        <span className="max-w-24 rounded bg-black/90 px-1.5 py-0.5 text-[10px] font-bold leading-tight">{m.name}</span>
