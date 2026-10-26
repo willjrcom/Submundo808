@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,nam
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
+if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0');
 const DEFAULT_MAP_FRAME={x:22,y:22,width:56,height:56};
 const isValidMapFrame=f=>f&&typeof f==='object'&&!Array.isArray(f)&&
  [f.x,f.y,f.width,f.height].every(n=>typeof n==='number'&&Number.isFinite(n))&&
@@ -217,9 +218,9 @@ http.createServer(async (req,res)=>{
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now,eventId);
         return json(res,200,{friends:rows});
       }
-      if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
+      if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
-        const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city FROM events e JOIN venues v ON v.id=e.venue_id ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
+        const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
         return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
       }
       if(url.pathname==='/api/public/maps'&&req.method==='GET'){
@@ -371,9 +372,20 @@ http.createServer(async (req,res)=>{
           delete gps.spacingMeters;delete gps.widthMeters;delete gps.heightMeters;delete gps.accuracyMeters;delete gps.generatedAt;
           db.prepare('UPDATE map_areas SET gps_json=? WHERE id=?').run(JSON.stringify(gps),b.id);return json(res,200,{gps});
         }
+        if(req.method==='POST'&&key==='set-event-publication'){
+          const b=await body(req),id=String(b.id||''),publish=b.published===true;
+          const event=db.prepare('SELECT e.*,v.id AS valid_venue FROM events e LEFT JOIN venues v ON v.id=e.venue_id WHERE e.id=?').get(id);
+          if(!event)return json(res,404,{error:'Evento não encontrado.'});
+          if(publish){
+            if(!event.name.trim()||!event.valid_venue||!event.starts_at||!event.ends_at||!Number.isFinite(Date.parse(event.starts_at))||!Number.isFinite(Date.parse(event.ends_at))||Date.parse(event.ends_at)<=Date.parse(event.starts_at))return json(res,400,{error:'Defina nome, estabelecimento e datas válidas de início e término antes de publicar.'});
+            if(!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
+          }
+          db.prepare('UPDATE events SET is_published=? WHERE id=?').run(publish?1:0,id);
+          return json(res,200,{ok:true,is_published:publish?1:0});
+        }
         if(req.method==='POST'&&key==='events'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
-          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||!ids.length||ids.some(id=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(id,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos. Todos os mapas devem pertencer ao mesmo estabelecimento.'});
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(id=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(id,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos. Todos os mapas devem pertencer ao mesmo estabelecimento.'});
           const id=randomUUID();db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
@@ -407,8 +419,9 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='edit-event'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
           if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
-          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||!ids.length||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
-          if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120))return json(res,400,{error:'Lineup inválido.'});
+          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
+          if(db.prepare('SELECT is_published FROM events WHERE id=?').get(id).is_published && (!ids.length||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
+           if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120))return json(res,400,{error:'Lineup inválido.'});
           db.exec('BEGIN');try{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
