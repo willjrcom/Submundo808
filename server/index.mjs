@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,nam
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
-if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 0');
+if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
 const DEFAULT_MAP_FRAME={x:22,y:22,width:56,height:56};
 const isValidMapFrame=f=>f&&typeof f==='object'&&!Array.isArray(f)&&
  [f.x,f.y,f.width,f.height].every(n=>typeof n==='number'&&Number.isFinite(n))&&
@@ -390,6 +390,7 @@ http.createServer(async (req,res)=>{
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
+             db.prepare('UPDATE events SET is_published=0 WHERE id=?').run(id);
             db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,201,{id});
