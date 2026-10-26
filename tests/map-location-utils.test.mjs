@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {stableGps,distanceMeters,gpsToMap,offMapInfo,mapSize} from '../artifacts/submundo-808/src/components/map-location-utils.ts';
+import {stableGps,distanceMeters,gpsToMap,offMapInfo,mapSize,formatMapDistance} from '../artifacts/submundo-808/src/components/map-location-utils.ts';
 
 const deltaLat=m=>m/111320;
 const deltaLng=(m,lat=-23.55)=>m/(111320*Math.cos(lat*Math.PI/180));
@@ -57,4 +57,52 @@ test('tamanho aproximado do mapa corresponde à calibração de 50 × 40 metros'
  const scale=mapSize(bounds);
  assert.ok(Math.abs(scale.width-50)<.1);
  assert.ok(Math.abs(scale.height-40)<.1);
+});
+
+test('seta aponta para a direção real do GPS fora dos quatro limites',()=>{
+ const cases=[
+  [{x:50,y:-20,inside:false},'acima',0],
+  [{x:50,y:120,inside:false},'abaixo',180],
+  [{x:-20,y:50,inside:false},'à esquerda',270],
+  [{x:120,y:50,inside:false},'à direita',90]
+ ];
+ for(const [point,direction,angle] of cases){
+  const info=offMapInfo(point,bounds);
+  assert.equal(info.direction,direction);
+  assert.ok(Math.abs(info.angleDegrees-angle)<0.001);
+  assert.ok(info.outsideMeters>0);
+  assert.ok(info.edgeX>=7&&info.edgeX<=93);
+  assert.ok(info.edgeY>=7&&info.edgeY<=93);
+ }
+});
+test('seta representa corretamente as quatro direções diagonais',()=>{
+ const cases=[
+  [{x:120,y:-25,inside:false},'acima e à direita',0,90],
+  [{x:120,y:125,inside:false},'abaixo e à direita',90,180],
+  [{x:-20,y:125,inside:false},'abaixo e à esquerda',180,270],
+  [{x:-20,y:-25,inside:false},'acima e à esquerda',270,360]
+ ];
+ for(const [point,direction,angleFrom,angleTo] of cases){
+  const info=offMapInfo(point,bounds);
+  assert.equal(info.direction,direction);
+  assert.ok(info.angleDegrees>angleFrom&&info.angleDegrees<angleTo);
+ }
+});
+test('seta permanece na borda mesmo com GPS muito distante',()=>{
+ const info=offMapInfo({x:2500,y:-3200,inside:false},bounds);
+ assert.equal(info.edgeX,93);
+ assert.equal(info.edgeY,7);
+ assert.equal(info.direction,'acima e à direita');
+ assert.ok(info.outsideMeters>1000);
+});
+test('distância exibida usa metros e quilômetros com formatação brasileira',()=>{
+ assert.equal(formatMapDistance(19.5),'20 m');
+ assert.equal(formatMapDistance(1000),'1 km');
+ assert.equal(formatMapDistance(1550),'1,6 km');
+ assert.equal(formatMapDistance(-1),'distância indisponível');
+});
+test('distâncias diagonais consideram largura e altura reais do mapa',()=>{
+ const info=offMapInfo({x:120,y:-25,inside:false},bounds);
+ assert.ok(Math.abs(info.outsideMeters-Math.hypot(10,10))<0.1);
+ assert.ok(Math.abs(info.angleDegrees-45)<0.2);
 });
