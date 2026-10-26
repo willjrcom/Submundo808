@@ -47,6 +47,7 @@ const DEFAULT_EVENT_PREFERENCES={
  accepted_documents:"A entrada exige documento original com foto ou documento digital exibido em aplicativo oficial.\nNão são aceitas fotos de documentos ou arquivos PDF fora dos aplicativos oficiais.\nDocumentos aceitos: RG, CIN, CNH, Carteira de Trabalho (somente física), Passaporte, Título de Eleitor (somente pelo aplicativo e-Título) e Carteira de Reservista.",
  cancellation_policy:"Cancelamentos de pedidos pagos serão aceitos até 7 dias após a compra, desde que a solicitação seja enviada até 48 horas antes do início do evento."
 };
+for(const [column,type] of [['contact_name',"TEXT NOT NULL DEFAULT ''"],['contact_phone',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(event_general_settings)').all().some(row=>row.name===column))db.exec('ALTER TABLE event_general_settings ADD COLUMN '+column+' '+type);}
 db.prepare('INSERT OR IGNORE INTO event_general_settings(id,minimum_age,entry_rules,accepted_documents,cancellation_policy) VALUES(1,?,?,?,?)').run(DEFAULT_EVENT_PREFERENCES.minimum_age,DEFAULT_EVENT_PREFERENCES.entry_rules,DEFAULT_EVENT_PREFERENCES.accepted_documents,DEFAULT_EVENT_PREFERENCES.cancellation_policy);
 // Atualiza apenas instalações ainda com os três campos vazios (estado inicial antigo).
 // Não reverte personalizações do administrador em inicializações posteriores.
@@ -253,7 +254,7 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
       if(url.pathname==='/api/public/branding'&&req.method==='GET')return json(res,200,{logo:db.prepare('SELECT logo_data FROM app_branding WHERE id=1').get()?.logo_data||''});
       if(url.pathname==='/api/public/event-settings'&&req.method==='GET'){
-        return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy FROM event_general_settings WHERE id=1').get()});
+        return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy,contact_name,contact_phone FROM event_general_settings WHERE id=1').get()});
       }
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
         const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city,v.services AS venue_services FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
@@ -315,11 +316,13 @@ http.createServer(async (req,res)=>{
           db.prepare('UPDATE app_branding SET logo_data=? WHERE id=1').run(logo);
           return json(res,200,{ok:true,logo});
         }
-        if(req.method==='GET'&&key==='event-settings')return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy FROM event_general_settings WHERE id=1').get()});
+        if(req.method==='GET'&&key==='event-settings')return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy,contact_name,contact_phone FROM event_general_settings WHERE id=1').get()});
         if(req.method==='POST'&&key==='event-settings'){
           const b=await body(req),age=Number(b.minimum_age);
           if(!Number.isInteger(age)||age<0||age>100||['entry_rules','accepted_documents','cancellation_policy'].some(k=>typeof b[k]!=='string'||b[k].length>5000))return json(res,400,{error:'Preferências inválidas.'});
-          db.prepare('UPDATE event_general_settings SET minimum_age=?,entry_rules=?,accepted_documents=?,cancellation_policy=? WHERE id=1').run(age,b.entry_rules,b.accepted_documents,b.cancellation_policy);
+          const contactName=String(b.contact_name||'').trim(),contactPhone=String(b.contact_phone||'').replace(/\D/g,'');
+          if(contactName.length>100||(contactPhone&&contactPhone.length!==11))return json(res,400,{error:'Informe um celular com DDD e 11 dígitos, ou deixe em branco.'});
+          db.prepare('UPDATE event_general_settings SET minimum_age=?,entry_rules=?,accepted_documents=?,cancellation_policy=?,contact_name=?,contact_phone=? WHERE id=1').run(age,b.entry_rules,b.accepted_documents,b.cancellation_policy,contactName,contactPhone);
           return json(res,200,{ok:true});
         }
         if(req.method==='GET'&&key==='overview'){
