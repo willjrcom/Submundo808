@@ -1,5 +1,5 @@
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
-import {validateDemoLocation} from './demo-geolocation.mjs';
+import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
@@ -326,7 +326,15 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='maps'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venue=String(b.venue_id||'');
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venue))return json(res,400,{error:'Estabelecimento e nome obrigatórios.'});
-          const id=randomUUID();db.prepare('INSERT INTO venue_maps VALUES(?,?,?,?)').run(id,venue,name,Date.now());return json(res,201,{id});
+          const id=randomUUID();
+          db.exec('BEGIN');
+          try{
+            db.prepare('INSERT INTO venue_maps(id,venue_id,name,created_at) VALUES(?,?,?,?)').run(id,venue,name,Date.now());
+            db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height) VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),id,'Pista principal','principal',0,0,100,55);
+            db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?)').run(id,JSON.stringify(DEMO_MARKERS.map(marker=>({...marker,id:randomUUID()}))));
+            db.exec('COMMIT');
+          }catch(error){db.exec('ROLLBACK');throw error;}
+          return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='areas'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),mapId=String(b.map_id||''),nums=[b.x,b.y,b.width,b.height].map(Number);
