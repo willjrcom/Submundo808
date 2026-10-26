@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NUL
 for(const [column,definition] of [['postal_code',"TEXT NOT NULL DEFAULT ''"],['street',"TEXT NOT NULL DEFAULT ''"],['neighborhood',"TEXT NOT NULL DEFAULT ''"],['complement',"TEXT NOT NULL DEFAULT ''"],['address_url',"TEXT NOT NULL DEFAULT ''"]]){
  if(!db.prepare('PRAGMA table_info(venues)').all().some(field=>field.name===column))db.exec('ALTER TABLE venues ADD COLUMN '+column+' '+definition);
 }
+if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='meaple_event_id'))db.exec("ALTER TABLE events ADD COLUMN meaple_event_id TEXT NOT NULL DEFAULT ''");
 for(const table of ['venues','events'])for(const [col,def] of (table==='venues'?[['services',"TEXT NOT NULL DEFAULT ''"]]:[['doors_at',"TEXT NOT NULL DEFAULT ''"],['cover_image',"TEXT NOT NULL DEFAULT ''"],['services',"TEXT NOT NULL DEFAULT ''"]])){
  if(!db.prepare('PRAGMA table_info('+table+')').all().some(row=>row.name===col))db.exec('ALTER TABLE '+table+' ADD COLUMN '+col+' '+def);
 }
@@ -465,6 +466,7 @@ http.createServer(async (req,res)=>{
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
             db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
+            db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
              db.prepare('UPDATE events SET is_published=0 WHERE id=?').run(id);
             db.exec('COMMIT');
@@ -502,6 +504,7 @@ http.createServer(async (req,res)=>{
            if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120||!validDjSocial(d)))return json(res,400,{error:'Lineup inválido.'});
           db.exec('BEGIN');try{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
+            db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
             for(const mid of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mid);
             db.exec('COMMIT');
