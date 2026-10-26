@@ -113,7 +113,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
      <div className="min-w-0 flex-1"><p className="font-bold">{dj.nome}</p><p className="mt-1 flex items-center gap-1 text-xs text-white/50"><Clock3 size={13}/>{hour(dj.inicio)} — {hour(dj.fim)}</p>
       <div className="mt-3 flex flex-wrap gap-2">
        {dj.instagram&&<a href={dj.instagram.startsWith('https://')?dj.instagram:'https://www.instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Instagram size={15}/> Instagram</a>}
-       {dj.spotify?.startsWith('https://open.spotify.com/')&&<a href={dj.spotify} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> {dj.spotify.includes('/search/')?'Buscar DJ no Spotify':'Ouvir no Spotify'}</a>}
+       {<a href={dj.spotify?.startsWith('https://open.spotify.com/')?dj.spotify:'https://open.spotify.com/search/'+encodeURIComponent(dj.nome)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> {dj.spotify?.startsWith('https://open.spotify.com/')&&!dj.spotify.includes('/search/')?'Ouvir no Spotify':'Buscar DJ no Spotify'}</a>}
       </div>
      </div>
     </div>)}
