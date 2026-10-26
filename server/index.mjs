@@ -170,13 +170,17 @@ http.createServer(async (req,res)=>{
         const now=Date.now();
         let choice=null;
         if(b.shareEnabled){
+          if(typeof b.eventId!=='string'||!b.eventId||b.eventId.length>100||
+             !db.prepare('SELECT 1 FROM events WHERE id=?').get(b.eventId)){
+            return json(res,400,{error:'Escolha um evento válido antes de compartilhar sua localização.'});
+          }
           try{choice=resolveSharingExpiry(db,{mode:b.mode,eventId:b.eventId,now});}
           catch(e){return json(res,e.status||400,{error:e.message});}
         }
         db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,updated_at=excluded.updated_at')
-          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,choice?.eventId||null,now);
+          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,now);
         if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
-        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:choice?.eventId||null,expiresAt:choice?.expiresAt||null});
+        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,expiresAt:choice?.expiresAt||null});
       }
       if (url.pathname==='/api/location/me' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
@@ -189,8 +193,9 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const lat=b.lat,lng=b.lng,accuracy=b.accuracy;
         if(typeof lat!=='number'||!Number.isFinite(lat)||Math.abs(lat)>90||typeof lng!=='number'||!Number.isFinite(lng)||Math.abs(lng)>180||typeof accuracy!=='number'||!Number.isFinite(accuracy)||accuracy<0||accuracy>10000)return json(res,400,{error:'Coordenadas inválidas.'});
         const now=Date.now();
-        const pref=db.prepare('SELECT share_enabled,share_expires_at FROM location_preferences WHERE user_id=?').get(user.id);
+        const pref=db.prepare('SELECT share_enabled,share_expires_at,share_event_id FROM location_preferences WHERE user_id=?').get(user.id);
         if(!pref?.share_enabled)return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
+        if(!pref.share_event_id)return json(res,403,{error:'Escolha um evento e reative o compartilhamento.'});
         if(!pref.share_expires_at||pref.share_expires_at<=now){
           expireLocationShares(db,now);
           return json(res,410,{error:'O prazo de compartilhamento terminou. Ative novamente para continuar.'});
@@ -205,8 +210,10 @@ http.createServer(async (req,res)=>{
       }
       if (url.pathname==='/api/location/friends' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const eventId=String(url.searchParams.get('event_id')||'');
+        if(!eventId||eventId.length>100||!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const now=Date.now();expireLocationShares(db,now);
-        const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now);
+        const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now,eventId);
         return json(res,200,{friends:rows});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
