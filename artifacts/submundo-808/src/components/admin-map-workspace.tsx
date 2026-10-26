@@ -37,6 +37,7 @@ async function api(route:string,payload?:object){
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
  const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false);
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
+ const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
@@ -56,9 +57,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
   let alive=true;setLoading(true);setInitialLoadError(false);
-  Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]).then(([a,m,maps])=>{
+  Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps'),api('products')]).then(([a,m,maps,products])=>{
    if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
+   setCatalogCategories([...new Set((products.items as {category:string}[]).map(p=>p.category.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')));
    setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
   }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
@@ -346,7 +348,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <label className="block space-y-2 text-xs text-white/65">Tamanho do ícone <span className="float-right">{selectedMarker.size||42}px</span><input aria-label="Tamanho do ponto" type="range" min="24" max="72" step="2" value={selectedMarker.size||42} onChange={e=>updateMarker({size:Number(e.target.value)})} className="w-full accent-[#c4ff40]"/></label>
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={selectedMarker.description||''} onChange={e=>updateMarker({description:e.target.value})} placeholder="Informações úteis sobre este ponto..."/></label>
      <div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Funcionamento (opcional)</p><p className="text-[11px] text-white/50">Sem horário, funciona durante todo o evento. O fechamento pode ocorrer após a meia-noite.</p><div className="grid grid-cols-2 gap-2"><label className="space-y-1 text-xs">Abre<input type="time" className={input} value={selectedMarker.opens_at||''} onChange={e=>updateMarker({opens_at:e.target.value})}/></label><label className="space-y-1 text-xs">Fecha<input type="time" className={input} value={selectedMarker.closes_at||''} onChange={e=>updateMarker({closes_at:e.target.value})}/></label></div><button type="button" className="text-xs underline text-white/60" onClick={()=>updateMarker({opens_at:'',closes_at:''})}>Remover horários</button></div>
-     {['bar','alimentacao','cozinha'].includes(selectedMarker.type)&&<div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Categorias vendidas neste ponto</p><p className="text-[11px] text-white/50">Use os mesmos nomes das categorias do catálogo de produtos. Separe por vírgula.</p><input key={selectedMarker.id} className={input} placeholder="Ex.: Cervejas, Drinks, Refrigerantes" defaultValue={(selectedMarker.categories||[]).join(', ')} onBlur={e=>{const values=[...new Set(e.target.value.split(',').map(x=>x.trim()).filter(Boolean))];if(JSON.stringify(values)!==JSON.stringify(selectedMarker.categories||[]))updateMarker({categories:values});}}/></div>}
+     {['bar','alimentacao','cozinha'].includes(selectedMarker.type)&&<div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Categorias vendidas neste ponto</p><p className="text-[11px] text-white/50">Selecione as categorias cadastradas no catálogo. Elas serão cruzadas com os produtos do evento.</p>{catalogCategories.length?<div className="space-y-2">{catalogCategories.map(category=><label key={category} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={(selectedMarker.categories||[]).includes(category)} onChange={e=>updateMarker({categories:e.target.checked?[...(selectedMarker.categories||[]),category]:(selectedMarker.categories||[]).filter(c=>c!==category)})}/>{category}</label>)}</div>:<p className="text-xs text-amber-200">Cadastre categorias de produtos antes de vinculá-las.</p>}</div>}
      {!editing&&<button onClick={()=>{setEditLayout(true);setResizeId(null);}} className={'w-full '+button}><Move size={16}/> Mover ponto</button>}
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
