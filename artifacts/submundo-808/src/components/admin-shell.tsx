@@ -132,7 +132,7 @@ export default function AdminShell(){
  {section==='Estabelecimentos'&&(editing||creating?
  <div className="mt-8 space-y-5">
   {editing&&<div role="tablist" aria-label="Seções do estabelecimento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
-   <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>setVenueTab('maps')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Mapas e ambientes ({maps.filter(map=>map.venue_id===editing.id).length})</button>
+   <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>setVenueTab('maps')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Plantas do local ({maps.filter(map=>map.venue_id===editing.id).length})</button>
    <button type="button" role="tab" aria-selected={venueTab==='info'} onClick={()=>setVenueTab('info')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='info'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Pencil size={16}/> Dados do estabelecimento</button>
   </div>}
   <div role="tabpanel" className="max-w-3xl">
