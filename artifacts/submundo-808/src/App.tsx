@@ -61,7 +61,16 @@ function ParticipantApp() {
   },[]);
   useEffect(()=>{
     const sync=()=>setActiveEventId(getActiveEventId());
-    const onStorage=(event:StorageEvent)=>{if(event.key===ACTIVE_EVENT_KEY)sync();};
+    const onStorage=(event:StorageEvent)=>{
+      if(event.key!==ACTIVE_EVENT_KEY)return;
+      const id=event.newValue||'';
+      // A deep-link currently open in this tab must not override a later
+      // selection saved by the same user in another browser tab.
+      if(eventIdFromPath(window.location.pathname)){
+        window.history.replaceState({tab:'inicio'},'',id?eventProgramPath(id):'/');
+      }
+      setActiveEventId(id);
+    };
     window.addEventListener(ACTIVE_EVENT_CHANGED,sync);
     window.addEventListener('storage',onStorage);
     return()=>{window.removeEventListener(ACTIVE_EVENT_CHANGED,sync);window.removeEventListener('storage',onStorage);};
