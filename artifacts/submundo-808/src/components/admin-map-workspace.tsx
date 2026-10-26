@@ -49,7 +49,7 @@ function sharedEdges(areas:Area[]){
  return edges;
 }
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
- const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false);
+ const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false),[renameOpen,setRenameOpen]=useState(false);
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
  const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
@@ -251,16 +251,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  if(showLoading)return <div className="space-y-4"><button onClick={back} className="flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar aos mapas</button><PageLoading label="Carregando editor de mapas" description="Carregando ambientes, pontos e calibração antes de abrir o editor."/></div>;
  if(initialLoadError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o mapa.</p><p className="mt-2 text-sm text-white/60">{error}</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 font-bold text-black">Tentar novamente</button><button onClick={back} className="ml-3 rounded-xl border border-white/15 px-4 py-2 text-white">Voltar</button></div>;
  return <div className="space-y-5">
-  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-white/[.035] p-4">
-   <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
-   <button type="submit" disabled={nameSaving||!mapName.trim()||mapName.trim()===map.name&&notice==='Nome da planta atualizado.'} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button>
-  </form>
+
   <button onClick={back} className="flex items-center gap-2 text-sm text-white/60 hover:text-white"><ArrowLeft size={16}/> Voltar aos mapas</button>
   <div className="flex flex-wrap items-center justify-between gap-3">
    <div><p className="text-xs uppercase tracking-widest text-[#c4ff40]">Editor do mapa</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">{displayLabel(mapName)}</h2><p className="mt-1 text-xs text-white/50">{dirty?'● Alterações não salvas':'Mapa salvo'} · {editing?'Modo edição ativo':'Modo de visualização'} · Área externa disponível para organizar</p></div>
    <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={()=>void discard()} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
   </div>
-  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2">
+  <div className="rounded-xl border border-white/10 bg-white/[.035]">
+  <div className="flex flex-wrap items-center gap-2 p-2">
+   <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
@@ -268,6 +267,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
+  </div>
+  {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
+   <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
+   <button type="submit" disabled={nameSaving||!mapName.trim()||mapName.trim()===map.name&&notice==='Nome da planta atualizado.'} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button>
+  </form>
+  }
   </div>
   <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
    <div className="min-w-0 space-y-3">
