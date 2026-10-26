@@ -16,7 +16,7 @@ test('venue detail owns its maps and opens the editor in a nested route',()=>{
  assert.match(shell,/onOpen=\{openMap\}/);
  assert.match(shell,/mapId\}\)/);
  assert.match(shell,/openedMap\?<AdminMapWorkspace/);
- assert.match(shell,/map\.venue_id===route\.id/);
+ assert.match(shell,/item\.venue_id===route\.id/);
  assert.match(venueMaps,/maps\.filter\(map=>map\.venue_id===venue\.id\)/);
 });
 test('adding and renaming maps never changes venue association',()=>{
