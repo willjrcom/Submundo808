@@ -1,4 +1,6 @@
 import AdminProducts from './admin-products';
+import NotFound from '../pages/not-found';
+import {ErrorBoundary} from './error-boundary';
 import { useEffect, useState } from 'react';
 import { EventEditor } from './admin-editors';
 import AdminMapWorkspace from './admin-map-workspace';
@@ -15,19 +17,20 @@ const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
 export default function AdminShell(){
  const [venueTab,setVenueTab]=useState<'maps'|'info'>('info');
+ const [currentPath,setCurrentPath]=useState(window.location.pathname);
  const [seedBusy,setSeedBusy]=useState(false),[seedMessage,setSeedMessage]=useState(''),[seedStage,setSeedStage]=useState('Criando...'),[useDemoGps,setUseDemoGps]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
  const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[postalCode,setPostalCode]=useState(''),[street,setStreet]=useState(''),[neighborhood,setNeighborhood]=useState(''),[complement,setComplement]=useState(''),[addressUrl,setAddressUrl]=useState(''),[venueSearch,setVenueSearch]=useState(''),[filteredVenues,setFilteredVenues]=useState<Item[]|null>(null),[searchBusy,setSearchBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
- useEffect(()=>{const canonical=adminRoutePath(parseAdminRoute(window.location.pathname));if(window.location.pathname!==canonical)window.history.replaceState({},'',canonical+window.location.search+window.location.hash);},[]);
+
  const section=route.section,creating=route.creating;
  const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
  const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
  const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Eventos',Icon:CalendarDays},{name:'Produtos e cardápios',Icon:ShoppingBag}];
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
- useEffect(()=>{const onPop=()=>{setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+ useEffect(()=>{const onPop=()=>{setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
  useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setPostalCode(editing?.postal_code||'');setStreet(editing?.street||'');setNeighborhood(editing?.neighborhood||'');setComplement(editing?.complement||'');setAddressUrl(editing?.address_url||'');},[section,route.id,route.creating,editing?.id]);
  useEffect(()=>{if(section!=='Visão geral'||!user?.isAdmin)return;const t=setInterval(()=>void api('overview').then(setStats).catch(()=>{}),30000);return ()=>clearInterval(t);},[section,user?.isAdmin]);
  // Preserve old /mapas/:id bookmarks while removing the standalone menu.
@@ -42,7 +45,7 @@ export default function AdminShell(){
   setRoute(next);
  },[section,route.id,listsLoaded,maps]);
  useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
- function go(next:AdminRoute){const path=adminRoutePath(next);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
+ function go(next:AdminRoute){const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
@@ -120,11 +123,14 @@ export default function AdminShell(){
   }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}
   finally{setBusy(false);}
  }
+ const pathParts=currentPath.split('/').filter(Boolean);
+ const knownAdminRoute=pathParts.length===0||(pathParts.length===1&&['venues','events','products','maps','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
  if(!user?.isAdmin)return <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[#0b090f] p-6 text-center text-white"><h1 className="text-2xl font-black">Painel administrativo</h1><p className="text-white/60">{user?'Sua conta não possui permissão de administrador.':'Faça login no Submundo 808 para acessar o painel.'}</p><a href="https://submundo.menudevendas.com.br/profile" className="rounded-xl bg-[#c4ff40] px-5 py-3 font-bold text-black">Ir para meu perfil</a></div>;
  return <div className="min-h-dvh bg-[#0b090f] text-white md:flex"><aside className="border-b border-white/10 bg-[#17101e] p-5 md:min-h-dvh md:w-64 md:border-b-0 md:border-r"><h1 className="mb-5 text-xl font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></h1><nav className="flex gap-2 overflow-x-auto md:flex-col">{sections.map(({name:label,Icon})=><button key={label} onClick={()=>navigate(label)} className={'flex shrink-0 items-center gap-2 rounded-xl px-3 py-3 text-sm '+(section===label?'bg-[#c4ff40] font-bold text-black':'text-white/70')}><Icon size={17}/>{label}</button>)}</nav><a className="mt-6 flex items-center gap-2 text-sm text-white/60" href="https://submundo.menudevendas.com.br/profile"><ArrowLeft size={16}/> Acessar visão do usuário</a></aside><main className="w-full min-w-0 max-w-6xl p-5 md:p-10">
+ {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
  {route.id&&!editing?<div className="rounded-xl border border-white/15 bg-white/5 p-6"><h2 className="text-xl font-bold">{!listsLoaded?'Carregando página...':'Registro não encontrado'}</h2><p className="mt-2 text-sm text-white/60">{!listsLoaded?'Restaurando o item da URL.':'O item desta URL não existe ou não pôde ser carregado.'}</p><button onClick={back} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Voltar à lista</button></div>:route.mapId&&!openedMap?<div role="alert" className="rounded-xl border border-white/15 bg-white/5 p-6"><h2 className="text-xl font-bold">Mapa não encontrado neste estabelecimento</h2><p className="mt-2 text-sm text-white/60">Verifique se o mapa ainda pertence a este local.</p><button onClick={back} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Voltar ao estabelecimento</button></div>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing&&section==='Estabelecimentos'?displayLabel(editing.name):editing?'Editar evento':creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
@@ -181,5 +187,6 @@ export default function AdminShell(){
     onDelete={item=>setConfirmDelete({id:item.id,name:item.name,entity:'event'})}/>)}
  {confirmDelete&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><div className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#241b2c] p-6"><h3 className="text-lg font-bold">Confirmar exclusão?</h3><p className="text-sm text-white/70">Excluir {displayLabel(confirmDelete.name)}? Esta ação não pode ser desfeita.</p><div className="flex justify-end gap-3"><button onClick={()=>setConfirmDelete(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button><button disabled={busy} onClick={()=>void removeConfirmed()} className="rounded-xl bg-red-600 px-4 py-2 font-bold">Excluir</button></div></div></div>}
  {error&&<p role="alert" className="mt-5 text-sm text-red-300">{error}</p>}</>}
+ </ErrorBoundary>}
  </main></div>;
 }
