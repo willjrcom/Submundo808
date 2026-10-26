@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {eventIdFromPath,eventProgramPath} from '../artifacts/submundo-808/src/components/active-event.ts';
 
 const root=new URL('../artifacts/submundo-808/src/',import.meta.url);
 const app=readFileSync(new URL('App.tsx',root),'utf8');
@@ -9,33 +10,59 @@ const menu=readFileSync(new URL('components/event-menu.tsx',root),'utf8');
 const map=readFileSync(new URL('components/venue-map.tsx',root),'utf8');
 const backend=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
 
-test('a aba Cardápio permanece visível mesmo sem evento selecionado',()=>{
+test('the same five participant tabs remain in one bottom navigation bar',()=>{
  assert.match(app,/\{tabs\.map\(\(\{id,title,Icon\}\)/);
- assert.match(app,/tab === 'cardapio' && <EventMenu\/>/);
- assert.doesNotMatch(app,/tab === 'cardapio' && eventSelected/);
+ assert.deepEqual(['inicio','mapa','cardapio','amigos','perfil'].map(tab=>app.includes("id: '"+tab+"'")),[true,true,true,true,true]);
+ assert.match(app,/\{tab === 'amigos' && <Friends\/>\}/);
+ assert.match(app,/\{tab === 'perfil' && <Account\/>\}/);
 });
-test('programação é uma rota com URL própria e botão de retorno à agenda',()=>{
- assert.match(app,/if\(segment==='programacao'\)return 'inicio'/);
- assert.match(home,/changeUrl\('\/programacao\/'\+encodeURIComponent\(id\)\)/);
- assert.match(home,/Voltar à agenda/);
+test('active event is centralized across home map and menu',()=>{
+ assert.match(app,/useState\(getActiveEventId\)/);
+ assert.match(app,/<PublicEvents activeEventId=\{activeEventId\}/);
+ assert.match(app,/<VenueMap activeEventId=\{activeEventId\}/);
+ assert.match(app,/<EventMenu activeEventId=\{activeEventId\}/);
+ assert.match(app,/activeEventId\?eventProgramPath\(activeEventId\):'\/'/);
+});
+test('homepage lists events when none chosen and opens chosen program',()=>{
+ assert.match(home,/const selected=activeEventId/);
+ assert.match(home,/onSelectEvent\(id\)/);
+ assert.match(home,/changeUrl\(eventProgramPath\(id\)\)/);
  assert.match(home,/if\(!event\)return/);
+ assert.match(home,/Trocar evento/);
+ assert.match(home,/onClearEvent\(\)/);
 });
-test('atualizar, voltar e avançar sincroniza a programação com a URL',()=>{
- assert.match(home,/useState\(eventFromUrl\)/);
- assert.match(home,/window\.addEventListener\('popstate',sync\)/);
- assert.match(home,/window\.addEventListener\('submundo-navigation',sync\)/);
+test('program deep links preserve the event ID and browser history works',()=>{
+ assert.equal(eventIdFromPath('/programacao/festa%20noite'),'festa noite');
+ assert.equal(eventIdFromPath('/mapa'),'');
+ assert.equal(eventProgramPath('festa noite'),'/programacao/festa%20noite');
+ assert.match(app,/window\.addEventListener\('popstate',onPop\)/);
+ assert.match(app,/window\.addEventListener\('storage',onStorage\)/);
+ assert.match(app,/if\(fromPath\)saveActiveEventId\(fromPath\)/);
+ assert.match(app,/else if\(window\.location\.pathname==='\/'\)resetActiveEventId\(\)/);
 });
-test('Cardápio possui seleção independente e consulta os preços por evento',()=>{
- assert.match(menu,/aria-label="Evento do cardápio"/);
- assert.match(menu,/fetch\('\/api\/public\/menu\?event_id='\+encodeURIComponent\(eventId\)\)/);
- assert.match(menu,/localStorage\.setItem\('submundo-event-id',id\)/);
- assert.match(menu,/submundo-event-selected/);
+test('menu loads prices only for active event and never switches to another on its own',()=>{
+ assert.match(menu,/fetch\('\/api\/public\/menu\?event_id='\+encodeURIComponent\(activeEventId\)\)/);
+ assert.match(menu,/if\(!activeEventId\)return/);
+ assert.match(menu,/onChooseEvent/);
+ assert.doesNotMatch(menu,/aria-label="Evento do cardápio"/);
+ assert.doesNotMatch(menu,/available\[0\]/);
 });
-test('trocar evento no cardápio atualiza o mapa se ele já estiver montado',()=>{
- assert.match(map,/window\.addEventListener\('submundo-event-selected',refresh\)/);
- assert.match(map,/\},\[eventRevision\]\);/);
+test('map selects only floorplans attached to the active event',()=>{
+ assert.match(map,/const event:EventChoice\|undefined=\(events\.items\|\|\[\]\)\.find/);
+ assert.match(map,/e\.id===activeEventId/);
+ assert.match(map,/event\.map_ids\?\.includes\(m\.id\)/);
+ assert.doesNotMatch(map,/aria-label="Escolher evento do mapa"/);
+ assert.doesNotMatch(map,/available\[0\]/);
+ assert.match(map,/if\(!activeEventId\)return/);
 });
-test('os dados de exemplo são criados no boot por padrão e podem ser desativados',()=>{
+test('map and friends position sharing are event-scoped while friends list is global',()=>{
+ assert.match(map,/friends\?event_id='\+encodeURIComponent\(eventId\)/);
+ assert.match(map,/await savePrefs\(true,true,shareMode,activeEventId\)/);
+ assert.match(map,/Compartilhamento encerrado ao trocar de evento/);
+ assert.match(backend,/p\.share_event_id=\?/);
+ assert.match(backend,/Escolha um evento válido antes de compartilhar/);
+});
+test('automatic sample events still initialize by default',()=>{
  assert.match(backend,/if\(process\.env\.AUTO_SEED_DEMO!=='false'\)/);
  assert.match(backend,/const initial=ensureDemoData\(db\)/);
  assert.match(backend,/const result=ensureDemoData\(db,\{location\}\)/);
