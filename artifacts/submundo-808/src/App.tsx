@@ -41,8 +41,9 @@ function tabFromUrl():Tab {
   const params=new URLSearchParams(window.location.search);
   if(params.has('invite'))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
-  if(segment==='programacao')return 'inicio';
-  return tabs.some(t=>t.id===segment)?segment as Tab:'inicio';
+  if(segment==='programacao'||segment==='schedule')return 'inicio';
+  const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
+  return routes[segment]||'inicio';
 }
 export default function App() {
   if(window.location.hostname==='admin.submundo.menudevendas.com.br')return <AdminShell/>;
@@ -80,7 +81,7 @@ function ParticipantApp() {
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+next;url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
+  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{
     const next=tabFromUrl();
     const fromPath=eventIdFromPath(window.location.pathname);
