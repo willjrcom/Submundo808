@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
 import AdminShell from './components/admin-shell';
 import Account from './components/account';
+import NotFound from './pages/not-found';
+import {ErrorBoundary} from './components/error-boundary';
 import Friends from './components/friends';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
 import { Instagram, ExternalLink } from 'lucide-react';
@@ -50,6 +52,7 @@ export default function App() {
   return <ParticipantApp/>;
 }
 function ParticipantApp() {
+  const [routePath,setRoutePath]=useState(window.location.pathname);
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   useEffect(()=>{const aliases:Record<string,string>={mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile',cadastrar:'register',programacao:'schedule'};const parts=window.location.pathname.split('/');const canonical=aliases[parts[1]];if(canonical){parts[1]=canonical;window.history.replaceState({},'',parts.join('/')+window.location.search+window.location.hash);}},[]);
   const [activeEventId,setActiveEventId]=useState(getActiveEventId);
@@ -82,8 +85,9 @@ function ParticipantApp() {
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  const navigate=(next:Tab)=>{const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
+  const navigate=(next:Tab)=>{setRoutePath(next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next]);const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{
+    setRoutePath(window.location.pathname);
     const next=tabFromUrl();
     const fromPath=eventIdFromPath(window.location.pathname);
     if(fromPath)saveActiveEventId(fromPath);
@@ -104,6 +108,8 @@ function ParticipantApp() {
   const message = (text: string) => { setNotice(text); };
   const addFriend = () => { const value = friendName.trim(); if (!value) return; if (friends.some(f => f.name.toLowerCase() === value.toLowerCase())) { message('Esse nome já está na sua lista.'); return; } setFriends(v => [...v, { id: Date.now(), name: value, status: 'pendente', share: false }]); setFriendName(''); message('Convite demonstrativo criado neste aparelho.'); };
   const changeFriend = (id: number, patch: Partial<Friend>) => setFriends(v => v.map(f => f.id === id ? { ...f, ...patch } : f));
+  const parts=routePath.split('/').filter(Boolean);
+  const allowed=parts.length===0||(parts.length===1&&['map','menu','friends','profile','login','register','recovery','reset-password','change-password','mapa','cardapio','amigos','perfil','cadastrar'].includes(parts[0]))||(parts.length===2&&['schedule','programacao'].includes(parts[0])&&!!parts[1]);
   return <div className="min-h-dvh bg-[#0b090f] text-[#f5f2fa] selection:bg-[#c4ff40] selection:text-black">
     <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_50%_-10%,rgba(164,49,207,.2),transparent_50%)]" />
     <div className="relative mx-auto max-w-xl pb-28">
@@ -112,11 +118,12 @@ function ParticipantApp() {
         <button aria-label="Avisos" onClick={() => message('Nenhum comunicado oficial cadastrado.')} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
       </header>
       <main className="px-5 pt-7">
-        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
+       {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
         {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/></div>}
         {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={chooseAnotherEvent}/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
+       </ErrorBoundary>}
       </main>
     </div>
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
