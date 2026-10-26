@@ -299,7 +299,10 @@ http.createServer(async (req,res)=>{
             if(!m||typeof m.id!=='string'||!m.id||m.id.length>100||markerIds.has(m.id)||typeof m.name!=='string'||!m.name.trim()||m.name.length>100||
               typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=-35&&n<=135)||
               !['square','circle',undefined].includes(m.shape)||!(m.size===undefined||(Number.isFinite(m.size)&&m.size>=24&&m.size<=72))||
-              !validColor(m.color)||typeof(m.description||'')!=='string'||String(m.description||'').length>500
+              !validColor(m.color)||typeof(m.description||'')!=='string'||String(m.description||'').length>500||
+              ![m.opens_at,m.closes_at].every(t=>t===undefined||t===''||typeof t==='string'&&/^([01]\\d|2[0-3]):[0-5]\\d$/.test(t))||
+              (!!m.opens_at!==!!m.closes_at)||
+              (m.categories!==undefined&&(!Array.isArray(m.categories)||m.categories.length>30||m.categories.some(c=>typeof c!=='string'||!c.trim()||c.length>80)))
             )return json(res,400,{error:'Ponto inválido: verifique nome, formato, tamanho e posição.'});
             if(m.type==='entrada'&&!m.anchor)return json(res,400,{error:'Entradas precisam estar ancoradas a uma borda do mapa.'});
             if(m.anchor!==undefined){
