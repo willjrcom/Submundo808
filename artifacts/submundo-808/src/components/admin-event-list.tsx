@@ -64,7 +64,7 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
     </label>
    </div>
    <label className="block space-y-1 text-xs text-white/55">Publicação
-    <select value={publication} onChange={e=>setPublication(e.target.value)} className={selectClass}>
+    <select value={publication} onChange={e=>{setPublication(e.target.value);if(e.target.value==='draft')setPeriod('all');}} className={selectClass}>
      <option value="all">Publicados e rascunhos</option><option value="published">Somente publicados</option><option value="draft">Somente rascunhos</option>
     </select>
    </label>
