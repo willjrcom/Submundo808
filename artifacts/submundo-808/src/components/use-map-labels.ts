@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
-import {layoutRoomLabels} from './map-label-layout';
+import {layoutRoomLabels,layoutPointLabels} from './map-label-layout';
 
 type Room={id:string;name:string;x:number;y:number;width:number;height:number};
 type Point={x:number;y:number;name:string;size?:number};
@@ -23,5 +23,6 @@ export default function useMapLabels(rooms:Room[],points:Point[]){
   return()=>window.removeEventListener('resize',update);
  },[mapElement]);
  const labels=useMemo(()=>layoutRoomLabels(rooms,points,dimensions.width,dimensions.height),[rooms,points,dimensions]);
- return {labels,setMapElement};
+ const pointLabels=useMemo(()=>layoutPointLabels(rooms,points,dimensions.width,dimensions.height),[rooms,points,dimensions]);
+ return {labels,pointLabels,setMapElement};
 }
