@@ -112,3 +112,6 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .marquee-track, .eq-bar, .ping, .scanline, .anim-flicker { animation: none; }
 }
+
+/* Fundo de instalação/splash: neutro e preto, independente da cor de destaque. */
+html, body, #root { background-color: #000; }
