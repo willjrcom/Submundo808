@@ -2,6 +2,7 @@ import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
+import {ensureDemoShowcase} from './demo-showcase.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -100,7 +101,8 @@ const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.
 if(process.env.AUTO_SEED_DEMO!=='false'){
  try{
   const initial=ensureDemoData(db);
-  console.log('Sample catalog ready:',initial.created?'created':'reused',initial.id);
+  const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
+  console.log('POC catalog ready:',initial.created?'created':'reused',initial.id,'showcase events added:',showcase.eventsAdded,'showcase maps added:',showcase.mapsAdded);
  }catch(error){
   console.error('Could not initialize sample data:',error);
  }
@@ -377,7 +379,8 @@ http.createServer(async (req,res)=>{
           let location;
           try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}
           const result=ensureDemoData(db,{location});
-          return json(res,result.created?201:200,result);
+          const showcase=ensureDemoShowcase(db,{baseEventId:result.id});
+          return json(res,result.created||showcase.created?201:200,{...result,showcase});
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
