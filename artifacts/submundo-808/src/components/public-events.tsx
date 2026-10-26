@@ -80,7 +80,9 @@ export default function PublicEvents(){
    {events.map(e=><button key={e.id} type="button" onClick={()=>openEvent(e.id)} className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-white/15 bg-white/[.045] p-5 text-left transition hover:border-[#c4ff40]/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#c4ff40]">
     <div className="min-w-0">
      <p className="text-lg font-black uppercase">{displayLabel(e.name)}</p>
-     <p className="mt-2 flex items-center gap-2 text-sm text-white/55"><CalendarDays size={15}/>{date(e.starts_at)}</p>
+     <p className="mt-2 flex items-center gap-2 text-sm text-white/70"><CalendarDays size={15} className="shrink-0 text-[#c4ff40]"/>{date(e.starts_at)}</p>
+     <p className="mt-2 flex items-center gap-2 text-xs text-white/60"><MapPin size={15} className="shrink-0"/>{displayLabel(e.venue.name)} · {e.venue.city}</p>
+     <p className="mt-2 flex items-center gap-2 text-xs text-white/50"><Music2 size={15} className="shrink-0"/>{e.lineup.length} DJs · {e.map_ids.length} {e.map_ids.length===1?'mapa':'mapas'}</p>
      <p className="mt-3 text-sm font-bold text-[#c4ff40]">Ver programação</p>
     </div>
     <ChevronRight size={23} className="shrink-0 text-[#c4ff40] transition group-hover:translate-x-1"/>
