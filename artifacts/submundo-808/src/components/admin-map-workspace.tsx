@@ -232,7 +232,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       ref={pasteboard} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag}
       className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
-     ><div ref={setCanvasRef}
+     >
+      {active&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
+       <button type="button" title="Mover ambiente selecionado" aria-label="Mover ambiente selecionado" aria-pressed={editing&&resizeId!==active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setEditLayout(true);setResizeId(null);}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/> Mover</button>
+       <button type="button" title="Redimensionar ambiente selecionado" aria-label="Redimensionar ambiente selecionado" aria-pressed={editing&&resizeId===active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();activateResize();}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId===active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Maximize2 size={15}/> {editing&&resizeId===active.id?'Concluir':'Redimensionar'}</button>
+      </div>}
+     <div ref={setCanvasRef}
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
       style={{left:frame.x+'%',top:frame.y+'%',width:frame.width+'%',height:frame.height+'%',backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
       onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');else{setSelected('');setResizeId(null);}}}
@@ -315,12 +320,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <label className="block space-y-1 text-xs text-white/65">Tipo e ícone<select className={input} value={active.icon||active.kind} onChange={e=>updateArea({kind:e.target.value,icon:e.target.value})}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(areaColor(active),color=>updateArea({color}))}</div>
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={active.description||''} onChange={e=>updateArea({description:e.target.value})} placeholder="Descreva este ambiente..."/></label>
-     <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3">
-      <p className="text-xs font-bold text-[#c4ff40]">Posição e tamanho</p>
-      <button onClick={()=>{setEditLayout(true);setResizeId(null);}} aria-pressed={editing&&resizeId!==active.id} className={'w-full '+button+' '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Move size={16}/> Mover este ambiente</button>
-      <button onClick={activateResize} aria-pressed={resizeId===active.id&&editing} className={'w-full '+button+' '+(resizeId===active.id&&editing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{resizeId===active.id&&editing?'Concluir redimensionamento':'Redimensionar este ambiente'}</button>
-      <p className="text-[11px] leading-relaxed text-white/50">Use esses botões a qualquer momento, mesmo depois de salvar. Arraste para fora do quadro enquanto reorganiza o mapa.</p>
-     </div>
+
      <p className="text-[11px] text-white/45">Ao redimensionar uma borda compartilhada, o vizinho acompanha o ajuste. Arrastar o interior move somente o ambiente selecionado.</p>
      {areas.some(a=>a.id!==active.id&&sharesBorder(a,active))&&<p className="text-[11px] text-[#c4ff40]">Este ambiente compartilha bordas com outros.</p>}
 
