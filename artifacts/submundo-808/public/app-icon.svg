@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="100" fill="#090b09"/>
-  <g fill="none" stroke="#b6ff00" stroke-width="24">
-    <path d="M130 162h68v80h-68zM130 242h68v88h-68zM222 162h68v168h-68zM314 162h68v80h-68zM314 242h68v88h-68z"/>
-    <path d="M130 374h252" stroke-width="12"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Submundo 808">
+<rect width="512" height="512" rx="112" fill="#000"/>
+<circle cx="256" cy="256" r="205" fill="#000"/>
+<g fill="#e6eee4" font-family="Arial Black,Arial,sans-serif" font-style="italic" font-weight="900" text-anchor="middle">
+<text x="239" y="245" font-size="122" letter-spacing="-12">SM</text>
+<text x="256" y="352" font-size="142" letter-spacing="-14">808</text>
+</g>
+<g fill="none" stroke="#e6eee4" stroke-width="5" stroke-linejoin="round"><path d="M355 164l19-49 11 20 22 7 23 29-25 7-14 27-34 4z"/></g>
 </svg>
