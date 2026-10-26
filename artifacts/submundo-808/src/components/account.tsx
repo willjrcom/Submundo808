@@ -95,7 +95,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       {error&&<p role="alert" className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}
       {success&&<p role="status" className="rounded-lg border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-3 text-xs text-[#c4ff40]">{success}</p>}
       <button disabled={busy} className={btn}>{busy?'Aguarde...':mode==='register'?'Criar conta':({login:'Entrar',forgot:'Enviar link de recuperação',password:'Salvar nova senha',reset:'Redefinir senha'})[mode]}</button>
-      {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2"><button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button><button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastrar pessoa</button></div>}
+      {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2"><button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button><button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button></div>}
       {mode!=='login'&&<button type="button" onClick={()=>{if(user){change('login');}else{change('login');}}} className="flex w-full items-center justify-center gap-2 pt-2 text-xs text-white/60"><ArrowLeft size={14}/> {user?'Voltar':'Voltar para login'}</button>}
     </form>
     {mode==='forgot'&&<p className="mt-4 text-xs leading-relaxed text-white/50">O envio de e-mails depende da configuração do serviço de recuperação pelo administrador.</p>}
