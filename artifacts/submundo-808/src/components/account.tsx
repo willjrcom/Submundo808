@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
-import { UserRound, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
+import { UserRound, Pencil, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2 } from 'lucide-react';
 type User = { id:string; name:string; email:string; phone?:string; instagram?:string; isAdmin?:boolean };
 type Mode = 'login'|'register'|'forgot'|'password'|'reset';
 function authError(status?:string) {
@@ -59,7 +59,9 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   if(user && mode!=='password' && mode!=='reset')return <div>
     <section className="mb-5 overflow-hidden rounded-3xl border border-[#c4ff40]/25 bg-[#17101e]">
-      <div className="h-24 bg-[radial-gradient(circle_at_70%_20%,#652b77,transparent_60%),linear-gradient(100deg,#2b1335,#15111d)]"/>
+      <div className="relative h-24 bg-[radial-gradient(circle_at_70%_20%,#652b77,transparent_60%),linear-gradient(100deg,#2b1335,#15111d)]">
+       <button type="button" onClick={()=>setProfileEditing(v=>!v)} aria-expanded={profileEditing} className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-[#17101e]/85 px-3 py-2 text-xs font-semibold text-[#c4ff40] shadow-lg backdrop-blur transition hover:border-[#c4ff40]/70" title={profileEditing?'Fechar edição do perfil':'Editar meu perfil'}><Pencil size={14}/>{profileEditing?'Fechar':'Editar perfil'}</button>
+      </div>
       <div className="relative px-5 pb-5">
         <div className="-mt-9 flex items-end justify-between"><div className="flex h-[76px] w-[76px] items-center justify-center rounded-full border-4 border-[#17101e] bg-[#c4ff40]/20 text-[#c4ff40]"><UserRound size={38}/></div><span className="rounded-full border border-[#c4ff40]/30 px-3 py-1 text-[10px] font-bold text-[#c4ff40]">Membro</span></div>
         <h2 className="mt-3 break-words text-2xl font-black">{user.name}</h2>
@@ -68,11 +70,11 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/10 pt-4 text-xs text-white/55"><span>ID: {user.id.slice(0,8).toUpperCase()}</span><span className="text-right">Perfil pessoal</span></div>
       </div>
     </section>
-    <div className="mb-4 rounded-xl border border-white/10 bg-white/[.03] p-4">
-     <button type="button" onClick={()=>setProfileEditing(v=>!v)} className="w-full text-left text-sm font-bold text-[#c4ff40]">{profileEditing?'Fechar edição':'Editar meu perfil'}</button>
-     {profileEditing&&<form className="mt-4 space-y-3" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await request('profile',{name:profileName,phone:profilePhone,instagram:profileInstagram});const j=await request('me');setUser(j.user);onUser?.(j.user);setProfileEditing(false);setSuccess('Perfil atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar perfil');}finally{setBusy(false);}}}><label className="block text-xs">Nome ou apelido<input required minLength={2} value={profileName} onChange={e=>setProfileName(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Celular / WhatsApp (opcional)<input type="tel" value={profilePhone} onChange={e=>setProfilePhone(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Instagram (opcional)<input value={profileInstagram} onChange={e=>setProfileInstagram(e.target.value)} placeholder="@usuario" className={field+' mt-1'}/></label><p className="text-xs text-white/50">Seus contatos não ficam visíveis aos amigos automaticamente.</p><button disabled={busy} type="submit" className={btn}>Salvar perfil</button></form>}
-     {success&&<p role="status" className="mt-2 text-xs text-[#c4ff40]">{success}</p>}
-    </div>
+    {profileEditing&&<div className="mb-4 rounded-xl border border-[#c4ff40]/25 bg-white/[.03] p-4">
+     <h3 className="text-sm font-bold text-[#c4ff40]">Editar meu perfil</h3>
+     <form className="mt-4 space-y-3" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await request('profile',{name:profileName,phone:profilePhone,instagram:profileInstagram});const j=await request('me');setUser(j.user);onUser?.(j.user);setProfileEditing(false);setSuccess('Perfil atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar perfil');}finally{setBusy(false);}}}><label className="block text-xs">Nome ou apelido<input required minLength={2} value={profileName} onChange={e=>setProfileName(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Celular / WhatsApp (opcional)<input type="tel" value={profilePhone} onChange={e=>setProfilePhone(e.target.value)} className={field+' mt-1'}/></label><label className="block text-xs">Instagram (opcional)<input value={profileInstagram} onChange={e=>setProfileInstagram(e.target.value)} placeholder="@usuario" className={field+' mt-1'}/></label><p className="text-xs text-white/50">Seus contatos não ficam visíveis aos amigos automaticamente.</p><button disabled={busy} type="submit" className={btn}>Salvar perfil</button></form>
+    </div>}
+    {success&&<p role="status" className="mb-4 text-xs text-[#c4ff40]">{success}</p>}
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
         {(demoCredentials||savedDemoEmail===user.email)&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials?.email||savedDemoEmail}</p><p className="mt-1 break-all">Senha: {demoCredentials?.password||'Exibida somente na criação da conta'}</p>{demoCredentials&&<button onClick={()=>void navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`)} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">Copiar credenciais</button>}</div>}
 
