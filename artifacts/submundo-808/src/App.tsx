@@ -53,6 +53,8 @@ export default function App() {
 }
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
+  const [brandLogo,setBrandLogo]=useState('');
+  useEffect(()=>{let alive=true;const load=()=>{fetch('/api/public/branding').then(r=>r.json()).then(j=>{if(alive)setBrandLogo(j.logo||'');}).catch(()=>{});};load();window.addEventListener('focus',load);return()=>{alive=false;window.removeEventListener('focus',load);};},[]);
   const [tab, setTab] = useState<Tab>(tabFromUrl);
   const [activeEventId,setActiveEventId]=useState(getActiveEventId);
   const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
@@ -113,7 +115,7 @@ function ParticipantApp() {
     <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_50%_-10%,rgba(164,49,207,.2),transparent_50%)]" />
     <div className="relative mx-auto max-w-xl pb-28">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#0b090f]/90 px-5 py-4 backdrop-blur-xl">
-        <div className="flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#c4ff40] text-xl font-black text-black">8</div><div><p className="font-display text-[13px] font-black uppercase tracking-[-.06em] text-white">SUBMUNDO<span className="text-[#c4ff40]">808</span></p><p className="text-[9px] uppercase tracking-[.22em] text-white/45">Passaporte digital</p></div></div>
+        <div className="flex items-center gap-2">{brandLogo&&<img src={brandLogo} alt="Logo Submundo 808" className="h-9 w-9 rounded-lg object-cover"/>}<p className="font-display text-[16px] font-black uppercase tracking-[-.06em] text-white">SUBMUNDO<span className="text-[#c4ff40]">808</span></p></div>
         <button aria-label="Avisos" onClick={() => message('Nenhum comunicado oficial cadastrado.')} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
       </header>
       <main className="px-5 pt-7">
