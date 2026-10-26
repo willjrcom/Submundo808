@@ -19,6 +19,13 @@ export function parseAdminRoute(pathname:string):AdminRoute{
  const segments=pathname.split('/').filter(Boolean);
  const section=sectionBySegment[segments[0]]||'Visão geral';
  if(section==='Visão geral'||section==='Produtos e cardápios')return {section,id:null,creating:false};
+ if(section==='Estabelecimentos'&&segments.length===4&&segments[2]==='mapas'){
+  try{
+   const id=decodeURIComponent(segments[1]),mapId=decodeURIComponent(segments[3]);
+   if(id&&mapId&&id!=='novo'&&mapId!=='novo')return {section,id,creating:false,mapId};
+  }catch{}
+  return {section,id:null,creating:false};
+ }
  const detail=segments.length===2?segments[1]:null;
  if(detail==='novo')return {section,id:null,creating:true};
  if(detail){
@@ -30,6 +37,8 @@ export function parseAdminRoute(pathname:string):AdminRoute{
 export function adminRoutePath(route:AdminRoute):string{
  const base=roots[route.section];
  if(route.section==='Visão geral'||route.section==='Produtos e cardápios')return base;
+ if(route.section==='Estabelecimentos'&&route.id&&route.mapId)
+  return base+'/'+encodeURIComponent(route.id)+'/mapas/'+encodeURIComponent(route.mapId);
  if(route.creating)return base+'/novo';
  if(route.id)return base+'/'+encodeURIComponent(route.id);
  return base;
