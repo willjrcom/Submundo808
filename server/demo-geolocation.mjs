@@ -6,11 +6,15 @@ export const DEMO_HEIGHT_METERS=40;
 export const DEMO_SPACING_METERS=10;
 const METERS_PER_DEGREE_LAT=111_320;
 
+// Posicionamento inicial inspirado na planta: palco no alto, bar principal
+// à esquerda, banheiros à direita, entrada embaixo e cerveja no canto inferior.
+// Aplica-se a mapas novos; mapas editados continuam intactos.
 export const DEMO_MARKERS=[
-  {name:'Bar principal',type:'bar',x:40,y:37.5,shape:'square',size:42},
-  {name:'Banheiros',type:'banheiro',x:60,y:37.5,shape:'square',size:42},
-  {name:'Palco',type:'palco',x:40,y:62.5,shape:'square',size:42},
-  {name:'Entrada',type:'entrada',x:60,y:62.5,shape:'square',size:42}
+  {name:'Palco',type:'palco',x:50,y:13,shape:'square',size:42},
+  {name:'Bar principal',type:'bar',x:10,y:51,shape:'square',size:42},
+  {name:'Banheiros',type:'banheiro',x:90,y:51,shape:'square',size:42},
+  {name:'Entrada',type:'entrada',x:50,y:86,shape:'square',size:42},
+  {name:'Bar de cerveja',type:'bar',x:19,y:77,shape:'square',size:42}
 ];
 
 // Coordenadas originais do primeiro seed. Só reorganizamos as posições se
