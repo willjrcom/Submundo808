@@ -418,13 +418,7 @@ export default function VenueMap(){
    {eventChoices.map(choice=><option key={choice.id} value={choice.id}>{displayLabel(choice.name)}</option>)}
   </select>}
  </div>
- <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
-  <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
-  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapped.inside?'Você está no mapa.':positionUncertain?'Você parece estar '+myOutside?.direction+' do mapa, mas o GPS está impreciso.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+'.'}</p>
-  {location&&<p className="mt-1 text-white/40">Precisão do GPS: ±{Math.round(location.accuracy)} m</p>}
- </div>
- {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
- {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
+  {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-hidden rounded-2xl border border-white/15 bg-[#17111d] p-3"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  {data?.areas.map(a=>{const color=validColor(a.color);return <div key={a.id} role="img" aria-label={'Ambiente: '+a.name} title={a.description||a.name} className="absolute border-2" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:color,backgroundColor:color+'33'}}/>;})}
  {roomLabels.map(label=>{
@@ -449,6 +443,12 @@ export default function VenueMap(){
  {visibleFriends.map(f=><span key={f.id} title={f.name+' · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-400 px-2 py-1 text-[10px] font-bold text-black" style={{left:f.point!.x+'%',top:f.point!.y+'%'}}>{f.name}</span>)}
  {outsideFriends.map(f=><span key={f.id} title={f.name+' fora da área de referência, a aproximadamente '+Math.round(f.edge!.outsideMeters)+' m do limite · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg border border-amber-300 bg-[#231b13] px-1.5 py-1 text-[10px] font-bold text-amber-100" style={{left:f.edge!.edgeX+'%',top:f.edge!.edgeY+'%'}}><ArrowUp size={13} style={{transform:'rotate('+f.edge!.angleDegrees+'deg)'}}/> {f.name.slice(0,12)} · {f.edge!.outsideMeters<=f.accuracy?'perto do limite':'~'+formatMapDistance(f.edge!.outsideMeters)}</span>)}
  </div>{selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&<div className="mt-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 p-3 text-xs"><p className="font-bold text-[#c4ff40]">{data.markers.find(m=>m.id===selectedMarkerId)?.name}</p><p className="mt-1 text-white/70">{data.markers.find(m=>m.id===selectedMarkerId)?.description||'Ponto de referência no mapa.'}</p></div>}</div>}
+ <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
+  <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
+  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapped.inside?'Você está no mapa.':positionUncertain?'Você parece estar '+myOutside?.direction+' do mapa, mas o GPS está impreciso.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+'.'}</p>
+  {location&&<p className="mt-1 text-white/40">Precisão do GPS: ±{Math.round(location.accuracy)} m</p>}
+ </div>
+ {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
  {mapError&&<p role="alert" className="text-sm text-red-300">{mapError}</p>}
  </section>;
 }
