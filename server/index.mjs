@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,nam
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
+const DEFAULT_MAP_FRAME={x:22,y:22,width:56,height:56};
+const isValidMapFrame=f=>f&&typeof f==='object'&&!Array.isArray(f)&&
+ [f.x,f.y,f.width,f.height].every(n=>typeof n==='number'&&Number.isFinite(n))&&
+ f.x>=0&&f.y>=0&&f.width>=18&&f.height>=18&&f.x+f.width<=100.00001&&f.y+f.height<=100.00001;
+const frameOf=row=>{
+ try{const f=JSON.parse(row?.frame_json||'null');return isValidMapFrame(f)?f:{...DEFAULT_MAP_FRAME};}
+ catch{return {...DEFAULT_MAP_FRAME};}
+};
+if(!db.prepare('PRAGMA table_info(venue_maps)').all().some(c=>c.name==='frame_json'))
+ db.exec("ALTER TABLE venue_maps ADD COLUMN frame_json TEXT NOT NULL DEFAULT '{\"x\":22,\"y\":22,\"width\":56,\"height\":56}'");
 db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL)');
 for(const [column,definition] of [
  ['share_mode',"TEXT NOT NULL DEFAULT 'event'"],
@@ -202,16 +212,16 @@ http.createServer(async (req,res)=>{
         return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
       }
       if(url.pathname==='/api/public/maps'&&req.method==='GET'){
-        const rows=db.prepare('SELECT id,venue_id,name FROM venue_maps').all();
-        return json(res,200,{items:rows});
+        const rows=db.prepare('SELECT id,venue_id,name,frame_json FROM venue_maps').all();
+        return json(res,200,{items:rows.map(m=>({...m,frame:frameOf(m),frame_json:undefined}))});
       }
       if(url.pathname==='/api/public/map-detail'&&req.method==='GET'){
         const id=String(url.searchParams.get('map_id')||'');
-        const map=db.prepare('SELECT id,name,venue_id FROM venue_maps WHERE id=?').get(id);
+        const map=db.prepare('SELECT id,name,venue_id,frame_json FROM venue_maps WHERE id=?').get(id);
         if(!map)return json(res,404,{error:'Mapa não encontrado.'});
         const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json,description,color,icon FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),gps_json:undefined}));
         const markers=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(id);
-        return json(res,200,{map,areas,markers:JSON.parse(markers?.markers_json||'[]')});
+        return json(res,200,{map:{id:map.id,name:map.name,venue_id:map.venue_id,frame:frameOf(map)},areas,markers:JSON.parse(markers?.markers_json||'[]')});
       }
       if(url.pathname.startsWith('/api/admin/')){
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
@@ -220,7 +230,7 @@ http.createServer(async (req,res)=>{
         const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
         if(req.method==='GET'&&tables[key]){
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
-          return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:row)});
+          return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:key==='maps'?{...row,frame:frameOf(row),frame_json:undefined}:row)});
         }
         if(req.method==='GET'&&key==='products')return json(res,200,{items:db.prepare('SELECT * FROM products ORDER BY category,name').all()});
         if(req.method==='GET'&&key==='event-products'){const id=String(url.searchParams.get('event_id')||'');return json(res,200,{items:db.prepare('SELECT product_id,price_cents FROM event_products WHERE event_id=?').all(id)});}
@@ -255,8 +265,9 @@ http.createServer(async (req,res)=>{
           db.prepare('UPDATE venue_maps SET name=?,venue_id=? WHERE id=?').run(name,venueId,id);return json(res,200,{ok:true});
         }
         if(req.method==='POST'&&key==='save-layout'){
-          const b=await body(req),mapId=String(b.map_id||''),areas=b.areas,markers=b.markers;
+          const b=await body(req),mapId=String(b.map_id||''),areas=b.areas,markers=b.markers,frame=b.frame;
           if(!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(mapId))return json(res,404,{error:'Mapa não encontrado.'});
+          if(frame!==undefined&&!isValidMapFrame(frame))return json(res,400,{error:'Dimensões da área do mapa inválidas.'});
           if(!Array.isArray(areas)||areas.length>150||!Array.isArray(markers)||markers.length>250)return json(res,400,{error:'Limite de ambientes ou pontos excedido.'});
           const ids=new Set();
           const validColor=c=>c===undefined||/^#[0-9a-fA-F]{6}$/.test(c);
@@ -286,6 +297,7 @@ http.createServer(async (req,res)=>{
             const insert=db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height,gps_json,description,color,icon) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
             for(const a of areas)insert.run(a.id,mapId,a.name.trim(),a.kind,a.x,a.y,a.width,a.height,JSON.stringify(a.gps),String(a.description||''),String(a.color||'#9747FF'),String(a.icon||''));
             db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?) ON CONFLICT(map_id) DO UPDATE SET markers_json=excluded.markers_json').run(mapId,JSON.stringify(markers));
+            if(frame!==undefined)db.prepare('UPDATE venue_maps SET frame_json=? WHERE id=?').run(JSON.stringify(frame),mapId);
             db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,200,{ok:true,areas:areas.length,markers:markers.length});
