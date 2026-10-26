@@ -41,3 +41,14 @@ test('barra final e rota desconhecida não redirecionam para um editor inválido
  assert.equal(parseAdminRoute('/mapas/').section,'Mapas e ambientes');
  assert.deepEqual(parseAdminRoute('/nao-existe'),{section:'Visão geral',id:null,creating:false});
 });
+
+test('nested map route preserves venue and map after refresh',()=>{
+ const url='/estabelecimentos/venue-42/mapas/map-17';
+ assert.deepEqual(parseAdminRoute(url),{section:'Estabelecimentos',id:'venue-42',creating:false,mapId:'map-17'});
+ assert.equal(adminRoutePath(parseAdminRoute(url)),url);
+});
+test('legacy map routes still parse for redirect',()=>{
+ const route=parseAdminRoute('/mapas/map-17');
+ assert.equal(route.section,'Mapas e ambientes');
+ assert.equal(route.id,'map-17');
+});
