@@ -4,7 +4,7 @@ import {displayLabel} from './display-label';
 import {filterAdminEvents,groupAdminEvents,eventStatus,availableEventMonths,type EventPeriod,type EventRecord} from './admin-event-filters';
 
 type Venue={id:string;name:string};
-type EventItem=EventRecord&{venue_id?:string;starts_at?:string;ends_at?:string};
+type EventItem=EventRecord&{venue_id?:string;starts_at?:string;ends_at?:string;is_published?:number};
 const datetime=(text?:string)=>{if(!text)return 'Horário a definir';const d=new Date(text);return Number.isNaN(d.getTime())?text:new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(d);};
 const dateHeading=(day:string)=>{
  if(day==='no-date')return 'Sem data definida';
@@ -28,13 +28,13 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
  onCreate:()=>void;onEdit:(event:EventItem)=>void;onDelete:(event:EventItem)=>void;
 }){
  const [period,setPeriod]=useState<EventPeriod>('upcoming');
- const [search,setSearch]=useState(''),[venueId,setVenueId]=useState(''),[month,setMonth]=useState('');
+ const [search,setSearch]=useState(''),[venueId,setVenueId]=useState(''),[month,setMonth]=useState(''),[publication,setPublication]=useState('all');
  const now=new Date();
- const filtered=filterAdminEvents(events,{period,search,venueId,month},venues,now);
+ const filtered=filterAdminEvents(events,{period,search,venueId,month},venues,now).filter(event=>publication==='all'||(publication==='published'?Boolean(event.is_published):!event.is_published));
  const groups=groupAdminEvents(filtered);
  const months=availableEventMonths(events);
  const venueById=new Map(venues.map(v=>[v.id,v.name]));
- const hasFilters=period!=='upcoming'||!!search||!!venueId||!!month;
+ const hasFilters=period!=='upcoming'||!!search||!!venueId||!!month||publication!=='all';
  return <section className="mt-7 space-y-5">
   <div className="flex flex-wrap items-center justify-between gap-3">
    <div><p className="text-xs text-white/55">{filtered.length} de {events.length} eventos</p><p className="mt-1 text-sm text-white/70">Agenda organizada por data e estabelecimento.</p></div>
@@ -63,12 +63,17 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
      </select>
     </label>
    </div>
+   <label className="block space-y-1 text-xs text-white/55">Publicação
+    <select value={publication} onChange={e=>setPublication(e.target.value)} className={selectClass}>
+     <option value="all">Publicados e rascunhos</option><option value="published">Somente publicados</option><option value="draft">Somente rascunhos</option>
+    </select>
+   </label>
   </div>
   {!filtered.length?<div className="rounded-2xl border border-dashed border-white/15 p-7 text-center">
    <CalendarDays className="mx-auto text-white/35"/>
    <p className="mt-3 font-bold">{events.length?'Nenhum evento corresponde aos filtros':'Nenhum evento cadastrado'}</p>
    <p className="mt-1 text-sm text-white/55">Tente outro período, nome ou estabelecimento.</p>
-   {hasFilters&&<button type="button" onClick={()=>{setPeriod('all');setSearch('');setVenueId('');setMonth('');}}
+   {hasFilters&&<button type="button" onClick={()=>{setPeriod('all');setSearch('');setVenueId('');setMonth('');setPublication('all');}}
     className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-xs"><X size={14}/> Limpar filtros</button>}
   </div>:<div className="space-y-6">
    {groups.map(group=><section key={group.day} aria-label={dateHeading(group.day)} className="space-y-2">
@@ -81,6 +86,7 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
        <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
          <h4 className="break-words text-sm font-bold">{displayLabel(event.name)}</h4>
+         <span className={'rounded-full px-2 py-0.5 text-[10px] font-bold '+(event.is_published?'bg-[#c4ff40]/15 text-[#c4ff40]':'border border-amber-400/25 text-amber-200')}>{event.is_published?'Publicado':'Rascunho'}</span>
          {status==='live'&&<span className="rounded-full bg-[#c4ff40]/15 px-2 py-0.5 text-[10px] font-bold text-[#c4ff40]">{statusText[status]}</span>}
          {status!=='live'&&<span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] text-white/55">{statusText[status]}</span>}
         </div>
