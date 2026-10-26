@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NUL
 for(const [column,definition] of [['postal_code',"TEXT NOT NULL DEFAULT ''"],['street',"TEXT NOT NULL DEFAULT ''"],['neighborhood',"TEXT NOT NULL DEFAULT ''"],['complement',"TEXT NOT NULL DEFAULT ''"],['address_url',"TEXT NOT NULL DEFAULT ''"]]){
  if(!db.prepare('PRAGMA table_info(venues)').all().some(field=>field.name===column))db.exec('ALTER TABLE venues ADD COLUMN '+column+' '+definition);
 }
+for(const table of ['venues','events'])for(const [col,def] of (table==='venues'?[['services',"TEXT NOT NULL DEFAULT ''"]]:[['doors_at',"TEXT NOT NULL DEFAULT ''"],['cover_image',"TEXT NOT NULL DEFAULT ''"],['services',"TEXT NOT NULL DEFAULT ''"]])){
+ if(!db.prepare('PRAGMA table_info('+table+')').all().some(row=>row.name===col))db.exec('ALTER TABLE '+table+' ADD COLUMN '+col+' '+def);
+}
+db.exec('CREATE TABLE IF NOT EXISTS event_general_settings(id INTEGER PRIMARY KEY CHECK(id=1),minimum_age INTEGER NOT NULL DEFAULT 18,entry_rules TEXT NOT NULL DEFAULT \'\',accepted_documents TEXT NOT NULL DEFAULT \'\',cancellation_policy TEXT NOT NULL DEFAULT \'\')');
+db.prepare('INSERT OR IGNORE INTO event_general_settings(id) VALUES(1)').run();
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
@@ -233,9 +238,12 @@ http.createServer(async (req,res)=>{
         return json(res,200,{friends:rows});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
+      if(url.pathname==='/api/public/event-settings'&&req.method==='GET'){
+        return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy FROM event_general_settings WHERE id=1').get()});
+      }
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
-        const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
-        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
+        const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city,v.services AS venue_services FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
+        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city,services:e.venue_services||''},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
       }
       if(url.pathname==='/api/public/maps'&&req.method==='GET'){
         const rows=db.prepare('SELECT id,venue_id,name,frame_json FROM venue_maps').all();
@@ -286,6 +294,13 @@ http.createServer(async (req,res)=>{
           const seen=new Set();for(const p of items){if(!p||typeof p.product_id!=='string'||seen.has(p.product_id)||!db.prepare('SELECT 1 FROM products WHERE id=?').get(p.product_id)||!(p.price_cents===null||(Number.isSafeInteger(p.price_cents)&&p.price_cents>=0&&p.price_cents<=100000000)))return json(res,400,{error:'Produto ou preço inválido.'});seen.add(p.product_id);}
           db.exec('BEGIN');try{db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);for(const p of items)db.prepare('INSERT INTO event_products VALUES(?,?,?)').run(id,p.product_id,p.price_cents);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return json(res,200,{ok:true});
         }
+        if(req.method==='GET'&&key==='event-settings')return json(res,200,{settings:db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy FROM event_general_settings WHERE id=1').get()});
+        if(req.method==='POST'&&key==='event-settings'){
+          const b=await body(req),age=Number(b.minimum_age);
+          if(!Number.isInteger(age)||age<0||age>100||['entry_rules','accepted_documents','cancellation_policy'].some(k=>typeof b[k]!=='string'||b[k].length>5000))return json(res,400,{error:'Preferências inválidas.'});
+          db.prepare('UPDATE event_general_settings SET minimum_age=?,entry_rules=?,accepted_documents=?,cancellation_policy=? WHERE id=1').run(age,b.entry_rules,b.accepted_documents,b.cancellation_policy);
+          return json(res,200,{ok:true});
+        }
         if(req.method==='GET'&&key==='overview'){
           const cutoff=Date.now()-15*60*1000;
           return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(*) n FROM user_activity WHERE last_seen>?').get(cutoff).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
@@ -293,7 +308,7 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='edit-venue'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(id))return json(res,400,{error:'Estabelecimento inválido.'});
-          db.prepare('UPDATE venues SET name=?,address=?,city=?,postal_code=?,street=?,neighborhood=?,complement=?,address_url=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),id);return json(res,200,{ok:true});
+          db.prepare('UPDATE venues SET name=?,address=?,city=?,postal_code=?,street=?,neighborhood=?,complement=?,address_url=?,services=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000),id);return json(res,200,{ok:true});
         }
         if(req.method==='POST'&&key==='edit-map'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
@@ -370,7 +385,7 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='venues'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100);
           if(!name)return json(res,400,{error:'Nome obrigatório.'});
-          const id=randomUUID();db.prepare('INSERT INTO venues(id,name,address,city,created_at,postal_code,street,neighborhood,complement,address_url) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now(),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500));return json(res,201,{id});
+          const id=randomUUID();db.prepare('INSERT INTO venues(id,name,address,city,created_at,postal_code,street,neighborhood,complement,address_url,services) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now(),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000));return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='maps'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venue=String(b.venue_id||'');
@@ -416,6 +431,7 @@ http.createServer(async (req,res)=>{
           const id=randomUUID();db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
+            db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
              db.prepare('UPDATE events SET is_published=0 WHERE id=?').run(id);
             db.exec('COMMIT');
@@ -438,7 +454,8 @@ http.createServer(async (req,res)=>{
           if(entity==='venue'&&(db.prepare('SELECT 1 FROM venue_maps WHERE venue_id=?').get(id)||db.prepare('SELECT 1 FROM events WHERE venue_id=?').get(id)))return json(res,409,{error:'Exclua os mapas e eventos vinculados primeiro.'});
           if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
           db.exec('BEGIN');try{
-            if(entity==='event'){db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);}
+            if(entity==='event'){db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
+            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);}
             if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);}
             db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
