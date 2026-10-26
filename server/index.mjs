@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));`);
+// Campos estruturados de localização, mantendo address para registros legados.
+for(const [column,definition] of [['postal_code',"TEXT NOT NULL DEFAULT ''"],['street',"TEXT NOT NULL DEFAULT ''"],['neighborhood',"TEXT NOT NULL DEFAULT ''"],['complement',"TEXT NOT NULL DEFAULT ''"],['address_url',"TEXT NOT NULL DEFAULT ''"]]){
+ if(!db.prepare('PRAGMA table_info(venues)').all().some(field=>field.name===column))db.exec('ALTER TABLE venues ADD COLUMN '+column+' '+definition);
+}
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
@@ -244,6 +248,12 @@ http.createServer(async (req,res)=>{
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
           return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:key==='maps'?{...row,frame:frameOf(row),frame_json:undefined}:row)});
         }
+        if(req.method==='GET'&&key==='search-venues'){
+          const q=String(url.searchParams.get('q')||'').trim().slice(0,100);
+          const text='%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%';
+          const items=db.prepare("SELECT * FROM venues WHERE ?='' OR name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR street LIKE ? ESCAPE '\\' OR neighborhood LIKE ? ESCAPE '\\' OR postal_code LIKE ? ESCAPE '\\' ORDER BY name COLLATE NOCASE LIMIT 200").all(q,text,text,text,text,text);
+          return json(res,200,{items});
+        }
         if(req.method==='GET'&&key==='products')return json(res,200,{items:db.prepare('SELECT * FROM products ORDER BY category,name').all()});
         if(req.method==='GET'&&key==='event-products'){const id=String(url.searchParams.get('event_id')||'');return json(res,200,{items:db.prepare('SELECT product_id,price_cents FROM event_products WHERE event_id=?').all(id)});}
         if(req.method==='POST'&&key==='save-product'){
@@ -269,7 +279,7 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='edit-venue'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(id))return json(res,400,{error:'Estabelecimento inválido.'});
-          db.prepare('UPDATE venues SET name=?,address=?,city=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),id);return json(res,200,{ok:true});
+          db.prepare('UPDATE venues SET name=?,address=?,city=?,postal_code=?,street=?,neighborhood=?,complement=?,address_url=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),id);return json(res,200,{ok:true});
         }
         if(req.method==='POST'&&key==='edit-map'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
@@ -346,7 +356,7 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='venues'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100);
           if(!name)return json(res,400,{error:'Nome obrigatório.'});
-          const id=randomUUID();db.prepare('INSERT INTO venues VALUES(?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now());return json(res,201,{id});
+          const id=randomUUID();db.prepare('INSERT INTO venues(id,name,address,city,created_at,postal_code,street,neighborhood,complement,address_url) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now(),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500));return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='maps'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venue=String(b.venue_id||'');
