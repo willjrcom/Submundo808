@@ -254,7 +254,11 @@ http.createServer(async (req,res)=>{
           const items=db.prepare("SELECT * FROM venues WHERE ?='' OR name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR street LIKE ? ESCAPE '\\' OR neighborhood LIKE ? ESCAPE '\\' OR postal_code LIKE ? ESCAPE '\\' ORDER BY name COLLATE NOCASE LIMIT 200").all(q,text,text,text,text,text);
           return json(res,200,{items});
         }
-        if(req.method==='GET'&&key==='products')return json(res,200,{items:db.prepare('SELECT * FROM products ORDER BY category,name').all()});
+        if(req.method==='GET'&&key==='products'){
+          const q=String(url.searchParams.get('q')||'').trim().slice(0,120).toLowerCase(),category=String(url.searchParams.get('category')||'').trim().slice(0,60);
+          const pattern='%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%';
+          return json(res,200,{items:db.prepare("SELECT * FROM products WHERE (?='' OR lower(name) LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\' OR lower(category) LIKE ? ESCAPE '\\') AND (?='' OR category=?) ORDER BY category,name").all(q,pattern,pattern,pattern,category,category)});
+        }
         if(req.method==='GET'&&key==='event-products'){const id=String(url.searchParams.get('event_id')||'');return json(res,200,{items:db.prepare('SELECT product_id,price_cents FROM event_products WHERE event_id=?').all(id)});}
         if(req.method==='POST'&&key==='save-product'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim(),category=String(b.category||'').trim(),description=String(b.description||'').trim(),price=b.default_price_cents;
