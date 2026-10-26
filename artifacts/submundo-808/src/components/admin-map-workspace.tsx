@@ -9,11 +9,12 @@ import {
 } from 'lucide-react';
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
+import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
-type Marker={id:string;name:string;type:string;x:number;y:number;description?:string;color?:string;shape?:'square'|'circle';size?:number};
+type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
 type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
@@ -51,7 +52,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  useEffect(()=>{
   let alive=true;setLoading(true);setInitialLoadError(false);
   Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]).then(([a,m,maps])=>{
-   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);
+   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
    setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
   }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
@@ -120,7 +121,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }
   if(d.kind==='frame-move')setFrame(moveMapFrame(d.snapshot.frame,p.x-d.startX,p.y-d.startY));
   else if(d.kind==='frame-resize'&&d.frameHandle)setFrame(resizeMapFrame(d.snapshot.frame,d.frameHandle,p.x-d.startX,p.y-d.startY));
-  else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>m.id===d.id?{...m,x:limit(p.x-d.offsetX,-35,135),y:limit(p.y-d.offsetY,-35,135)}:m));
+  else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>m.id===d.id?moveMarker(m,p.x-d.offsetX,p.y-d.offsetY):m));
   else if(d.kind==='resize'&&d.edge){
    const delta=d.edge==='left'||d.edge==='right'?p.x-d.startX:p.y-d.startY;
    setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap));
@@ -161,7 +162,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setLoading(true);setError('');
   try{
    const [a,m,maps]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]);
-   setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);
+   setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));setFrameEditing(false);
    setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
   }catch(e){setError(String(e));}finally{setLoading(false);}
@@ -274,8 +275,21 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>:selectedMarker?<div className="space-y-4">
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
-     <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker({type:e.target.value})}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
-     <div className="space-y-2 text-xs text-white/65">Formato<div className="grid grid-cols-2 gap-2"><button onClick={()=>updateMarker({shape:'square'})} className={button+' '+(selectedMarker.shape!=='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Quadrado</button><button onClick={()=>updateMarker({shape:'circle'})} className={button+' '+(selectedMarker.shape==='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button></div></div>
+     <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
+     {(selectedMarker.type==='palco'||selectedMarker.type==='entrada')&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
+       <p className="font-bold text-[#c4ff40]">Posicionamento</p>
+       {selectedMarker.type==='palco'&&<div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={()=>updateMarker(freeMarker(selectedMarker))} className={button+' '+(!selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Ponto livre</button>
+        <button type="button" onClick={()=>updateMarker(anchorMarker(selectedMarker,selectedMarker.anchor?.side||'top'))} className={button+' '+(selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Na borda</button>
+       </div>}
+       {(selectedMarker.anchor||selectedMarker.type==='entrada')&&<label className="block space-y-1">Lateral do mapa
+        <select className={input} value={selectedMarker.anchor?.side||'bottom'} onChange={e=>updateMarker(anchorMarker(selectedMarker,e.target.value as MapSide))}>
+         {MAP_SIDES.map(side=><option key={side} value={side}>{{top:'Superior',right:'Direita',bottom:'Inferior',left:'Esquerda'}[side]}</option>)}
+        </select>
+       </label>}
+       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas ficam sempre na borda e podem ser criadas várias vezes.':'O palco pode ficar livre ou preso a qualquer lateral.'} {selectedMarker.anchor||selectedMarker.type==='entrada'?'Arraste para deslocar ao longo da borda.':''}</p>
+      </div>}
+      <div className="space-y-2 text-xs text-white/65">Formato<div className="grid grid-cols-2 gap-2"><button onClick={()=>updateMarker({shape:'square'})} className={button+' '+(selectedMarker.shape!=='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Quadrado</button><button onClick={()=>updateMarker({shape:'circle'})} className={button+' '+(selectedMarker.shape==='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button></div></div>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(pointColor(selectedMarker),color=>updateMarker({color}))}</div>
      <label className="block space-y-2 text-xs text-white/65">Tamanho do ícone <span className="float-right">{selectedMarker.size||42}px</span><input aria-label="Tamanho do ponto" type="range" min="24" max="72" step="2" value={selectedMarker.size||42} onChange={e=>updateMarker({size:Number(e.target.value)})} className="w-full accent-[#c4ff40]"/></label>
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={selectedMarker.description||''} onChange={e=>updateMarker({description:e.target.value})} placeholder="Informações úteis sobre este ponto..."/></label>
