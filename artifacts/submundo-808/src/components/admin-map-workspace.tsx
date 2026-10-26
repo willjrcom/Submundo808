@@ -8,14 +8,15 @@ import {
  Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3
 } from 'lucide-react';
 import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
+import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,type MapFrame,type FrameHandle} from './map-frame-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;description?:string;color?:string;shape?:'square'|'circle';size?:number};
 type MapItem={id:string;name:string;venue_id:string};
-type Snapshot={areas:Area[];markers:Marker[]};
-type Drag={id:string;kind:'area'|'marker'|'resize';edge?:Edge;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
+type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
+type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
 const input='w-full rounded-xl border border-white/15 bg-[#1b1624] px-3 py-2.5 text-sm text-white outline-none focus:border-[#c4ff40]';
 const button='inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 px-3 py-2.5 text-sm font-semibold transition hover:border-white/40 disabled:cursor-not-allowed disabled:opacity-35';
 const colors=['#9747FF','#3B82F6','#00BDD6','#A3E635','#FF9F43','#FF456C','#EAB308'];
@@ -33,6 +34,7 @@ async function api(route:string,payload?:object){
 }
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
+ const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
@@ -40,7 +42,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const calibrationKeys=['tl','tr','bl','br'] as const;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
- const canvas=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
+ const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
  const active=areas.find(a=>a.id===selected);
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
@@ -48,15 +50,17 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
   let alive=true;setLoading(true);setInitialLoadError(false);
-  Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id))]).then(([a,m])=>{
-   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);setDirty(false);setHistory([]);setFuture([]);
+  Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]).then(([a,m,maps])=>{
+   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);
+   setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
+   setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
   }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
  },[map.id]);
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
- function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers}]);setFuture([]);setDirty(true);setNotice('');}
- function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setDirty(true);setResizeId(null);}
- function redo(){if(!future.length)return;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setDirty(true);setResizeId(null);}
+ function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
+ function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
+ function redo(){if(!future.length)return;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers,frame}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setFrame(next.frame);setDirty(true);setResizeId(null);}
  function updateArea(patch:Partial<Area>){if(!active)return;checkpoint();setAreas(v=>v.map(a=>a.id===active.id?{...a,...patch}:a));}
  function updateMarker(patch:Partial<Marker>){if(!selectedMarker)return;checkpoint();setMarkers(v=>v.map(m=>m.id===selectedMarker.id?{...m,...patch}:m));}
  function createArea(){
@@ -89,35 +93,49 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   e.stopPropagation();setSelected(id);
   if(!editing)return;
   if(kind==='area'&&resizeId!==id)setResizeId(null);
-  const p=coord(e);if(!p)return;
+  const p=coord(e);if(!p||frameEditing)return;
   const item=kind==='marker'?markers.find(m=>m.id===id):areas.find(a=>a.id===id);if(!item)return;
   e.preventDefault();
-  drag.current={id,kind,edge,startX:p.x,startY:p.y,offsetX:p.x-item.x,offsetY:p.y-item.y,snapshot:{areas,markers}};
-  canvas.current?.setPointerCapture(e.pointerId);
+  drag.current={id,kind,edge,startX:p.x,startY:p.y,offsetX:p.x-item.x,offsetY:p.y-item.y,snapshot:{areas,markers,frame}};
+  pasteboard.current?.setPointerCapture(e.pointerId);
+ }
+ function pasteboardCoord(e:React.PointerEvent){
+  const rect=pasteboard.current?.getBoundingClientRect();if(!rect?.width||!rect.height)return null;
+  return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
+ }
+ function startFrameDrag(e:React.PointerEvent,kind:'frame-move'|'frame-resize',handle?:FrameHandle){
+  e.stopPropagation();
+  if(!editing||!frameEditing)return;
+  const p=pasteboardCoord(e);if(!p)return;
+  e.preventDefault();setSelected('');setResizeId(null);
+  drag.current={id:'map-frame',kind,frameHandle:handle,startX:p.x,startY:p.y,offsetX:0,offsetY:0,snapshot:{areas,markers,frame}};
+  pasteboard.current?.setPointerCapture(e.pointerId);
  }
  function move(e:React.PointerEvent){
   const d=drag.current;if(!d)return;
-  const p=coord(e);if(!p)return;
+  const p=d.kind==='frame-move'||d.kind==='frame-resize'?pasteboardCoord(e):coord(e);if(!p)return;
   if(!d.changed){
    if(Math.abs(p.x-d.startX)+Math.abs(p.y-d.startY)<.3)return;
    checkpoint();d.changed=true;
   }
-  if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>m.id===d.id?{...m,x:limit(p.x-d.offsetX,-35,135),y:limit(p.y-d.offsetY,-35,135)}:m));
+  if(d.kind==='frame-move')setFrame(moveMapFrame(d.snapshot.frame,p.x-d.startX,p.y-d.startY));
+  else if(d.kind==='frame-resize'&&d.frameHandle)setFrame(resizeMapFrame(d.snapshot.frame,d.frameHandle,p.x-d.startX,p.y-d.startY));
+  else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>m.id===d.id?{...m,x:limit(p.x-d.offsetX,-35,135),y:limit(p.y-d.offsetY,-35,135)}:m));
   else if(d.kind==='resize'&&d.edge){
    const delta=d.edge==='left'||d.edge==='right'?p.x-d.startX:p.y-d.startY;
-   setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta));
+   setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap));
   }else{
    setAreas(moveArea(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap));
   }
  }
  function endDrag(e:React.PointerEvent){
-  if(drag.current){drag.current=null;if(canvas.current?.hasPointerCapture(e.pointerId))canvas.current.releasePointerCapture(e.pointerId);}
+  if(drag.current){drag.current=null;if(pasteboard.current?.hasPointerCapture(e.pointerId))pasteboard.current.releasePointerCapture(e.pointerId);}
  }
  async function save(){
   if(saving)return;setSaving(true);setError('');
   try{
-   await api('save-layout',{map_id:map.id,areas,markers});
-   setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes e pontos publicados para os participantes.');setEditLayout(false);setResizeId(null);
+   await api('save-layout',{map_id:map.id,areas,markers,frame});
+   setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');setEditLayout(false);setFrameEditing(false);setResizeId(null);
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');}
   finally{setSaving(false);}
  }
@@ -142,14 +160,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(!window.confirm('Descartar alterações não salvas?'))return;
   setLoading(true);setError('');
   try{
-   const [a,m]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id))]);
+   const [a,m,maps]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]);
    setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items);
+   setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));setFrameEditing(false);
    setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
   }catch(e){setError(String(e));}finally{setLoading(false);}
  }
  function back(){if(dirty&&!window.confirm('Há alterações não salvas. Sair e descartar essas alterações?'))return;onBack();}
  function activateResize(){
-  if(!active)return;setEditLayout(true);setResizeId(id=>id===active.id?null:active.id);
+  if(!active)return;setFrameEditing(false);setEditLayout(true);setResizeId(id=>id===active.id?null:active.id);
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
  const showLoading=useMinimumLoading(loading);
