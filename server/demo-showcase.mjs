@@ -113,7 +113,8 @@ export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
      .run(mapId,JSON.stringify(e.markers.map((m,i)=>({...m,id:makeId('marker',e.slug+'-'+i)}))));
     mapsAdded++;
    }
-   if(!db.prepare('SELECT id FROM events WHERE id=?').get(eventId)){
+   const eventJustCreated=!db.prepare('SELECT id FROM events WHERE id=?').get(eventId);
+   if(eventJustCreated){
     const finish=e.end<=e.start?e.offset+1:e.offset;
     db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
       .run(eventId,venueIds[e.venue],e.title,e.description,dateAt(baseDate,e.offset,e.start),dateAt(baseDate,finish,e.end),'','','',JSON.stringify(buildLineup(e,baseDate)),now);
@@ -121,10 +122,14 @@ export function ensureDemoShowcase(db,{now=Date.now(),baseEventId=null}={}){
    }
    db.prepare('INSERT OR IGNORE INTO event_maps(event_id,map_id) VALUES(?,?)').run(eventId,mapId);
    const catalog=seedDemoProducts(db,eventId,now);
-   if(eventsAdded>0&&catalog.productsLinked===DEMO_PRODUCTS.length){
-    // Variação visual de preço por festa, sem alterar o catálogo global.
-    const amount=EVENTS.indexOf(e)*100;
-    if(amount)db.prepare('UPDATE event_products SET price_cents=(SELECT COALESCE(ep.price_cents,p.default_price_cents)+? FROM products p JOIN event_products ep ON ep.product_id=p.id WHERE ep.event_id=? AND p.id=event_products.product_id) WHERE event_id=?').run(amount,eventId,eventId);
+   if(eventJustCreated&&catalog.productsLinked===DEMO_PRODUCTS.length){
+    // Variação visual de preços por festa, sem alterar o catálogo global
+    // ou futuras customizações de preços do administrador.
+    const variation=EVENTS.indexOf(e)*100;
+    if(variation){
+     const setPrice=db.prepare('UPDATE event_products SET price_cents=? WHERE event_id=? AND product_id=?');
+     for(const item of DEMO_PRODUCTS)setPrice.run((item.eventPrice??item.price)+variation,eventId,item.id);
+    }
    }
   }
   db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run(SHOWCASE_KEY,JSON.stringify({createdAt:now,version:2}));
