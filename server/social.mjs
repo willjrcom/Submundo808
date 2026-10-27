@@ -19,7 +19,13 @@ export function ensureSocialSchema(db){
  );
  CREATE INDEX IF NOT EXISTS idx_friend_group_members_user ON friend_group_members(user_id,group_id);
  CREATE TABLE IF NOT EXISTS group_alerts(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,sender_id TEXT NOT NULL,code TEXT NOT NULL,event_id TEXT,created_at INTEGER NOT NULL);
- CREATE INDEX IF NOT EXISTS idx_group_alerts_group ON group_alerts(group_id,created_at);`);
+ CREATE INDEX IF NOT EXISTS idx_group_alerts_group ON group_alerts(group_id,created_at);
+ CREATE TABLE IF NOT EXISTS friend_group_invitations (
+  id TEXT PRIMARY KEY,group_id TEXT NOT NULL,sender_id TEXT NOT NULL,recipient_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',created_at INTEGER NOT NULL,responded_at INTEGER,
+  UNIQUE(group_id,recipient_id)
+ );
+ CREATE INDEX IF NOT EXISTS idx_friend_group_invitations_recipient ON friend_group_invitations(recipient_id,status);`);
  for(const [col,def] of [['edit_policy',"TEXT NOT NULL DEFAULT 'admin'"],['join_policy',"TEXT NOT NULL DEFAULT 'direct'"],['icon',"TEXT NOT NULL DEFAULT 'users'"]])if(!db.prepare('PRAGMA table_info(friend_groups)').all().some(c=>c.name===col))db.exec('ALTER TABLE friend_groups ADD COLUMN '+col+' '+def);
 }
 
@@ -134,6 +140,53 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    const groups=db.prepare('SELECT g.* FROM friend_groups g JOIN friend_group_members gm ON gm.group_id=g.id WHERE gm.user_id=? ORDER BY g.created_at DESC').all(user.id).map(groupSummary);
    json(res,200,{groups});return true;
   }
+
+  if(pathname==='/api/groups/friends'&&method==='GET'){
+   const q=String(url.searchParams.get('q')||'').trim().toLowerCase();
+   if(q.length>70)return reject(400,'Busca muito longa.');
+   const friends=db.prepare('SELECT u.id,u.name,u.avatar_data AS avatar FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END WHERE (f.user_a=? OR f.user_b=?) AND lower(u.name) LIKE ? ORDER BY u.name LIMIT 50').all(user.id,user.id,user.id,'%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%');
+   json(res,200,{friends});return true;
+  }
+  if(pathname==='/api/groups/invite-friends'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
+   if(!g||!member(id))return reject(404,'Grupo não encontrado.');
+   if(g.owner_id!==user.id)return reject(403,'Somente o administrador pode convidar integrantes diretamente.');
+   const ids=p.friendIds;
+   if(!Array.isArray(ids)||!ids.length||ids.length>30||new Set(ids).size!==ids.length||!ids.every(verifiedId))return reject(400,'Selecione até 30 amigos diferentes.');
+   const now=Date.now(),invited=[],skipped=[];
+   for(const friendId of ids){
+    if(!alreadyFriends(friendId)||member(id,friendId)){skipped.push(friendId);continue;}
+    const old=db.prepare('SELECT id,status FROM friend_group_invitations WHERE group_id=? AND recipient_id=?').get(id,friendId);
+    if(old?.status==='pending'){skipped.push(friendId);continue;}
+    const inviteId=randomUUID();
+    if(old)db.prepare("UPDATE friend_group_invitations SET id=?,sender_id=?,status='pending',created_at=?,responded_at=NULL WHERE group_id=? AND recipient_id=?").run(inviteId,user.id,now,id,friendId);
+    else db.prepare("INSERT INTO friend_group_invitations(id,group_id,sender_id,recipient_id,status,created_at) VALUES(?,?,?,?,'pending',?)").run(inviteId,id,user.id,friendId,now);
+    socialNotification(friendId,{title:'Convite para grupo de amigos',body:user.name+' convidou você para '+g.name+'.',targetId:inviteId,targetKind:'group_invite',kind:'group_invite'});
+    invited.push(friendId);
+   }
+   json(res,200,{invited,skipped});return true;
+  }
+  if(pathname==='/api/groups/invitation/respond'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),action=String(p.action||'');
+   if(!verifiedId(id)||!['accept','reject'].includes(action))return reject(400,'Convite inválido.');
+   const invite=db.prepare('SELECT * FROM friend_group_invitations WHERE id=? AND recipient_id=?').get(id,user.id);
+   if(!invite)return reject(404,'Convite não encontrado.');
+   if(invite.status!=='pending')return reject(409,'Este convite já foi respondido.');
+   const g=groupRow(invite.group_id);
+   if(!g)return reject(404,'O grupo não existe mais.');
+   if(action==='accept'){
+    const total=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
+    const mine=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE user_id=?').get(user.id).n;
+    if(total>=50||mine>=40)return reject(409,'Limite de integrantes ou grupos atingido.');
+   }
+   db.exec('BEGIN');
+   try{
+    if(action==='accept'&&!member(g.id))db.prepare("INSERT INTO friend_group_members(group_id,user_id,role,joined_at) VALUES(?,?,'member',?)").run(g.id,user.id,Date.now());
+    db.prepare('UPDATE friend_group_invitations SET status=?,responded_at=? WHERE id=?').run(action==='accept'?'accepted':'rejected',Date.now(),id);
+    db.exec('COMMIT');
+   }catch(e){db.exec('ROLLBACK');throw e;}
+   json(res,200,{ok:true,status:action==='accept'?'accepted':'rejected',groupId:g.id});return true;
+  }
   if(pathname==='/api/groups/alerts'&&method==='GET'){
    const id=String(url.searchParams.get('id')||'');
    if(!groupRow(id)||!member(id))return reject(404,'Grupo não encontrado.');
@@ -187,7 +240,14 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    const id=String(url.searchParams.get('id')||''),group=groupRow(id);
    if(!group||!member(id))return reject(404,'Grupo não encontrado.');
    const members=db.prepare('SELECT u.id,u.name,u.avatar_data AS avatar,gm.role FROM friend_group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined_at').all(id);
-   json(res,200,{group:{...groupSummary(group),members,role:member(id).role}});return true;
+
+   const people=members.map(person=>{
+    if(person.id===user.id)return {...person,relation:'self'};
+    const outgoing=db.prepare("SELECT status FROM friend_requests WHERE requester_id=? AND recipient_id=?").get(user.id,person.id);
+    const incoming=db.prepare("SELECT status FROM friend_requests WHERE requester_id=? AND recipient_id=?").get(person.id,user.id);
+    return {...person,relation:alreadyFriends(person.id)?'friends':outgoing?.status==='pending'?'sent':incoming?.status==='pending'?'received':'none'};
+   });
+   json(res,200,{group:{...groupSummary(group),members:people,role:member(id).role}});return true;
   }
   if(pathname==='/api/groups/invite'&&method==='POST'){
    const p=await readBody(req),g=groupRow(String(p.id||''));
@@ -228,6 +288,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    db.exec('BEGIN');
    try{
     if(!others.length){
+     db.prepare('DELETE FROM friend_group_invitations WHERE group_id=?').run(id);
      db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
      db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
@@ -249,6 +310,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(p.confirmation!=='EXCLUIR')return reject(400,'Digite EXCLUIR para confirmar.');
    db.exec('BEGIN');
    try{
+    db.prepare('DELETE FROM friend_group_invitations WHERE group_id=?').run(id);
     db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
