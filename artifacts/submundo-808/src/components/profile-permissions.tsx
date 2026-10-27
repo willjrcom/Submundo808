@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {Bell,MapPin,Camera,CheckCircle2} from 'lucide-react';
+import {Bell,MapPin,Camera,CheckCircle2,Download} from 'lucide-react';
 type State='granted'|'denied'|'prompt'|'unsupported';
 /** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
 export async function hasPendingAppPermissions():Promise<boolean>{
@@ -12,12 +12,23 @@ export async function hasPendingAppPermissions():Promise<boolean>{
   try{const state=(await navigator.permissions.query({name:name as PermissionName})).state;if(state==='prompt')return true;}catch{}
  }
  if('Notification'in window&&Notification.permission==='default')return true;
+ if(!window.matchMedia('(display-mode: standalone)').matches&&/iPhone|iPad|iPod/i.test(navigator.userAgent))return true;
  return false;
 }
 export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [statuses,setStatuses]=useState<Record<string,State>>({location:'prompt',notifications:'prompt',camera:'prompt'});
  const [message,setMessage]=useState(''),[busy,setBusy]=useState('');
  const [pushRegistered,setPushRegistered]=useState(false);
+ const [installed,setInstalled]=useState(()=>window.matchMedia('(display-mode: standalone)').matches||(navigator as Navigator&{standalone?:boolean}).standalone===true);
+ const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
+ const [ios,setIos]=useState(/iPhone|iPad|iPod/i.test(navigator.userAgent));
+ useEffect(()=>{const prompt=(e:Event)=>{e.preventDefault();setInstallPrompt(e);};const installedHandler=()=>{setInstalled(true);setInstallPrompt(null);};window.addEventListener('beforeinstallprompt',prompt);window.addEventListener('appinstalled',installedHandler);return()=>{window.removeEventListener('beforeinstallprompt',prompt);window.removeEventListener('appinstalled',installedHandler);};},[]);
+ async function installApp(){
+  setMessage('');
+  if(installPrompt){const event=installPrompt as Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>};try{await event.prompt();if(event.userChoice){const result=await event.userChoice;if(result.outcome==='accepted')setMessage('Instalação iniciada. Abra o app instalado para ativar notificações.');else setMessage('Instalação cancelada.');}setInstallPrompt(null);}catch{setMessage('Use a opção Instalar aplicativo no menu do navegador.');}return;}
+  setMessage(ios?'No Safari: toque em Compartilhar → Adicionar à Tela de Início → Adicionar. Abra o aplicativo instalado para habilitar as notificações.':'No Chrome ou Edge: abra o menu ⋮ e escolha Instalar aplicativo ou Adicionar à tela inicial. Se não aparecer, confira se está em HTTPS.');
+ }
+
  const update=(key:string,state:State)=>setStatuses(v=>({...v,[key]:state}));
  useEffect(()=>{
   let alive=true;
@@ -62,6 +73,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    stream.getTracks().forEach(t=>t.stop());update('camera','granted');setMessage('Câmera autorizada para ler QR Codes de amigos.');
   }catch(e){setMessage('Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
  }
+ const shouldInstall=!installed&&(ios||!('Notification'in window)||!('PushManager'in window));
  const rows=[{key:'location',title:'Localização',description:'Sua posição no mapa. Compartilhar com amigos é uma escolha separada.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
  const label:Record<State,string>={granted:'Permitida',denied:'Bloqueada',prompt:'Não solicitada',unsupported:'Indisponível'};
  return <div className="space-y-4"><p className="text-sm text-white/60">Ative os recursos que deseja usar. Uma permissão já concedida aparece com um check; não precisa autorizar novamente.</p>
@@ -70,14 +82,16 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   const ready=status==='granted'&&(key!=='notifications'||pushRegistered);
   const permissionGranted=status==='granted';
   const unsupported=status==='unsupported';
+  const installInstead=key==='notifications'&&shouldInstall;
   return <div key={key} className="flex min-h-[92px] flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
    <Icon className="shrink-0 text-[#c4ff40]" size={22}/>
    <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-xs text-white/55">{description}</p><p className="mt-1 text-[11px] text-white/45">{permissionGranted&&key==='notifications'&&!pushRegistered?'Autorizada no navegador · ativar push neste dispositivo':label[status]}</p></div>
    <div className="flex min-w-[98px] justify-end">
-    {ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:unsupported?<span className="text-right text-xs text-white/45">Indisponível</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40] disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':status==='denied'?'Ativar permissão':'Ativar'}</button>}
+    {installInstead?<button type="button" onClick={()=>void installApp()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Download size={15} className="mr-1 inline"/> Instalar</button>:ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:unsupported?<span className="text-right text-xs text-white/45">Indisponível</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40] disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':status==='denied'?'Ativar permissão':'Ativar'}</button>}
    </div>
   </div>;
  })}
+ {!installed&&<div className="rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3"><p className="text-sm font-bold">Instale o Submundo808 no seu dispositivo</p><p className="mt-1 text-xs text-white/60">A instalação facilita o acesso e, no iPhone, é necessária para receber notificações push.</p><button type="button" onClick={()=>void installApp()} className="mt-3 w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">{installPrompt?'Instalar no dispositivo':ios?'Como instalar no iPhone':'Como instalar no dispositivo'}</button></div>}
  {message&&<p role="status" className="rounded-xl bg-white/5 p-3 text-sm text-white/75">{message}</p>}
  <p className="text-xs text-white/45">Se o acesso foi bloqueado permanentemente, altere a permissão nas configurações do navegador ou dispositivo. Não é possível forçar a abertura do aviso novamente.</p>
  {onClose&&<button type="button" onClick={onClose} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">Concluir</button>}
