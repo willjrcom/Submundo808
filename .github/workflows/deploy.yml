@@ -44,7 +44,7 @@ jobs:
         run: pnpm --filter @workspace/submundo-808 typecheck
 
       - name: Run critical regression tests
-        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs
+        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs tests/notification-delivery.test.mjs
 
       - name: Audit full test suite (baseline)
         continue-on-error: true

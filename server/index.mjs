@@ -6,6 +6,7 @@ import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
 import {ensureDemoShowcase} from './demo-showcase.mjs';
 import {ensureDemoNotifications} from './demo-notifications.mjs';
+import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
 import webpush from 'web-push';
@@ -175,20 +176,23 @@ if(process.env.AUTO_SEED_DEMO==='true'||(process.env.APP_ENV!=='production'&&pro
   console.error('Could not initialize sample data:',error);
  }
 }
+ensurePushQueueSchema(db);
 const VAPID_PUBLIC=process.env.VAPID_PUBLIC_KEY||'';
 const VAPID_PRIVATE=process.env.VAPID_PRIVATE_KEY||'';
 if(VAPID_PUBLIC&&VAPID_PRIVATE)webpush.setVapidDetails(process.env.VAPID_SUBJECT||'mailto:admin@submundo808.com',VAPID_PUBLIC,VAPID_PRIVATE);
-async function pushToUser(userId,notification){
- if(!VAPID_PUBLIC||!VAPID_PRIVATE)return;
- const subs=db.prepare('SELECT endpoint,subscription_json FROM push_subscriptions WHERE user_id=?').all(userId);
- for(const item of subs){
-  try{
-   await webpush.sendNotification(JSON.parse(item.subscription_json),JSON.stringify({title:notification.title,body:notification.body,tag:notification.id,url:notification.target_kind==='survey'?'/schedule/'+encodeURIComponent(notification.event_id||'')+'?review=1':notification.target_kind==='point'?'/map?point='+encodeURIComponent(notification.target_id)+'&event='+encodeURIComponent(notification.event_id||''):'/schedule/'+encodeURIComponent(notification.event_id||'')}),{TTL:3600});
-  }catch(error){
-   if(error.statusCode===404||error.statusCode===410)db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(item.endpoint);
-   else console.error('push delivery:',error.statusCode||error.message);
+let pushQueueBusy=false;
+async function drainPushQueue(){
+ if(pushQueueBusy)return;
+ pushQueueBusy=true;
+ try{
+  // A fila fica no SQLite e sobrevive ao reinício. Não processar em paralelo
+  // neste servidor; cada lote tem concorrência limitada no módulo da fila.
+  for(let i=0;i<20;i++){
+   const result=await processPendingPushes(db,(subscription,payload,options)=>webpush.sendNotification(subscription,payload,options),{batchSize:50,pushConfigured:!!(VAPID_PUBLIC&&VAPID_PRIVATE)});
+   if(result.processed<50)break;
   }
- }
+ }catch(error){console.error('push queue processing:',error?.message||error);}
+ finally{pushQueueBusy=false;}
 }
 function eventEndMillis(value){
  const normalized=String(value||'');
@@ -206,20 +210,10 @@ function dispatchDueNotifications(){
   const id='survey-'+event.id;
   db.prepare("INSERT OR IGNORE INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id,event.id,'Como foi a '+event.name+'? ⭐','Avalie sua experiência e ajude a melhorar a próxima festa.','survey','survey','', 'event','pending',null,'system',now);
  }
- const due=db.prepare("SELECT * FROM notifications WHERE status='pending' OR (status='scheduled' AND scheduled_at<=?)").all(now);
- for(const n of due){
-  const recipients=n.audience==='all'?db.prepare('SELECT id AS user_id FROM users').all():db.prepare('SELECT user_id FROM event_participants WHERE event_id=?').all(n.event_id);
-  const insert=db.prepare('INSERT OR IGNORE INTO notification_receipts(notification_id,user_id) VALUES(?,?)');
-  for(const r of recipients){
-   if(n.kind==='survey'&&db.prepare('SELECT 1 FROM event_reviews WHERE event_id=? AND user_id=?').get(n.event_id,r.user_id))continue;
-   const added=insert.run(n.id,r.user_id);
-   if(added.changes)void pushToUser(r.user_id,n);
-  }
-  db.prepare("UPDATE notifications SET status='sent',sent_at=? WHERE id=? AND status IN ('pending','scheduled')").run(now,n.id);
- }
+ publishDueNotificationReceipts(db,now);
 }
-try{dispatchDueNotifications();}catch(e){console.error('notification dispatch startup:',e);}
-const notificationInterval=setInterval(()=>{try{dispatchDueNotifications();}catch(e){console.error('notification dispatch:',e);}},60000);
+try{dispatchDueNotifications();void drainPushQueue();}catch(e){console.error('notification dispatch startup:',e);}
+const notificationInterval=setInterval(()=>{try{dispatchDueNotifications();void drainPushQueue();}catch(e){console.error('notification dispatch:',e);}},15000);
 notificationInterval.unref?.();
 
 http.createServer(async (req,res)=>{
@@ -347,7 +341,7 @@ http.createServer(async (req,res)=>{
       // Esse registro não comprova presença física, compra de ingresso ou autorização push.
       if(url.pathname==='/api/admin/notifications'&&req.method==='GET'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
-        return json(res,200,{items:db.prepare("SELECT n.*,e.name AS event_name,(SELECT COUNT(*) FROM notification_receipts r WHERE r.notification_id=n.id) AS recipients FROM notifications n LEFT JOIN events e ON e.id=n.event_id ORDER BY n.created_at DESC LIMIT 300").all()});
+        return json(res,200,{items:db.prepare("SELECT n.*,e.name AS event_name,(SELECT COUNT(*) FROM notification_receipts r WHERE r.notification_id=n.id) AS recipients,(SELECT COUNT(*) FROM notification_push_queue q WHERE q.notification_id=n.id AND q.status='accepted') AS push_accepted,(SELECT COUNT(*) FROM notification_push_queue q WHERE q.notification_id=n.id AND q.status IN ('pending','processing')) AS push_pending,(SELECT COUNT(*) FROM notification_push_queue q WHERE q.notification_id=n.id AND q.status='failed') AS push_failed,(SELECT COUNT(*) FROM notification_push_queue q WHERE q.notification_id=n.id AND q.status='expired') AS push_expired FROM notifications n LEFT JOIN events e ON e.id=n.event_id ORDER BY n.created_at DESC LIMIT 300").all()});
       }
       if(url.pathname==='/api/admin/reviews'&&req.method==='GET'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
@@ -369,9 +363,11 @@ http.createServer(async (req,res)=>{
         if(dispatch==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe um agendamento futuro.'});
         if(dispatch==='test'){
           const testId=randomUUID(),now=Date.now();
-          db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(testId,eventId||null,title,message,kind,targetKind,targetId,'test','sent',null,u.id,now,now);
-          db.prepare('INSERT INTO notification_receipts(notification_id,user_id) VALUES(?,?)').run(testId,u.id);
-          void pushToUser(u.id,{id:testId,event_id:eventId,title,body:message,target_kind:targetKind,target_id:targetId});
+          notificationTransaction(db,()=>{
+           db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(testId,eventId||null,title,message,kind,targetKind,targetId,'test','sent',null,u.id,now,now);
+           addNotificationReceipt(db,testId,u.id,now);
+          });
+          void drainPushQueue();
           return json(res,200,{ok:true,test:true});
         }
 
@@ -380,7 +376,7 @@ http.createServer(async (req,res)=>{
           if(!old||old.status!=='draft')return json(res,409,{error:'A notificação já foi enviada ou não existe.'});
           db.prepare('UPDATE notifications SET event_id=?,title=?,body=?,kind=?,target_kind=?,target_id=?,audience=?,status=?,scheduled_at=? WHERE id=?').run(eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,id);
         }else db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,u.id,Date.now());
-        if(dispatch==='send')dispatchDueNotifications();
+        if(dispatch==='send'){dispatchDueNotifications();void drainPushQueue();}
         return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/admin/notifications/dispatch'&&req.method==='POST'){
@@ -392,8 +388,8 @@ http.createServer(async (req,res)=>{
         if(action==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe uma data futura.'});
         const now=Date.now(),sendId=randomUUID(),status=action==='test'?'sent':action==='schedule'?'scheduled':'pending';
         db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(sendId,source.event_id,source.title,source.body,source.kind,source.target_kind,source.target_id,action==='test'?'test':source.audience,status,action==='schedule'?schedule:null,u.id,now,action==='test'?now:null);
-        if(action==='test'){db.prepare('INSERT INTO notification_receipts(notification_id,user_id) VALUES(?,?)').run(sendId,u.id);void pushToUser(u.id,{...source,id:sendId});}
-        else if(action==='send')dispatchDueNotifications();
+        if(action==='test'){notificationTransaction(db,()=>addNotificationReceipt(db,sendId,u.id,now));void drainPushQueue();}
+        else if(action==='send'){dispatchDueNotifications();void drainPushQueue();}
         return json(res,200,{ok:true,id:sendId});
       }
       if(url.pathname==='/api/admin/notifications/schedule'&&req.method==='POST'){

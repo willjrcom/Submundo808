@@ -45,3 +45,16 @@ As notificações internas funcionam mesmo sem chaves VAPID. O Web Push é best-
 7. Encerrar um evento de demonstração e conferir a criação do convite de pesquisa, dentro dos sete dias.
 
 **Limitações:** sem verificação de ingresso real, não há garantia de presença física; push pode atrasar/ser bloqueado. Para volume alto, usar fila externa e política de retentativas. A implantação deve validar regras de antispam/consentimento antes de promoções em produção.
+
+## Entrega confiável, fila e diagnóstico
+
+O envio acontece em duas etapas distintas:
+
+1. O servidor publica a notificação e seus recibos na caixa de entrada do participante, na mesma transação que registra as tentativas de push. O status `sent` no histórico significa apenas **publicada na caixa de entrada**.
+2. Um worker de push lê `notification_push_queue` no SQLite persistente (`/data/submundo.sqlite`) e tenta encaminhar o aviso aos serviços dos dispositivos inscritos. A fila permanece disponível após reinício da aplicação. `accepted` indica que o provedor de push aceitou o pedido, **não** que o aparelho exibiu a mensagem.
+
+Erros temporários são retentados com backoff progressivo, até cinco tentativas ou uma hora de validade. Assinaturas definitivamente inválidas são removidas. Os números por notificação aparecem no Histórico do painel de administração: aceitos, pendentes, falhas e expirados. Ausência de aparelhos inscritos significa que não há push para encaminhar, mas a mensagem permanece na caixa interna.
+
+A fila é incremental: **não reenvia notificações antigas** que foram publicadas antes dessa migração. Faça um novo envio de teste depois do deploy. Não apague `/data` para atualizar o sistema.
+
+Testes em Android e iOS precisam confirmar permissão, instalação do PWA, recebimento com o app fechado, abertura da tela e do marcador corretos. Push não oferece garantia de entrega ao dispositivo e pode ser limitado pelo sistema operacional, rede ou navegador.

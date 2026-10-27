@@ -127,3 +127,11 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - Política de proxy: `TRUST_PROXY` somente com cabeçalho X-Forwarded-For saneado pelo proxy de borda. Limite geral 1200 POST/min por IP (provisório para suportar múltiplos participantes atrás do proxy; reavaliar por rota); login limitado também por IP+e-mail (10/10min).
 - Respostas HTTP usam cabeçalhos anti-sniffing, anti-iframe, política de referência e permissões; CSP estrito e auditoria externa de segurança ficam para a próxima etapa.
 - Pipeline: testes críticos bloqueiam a publicação; typecheck e suíte completa rodam como baseline sem bloquear até a correção de testes legados. Tratar os resultados como pendências explícitas, não validação completa.
+
+## Auditoria pré-produção — etapa 2 (notificações)
+- Um registro com status `sent` indica publicação na **central interna** dos destinatários; NÃO comprova recebimento ou exibição de push no aparelho.
+- Push externo é rastreado em `notification_push_queue`: `pending`, `processing`, `accepted` (aceito pelo serviço), `failed` ou `expired` (assinatura inválida ou TTL). Aceitação pelo serviço não comprova exibição no dispositivo.
+- Criar recibos e entradas na fila em uma única transação, sem reprocessar o mesmo par notificação/usuário nem notificação/endpoint. Reiniciar o servidor não deve reenviar itens já aceitos.
+- A fila recupera tentativas com lease expirado; erros transitórios recebem backoff, limitados a cinco tentativas e uma hora de validade. HTTP 404/410 remove assinaturas vencidas. Não registrar tokens nem endpoints completos nos logs.
+- Modelos continuam reutilizáveis; agendamentos cancelados não são processados. O painel distingue estados de push; novos testes são bloqueantes no GitHub Actions.
+- Atenção: existe possibilidade residual de duplicação se o serviço aceitar o push e a aplicação encerrar antes de gravar a confirmação. O `tag` estável ajuda a substituir notificações repetidas no sistema; não prometer entrega exatamente uma vez.
