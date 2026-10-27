@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2} from 'lucide-react';
+import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Megaphone,Bell,AlertTriangle} from 'lucide-react';
 import SocialAvatar from './social-avatar';
 
 type Person={id:string;name:string;avatar?:string};
@@ -16,6 +16,7 @@ export default function FriendGroups(){
  const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
  const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
+ const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
@@ -74,6 +75,9 @@ export default function FriendGroups(){
   try{await groupApi('/remove',{id:selected.id,userId:id});await open(selected.id);}
   catch(e){showError(e);}finally{setBusy(false);}
  }
+ const quickAlerts=[['palco','🎵','Bora pro palco!'],['bar','🥤','Bora pro bar!'],['encontro','📍','Me encontrem aqui!'],['agua','💧','Vou pegar água'],['banheiro','🚻','Estou no banheiro'],['onde','👥','Onde vocês estão?'],['entrada','🚶','Estou indo pra entrada'],['bem','💚','Está tudo bem comigo'],['embora','👋','Estou indo embora'],['mal','🚨','Estou passando mal, preciso de ajuda!'],['roubo','⚠️','Fui roubado, preciso de ajuda!']] as const;
+ const loadAlerts=async(id:string)=>{const j=await groupApi('/alerts?id='+encodeURIComponent(id));setAlerts(j.alerts||[]);};
+ async function sendAlert(){if(!selected||!alertChoice)return;setBusy(true);setError('');try{await groupApi('/alert',{id:selected.id,code:alertChoice});setAlertChoice('');setAlertTab('history');await loadAlerts(selected.id);setStatus('Aviso enviado aos integrantes do grupo.');}catch(e){showError(e);}finally{setBusy(false);}}
  const button='w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40';
  if(selected)return <div className="space-y-5">
   <button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>
@@ -83,6 +87,7 @@ export default function FriendGroups(){
    <p className="text-sm text-white/55">{selected.description||'Seu grupo de amigos'} · {selected.memberCount} {selected.memberCount===1?'integrante':'integrantes'}</p>
    <div className="flex justify-center -space-x-2">{selected.avatars.map(p=><SocialAvatar key={p.id} name={p.name} avatar={p.avatar} size="sm" className="ring-2 ring-[#0e0b14]"/>)}</div>
   </div>
+  <div className="grid grid-cols-2 gap-2"><button onClick={()=>{setAlertOpen(true);setAlertTab('send');setAlertChoice('');void loadAlerts(selected.id).catch(showError);}} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40] px-3 py-3 text-sm font-bold text-[#c4ff40]"><Megaphone size={18}/> Avisar a galera</button><button onClick={()=>void invite()} disabled={busy} className="rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black"><UserPlus size={18} className="mr-1 inline"/> Convidar</button></div>
   <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-bold">Convide sua galera</h4><p className="mt-1 text-xs text-white/50">Link ou QR Code do grupo</p></div><button disabled={busy} onClick={()=>void invite()} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-black text-black"><UserPlus className="mr-1 inline" size={16}/> Convidar</button></div>
    {inviteLink&&<div className="space-y-3 border-t border-white/10 pt-3">
@@ -91,6 +96,14 @@ export default function FriendGroups(){
     <p className="text-[11px] text-white/45">Entrar no grupo não ativa o compartilhamento de localização.</p>
    </div>}
   </div>
+  <button onClick={()=>{setAlertOpen(true);setAlertTab('history');void loadAlerts(selected.id).catch(showError);}} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-sm"><span className="flex items-center gap-2"><Bell size={17} className="text-[#c4ff40]"/> Histórico de avisos</span><span className="text-white/45">Ver avisos ›</span></button>
+  {alertOpen&&<div className="fixed inset-0 z-[115] flex items-end justify-center bg-black/85 p-3 sm:items-center" role="dialog" aria-modal="true" aria-label="Avisos do grupo"><div className="max-h-[85dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-2xl border border-white/20 bg-[#201728] p-5">
+   <div className="flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-black"><Megaphone className="text-[#c4ff40]"/> Avisar a galera</h3><button aria-label="Fechar" onClick={()=>{setAlertOpen(false);setError('');}}><X/></button></div>
+   <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/5 p-1">{(['send','history'] as const).map(t=><button key={t} onClick={()=>{setAlertTab(t);setAlertChoice('');}} className={'rounded-lg py-2 text-sm font-bold '+(alertTab===t?'bg-[#c4ff40] text-black':'text-white/70')}>{t==='send'?'Enviar aviso':'Avisos anteriores'}</button>)}</div>
+   {alertTab==='send'?<><p className="text-xs text-white/60">Escolha uma mensagem pronta. Ela será enviada para os integrantes deste grupo.</p><div className="grid grid-cols-2 gap-2">{quickAlerts.map(([code,emoji,label])=><button key={code} onClick={()=>setAlertChoice(code)} className={'flex min-h-[90px] flex-col items-start gap-2 rounded-xl border p-3 text-left text-xs font-semibold '+(alertChoice===code?'border-[#c4ff40] bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}><span className="text-xl">{emoji}</span><span>{label}</span></button>)}</div>{alertChoice&&<div className="space-y-3 rounded-xl border border-[#c4ff40]/25 p-3"><p className="text-xs text-white/60">Confirmar aviso para o grupo?</p><p className="font-bold">{quickAlerts.find(a=>a[0]===alertChoice)?.[2]}</p><button disabled={busy} onClick={()=>void sendAlert()} className={button}>Enviar aviso</button></div>}</>:<div className="space-y-2">{alerts.length===0?<p className="py-6 text-center text-sm text-white/50">Nenhum aviso enviado ainda.</p>:alerts.map(a=><div key={a.id} className="rounded-xl border border-white/10 bg-white/[.04] p-3"><p className="text-xs text-white/50">{a.senderName} · {new Date(a.createdAt).toLocaleString('pt-BR')}</p><p className="mt-1 text-sm font-semibold">{a.message}</p></div>)}</div>}
+   {['mal','roubo'].includes(alertChoice)&&alertTab==='send'&&<p className="flex items-start gap-2 text-xs text-amber-200"><AlertTriangle size={16} className="shrink-0"/> Este aviso alerta seus amigos, mas não chama segurança, equipe médica ou serviços de emergência.</p>}
+   {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
+  </div></div>}
   <div><h4 className="mb-3 text-sm font-black uppercase">Membros</h4><div className="space-y-2">{selected.members.map(p=><div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
    <SocialAvatar name={p.name} avatar={p.avatar}/>
    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{p.name}</p><p className="text-xs text-white/45">{p.role==='owner'?'Administrador':'Integrante'}</p></div>
