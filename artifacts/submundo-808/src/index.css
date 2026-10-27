@@ -80,8 +80,16 @@ body::before {
 
 .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
 .font-mono { font-family: var(--font-mono); }
-.pb-nav { padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)); }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+/* Browser chrome (including WhatsApp's iPhone browser) already reserves the
+   bottom system area. Adding env(safe-area-inset-bottom) there makes the
+   bottom navigation look detached / float above the browser toolbar.
+   Only installed apps must reserve space for the home indicator. */
+:root { --submundo-bottom-inset: 0px; }
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  :root { --submundo-bottom-inset: env(safe-area-inset-bottom, 0px); }
+}
+.pb-nav { padding-bottom: calc(6.5rem + var(--submundo-bottom-inset)); }
+.safe-bottom { padding-bottom: var(--submundo-bottom-inset); }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .glass { background: hsl(var(--card) / .72); backdrop-filter: blur(16px); }
