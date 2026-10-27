@@ -80,15 +80,24 @@ body::before {
 
 .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
 .font-mono { font-family: var(--font-mono); }
-/* Browser chrome (including WhatsApp's iPhone browser) already reserves the
-   bottom system area. Adding env(safe-area-inset-bottom) there makes the
-   bottom navigation look detached / float above the browser toolbar.
-   Only installed apps must reserve space for the home indicator. */
-:root { --submundo-bottom-inset: 0px; }
+/* iPhone's browser UI can leave a ~28px inset *below* the CSS viewport.
+   Extend the nav background through it WITHOUT pushing the nav buttons up.
+   This applies only to iOS WebKit's browser mode, never the installed PWA.
+   The PWA instead reserves the home-indicator safe area in the usual way. */
+:root { --submundo-bottom-inset: 0px; --submundo-browser-bleed: 0px; }
 @media (display-mode: standalone), (display-mode: fullscreen) {
   :root { --submundo-bottom-inset: env(safe-area-inset-bottom, 0px); }
 }
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: browser) {
+    :root { --submundo-browser-bleed: max(28px, env(safe-area-inset-bottom, 0px)); }
+  }
+}
 .pb-nav { padding-bottom: calc(6.5rem + var(--submundo-bottom-inset)); }
+.submundo-bottom-nav {
+  bottom: calc(0px - var(--submundo-browser-bleed));
+  padding-bottom: calc(var(--submundo-bottom-inset) + var(--submundo-browser-bleed));
+}
 .safe-bottom { padding-bottom: var(--submundo-bottom-inset); }
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
