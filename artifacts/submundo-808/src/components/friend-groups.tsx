@@ -1,9 +1,9 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Check,Megaphone,Bell,AlertTriangle} from 'lucide-react';
+import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Check,Megaphone,Bell,AlertTriangle,Pencil} from 'lucide-react';
 import SocialAvatar from './social-avatar';
 
 type Person={id:string;name:string;avatar?:string};
-type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[]};
+type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string};
 type GroupDetail=Group&{members:(Person&{role:string})[];role:string};
 async function groupApi(route:string,data?:object){
  const r=await fetch('/api/groups'+route,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
@@ -18,6 +18,7 @@ export default function FriendGroups(){
  const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
  const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
  const [copied,setCopied]=useState(false);
+ const [editOpen,setEditOpen]=useState(false),[editName,setEditName]=useState(''),[editDescription,setEditDescription]=useState(''),[editColor,setEditColor]=useState(''),[editIcon,setEditIcon]=useState('users'),[editPolicy,setEditPolicy]=useState<'admin'|'everyone'>('admin'),[joinPolicy,setJoinPolicy]=useState<'direct'|'approval'>('direct');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
@@ -76,18 +77,28 @@ export default function FriendGroups(){
   try{await groupApi('/remove',{id:selected.id,userId:id});await open(selected.id);}
   catch(e){showError(e);}finally{setBusy(false);}
  }
+ function startEdit(){if(!selected)return;setEditName(selected.name);setEditDescription(selected.description);setEditColor(selected.color);setEditIcon(selected.icon||'users');setEditPolicy(selected.editPolicy||'admin');setJoinPolicy(selected.joinPolicy||'direct');setError('');setEditOpen(true);}
+ async function saveEdit(e:React.FormEvent){e.preventDefault();if(!selected)return;setBusy(true);setError('');try{await groupApi('/edit',{id:selected.id,name:editName.trim(),description:editDescription.trim(),color:editColor,icon:editIcon,editPolicy,joinPolicy});await open(selected.id);await load();setEditOpen(false);setStatus('Grupo atualizado.');}catch(e){showError(e);}finally{setBusy(false);}}
  const quickAlerts=[['palco','🎵','Bora pro palco!'],['bar','🥤','Bora pro bar!'],['encontro','📍','Me encontrem aqui!'],['agua','💧','Vou pegar água'],['banheiro','🚻','Estou no banheiro'],['onde','👥','Onde vocês estão?'],['entrada','🚶','Estou indo pra entrada'],['bem','💚','Está tudo bem comigo'],['embora','👋','Estou indo embora'],['mal','🚨','Estou passando mal, preciso de ajuda!'],['roubo','⚠️','Fui roubado, preciso de ajuda!']] as const;
  const loadAlerts=async(id:string)=>{const j=await groupApi('/alerts?id='+encodeURIComponent(id));setAlerts(j.alerts||[]);};
  async function sendAlert(){if(!selected||!alertChoice)return;setBusy(true);setError('');try{await groupApi('/alert',{id:selected.id,code:alertChoice});setAlertChoice('');setAlertTab('history');await loadAlerts(selected.id);setStatus('Aviso enviado aos integrantes do grupo.');}catch(e){showError(e);}finally{setBusy(false);}}
  const button='w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40';
  if(selected)return <div className="space-y-5">
-  <button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>
+  <div className="flex items-center justify-between"><button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>{(selected.role==='owner'||selected.editPolicy==='everyone')&&<button onClick={startEdit} className="inline-flex items-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-sm font-bold text-[#c4ff40]"><Pencil size={16}/> Editar grupo</button>}</div>
   <div className="space-y-3 text-center">
-   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl" style={{backgroundColor:selected.color}}><Users size={31} className="text-white"/></div>
+   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl" style={{backgroundColor:selected.color}}>{selected.icon&&selected.icon!=="users"?<span className="text-3xl">{({music:"🎵",fire:"🔥",party:"🎉",star:"⭐",heart:"💚"} as Record<string,string>)[selected.icon]||"👥"}</span>:<Users size={31} className="text-white"/>}</div>
    <h3 className="text-xl font-black">{selected.name}</h3>
    <p className="text-sm text-white/55">{selected.description||'Seu grupo de amigos'} · {selected.memberCount} {selected.memberCount===1?'integrante':'integrantes'}</p>
    <div className="flex justify-center -space-x-2">{selected.avatars.map(p=><SocialAvatar key={p.id} name={p.name} avatar={p.avatar} size="sm" className="ring-2 ring-[#0e0b14]"/>)}</div>
   </div>
+  {editOpen&&<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Editar grupo"><form onSubmit={e=>void saveEdit(e)} className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/20 bg-[#211729]"><div className="flex shrink-0 items-center justify-between border-b border-white/10 p-4"><h3 className="text-lg font-black">Editar grupo</h3><button type="button" aria-label="Fechar" onClick={()=>{setEditOpen(false);setError('');}}><X/></button></div><div className="min-h-0 space-y-4 overflow-y-auto p-4">
+   <label className="block text-sm font-semibold">Nome do grupo<input required minLength={2} maxLength={60} value={editName} onChange={e=>setEditName(e.target.value)} className="mt-2 w-full rounded-xl border border-white/20 bg-[#302238] p-3 text-base text-white"/></label>
+   <label className="block text-sm font-semibold">Descrição<textarea maxLength={250} rows={2} value={editDescription} onChange={e=>setEditDescription(e.target.value)} className="mt-2 w-full rounded-xl border border-white/20 bg-[#302238] p-3 text-base text-white"/></label>
+   <fieldset><legend className="mb-2 text-sm font-semibold">Cor do grupo</legend><div className="flex flex-wrap gap-3">{colors.map(c=><label key={c}><input type="radio" name="edit-color" className="sr-only" checked={editColor===c} onChange={()=>setEditColor(c)}/><span className={'flex h-10 w-10 items-center justify-center rounded-full '+(editColor===c?'ring-2 ring-white ring-offset-2 ring-offset-[#211729]':'')} style={{backgroundColor:c}}>{editColor===c&&<Check size={20}/>}</span></label>)}</div></fieldset>
+   <fieldset><legend className="mb-2 text-sm font-semibold">Ícone do grupo</legend><div className="grid grid-cols-6 gap-2">{([['users','👥'],['music','🎵'],['fire','🔥'],['party','🎉'],['star','⭐'],['heart','💚']] as const).map(([id,emoji])=><button key={id} type="button" aria-pressed={editIcon===id} aria-label={'Ícone '+id} onClick={()=>setEditIcon(id)} className={'rounded-xl border p-2 text-xl '+(editIcon===id?'border-[#c4ff40] bg-[#c4ff40]/15':'border-white/15')}>{emoji}</button>)}</div></fieldset>
+   {selected.role==='owner'&&<fieldset className="space-y-2"><legend className="mb-2 text-sm font-semibold">Quem pode editar o grupo?</legend><label className="flex gap-2 text-sm"><input type="radio" checked={editPolicy==='admin'} onChange={()=>setEditPolicy('admin')}/> Apenas administradores</label><label className="flex gap-2 text-sm"><input type="radio" checked={editPolicy==='everyone'} onChange={()=>setEditPolicy('everyone')}/> Todos os integrantes</label><p className="text-xs text-white/50">Mesmo permitindo a edição por todos, apenas o administrador pode alterar permissões, remover pessoas ou excluir o grupo.</p></fieldset>}
+   {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
+   </div><div className="shrink-0 border-t border-white/15 p-4"><button type="submit" disabled={busy||editName.trim().length<2} className={button}>{busy?'Salvando...':'Salvar alterações'}</button></div></form></div>}
   <div className="grid grid-cols-2 gap-2"><button onClick={()=>void invite()} disabled={busy} className="rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black"><UserPlus size={18} className="mr-1 inline"/> Convidar</button><button onClick={()=>{setAlertOpen(true);setAlertTab('send');setAlertChoice('');void loadAlerts(selected.id).catch(showError);}} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40] px-3 py-3 text-sm font-bold text-[#c4ff40]"><Megaphone size={18}/> Avisar a galera</button></div>
   <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-bold">Convide sua galera</h4><p className="mt-1 text-xs text-white/50">Use o botão acima para gerar o link ou QR Code do grupo.</p></div></div>
