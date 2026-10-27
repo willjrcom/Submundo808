@@ -1,10 +1,10 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Check,Megaphone,Bell,AlertTriangle,Pencil} from 'lucide-react';
+import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Check,Megaphone,Bell,AlertTriangle,Pencil,UserCheck,Clock3,Search} from 'lucide-react';
 import SocialAvatar from './social-avatar';
 
 type Person={id:string;name:string;avatar?:string};
 type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string};
-type GroupDetail=Group&{members:(Person&{role:string})[];role:string};
+type GroupDetail=Group&{members:(Person&{role:string;relation:'self'|'friends'|'sent'|'received'|'none'})[];role:string};
 async function groupApi(route:string,data?:object){
  const r=await fetch('/api/groups'+route,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível concluir a operação.');return j;
@@ -19,14 +19,16 @@ export default function FriendGroups(){
  const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
  const [copied,setCopied]=useState(false);
  const [editOpen,setEditOpen]=useState(false),[editName,setEditName]=useState(''),[editDescription,setEditDescription]=useState(''),[editColor,setEditColor]=useState(''),[editIcon,setEditIcon]=useState('users'),[editPolicy,setEditPolicy]=useState<'admin'|'everyone'>('admin'),[joinPolicy,setJoinPolicy]=useState<'direct'|'approval'>('direct');
+ const [friendPickerOpen,setFriendPickerOpen]=useState(false),[friendQuery,setFriendQuery]=useState(''),[friendChoices,setFriendChoices]=useState<Person[]>([]),[pickedFriends,setPickedFriends]=useState<string[]>([]),[loadingFriends,setLoadingFriends]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
  useEffect(()=>{void load().catch(showError);if(new URLSearchParams(window.location.search).has('group_invite'))setMode('join');},[]);
+ useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
  const open=async(id:string)=>{setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');setStatus('');
-  try{const j=await groupApi('/create',{name:name.trim(),description:description.trim(),color});setName('');setDescription('');await load();await open(j.group.id);}
+  try{const j=await groupApi('/create',{name:name.trim(),description:description.trim(),color});setName('');setDescription('');await load();await open(j.group.id);if(pickedFriends.length){try{const invites=await groupApi('/invite-friends',{id:j.group.id,friendIds:pickedFriends});setStatus(invites.invited.length+' convite(s) enviado(s) aos amigos.');}catch(e){setError('Grupo criado, mas não foi possível enviar os convites: '+(e instanceof Error?e.message:'Erro desconhecido'));}}setPickedFriends([]);setFriendQuery('');}
   catch(e){showError(e);}finally{setBusy(false);}
  }
  async function lookup(){
@@ -44,6 +46,9 @@ export default function FriendGroups(){
    setJoinLink('');setPreview(null);window.history.replaceState({},'',window.location.pathname);await load();await open(j.id);
   }catch(e){showError(e);}finally{setBusy(false);}
  }
+ function toggleFriend(id:string){setPickedFriends(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);}
+ async function sendFriendInvites(){if(!selected||!pickedFriends.length)return;setBusy(true);setError('');try{const data=await groupApi('/invite-friends',{id:selected.id,friendIds:pickedFriends});setStatus(data.invited.length+' convite(s) enviado(s).'+(data.skipped.length?' '+data.skipped.length+' pessoa(s) já convidada(s) ou integrante(s).':''));setPickedFriends([]);setFriendQuery('');setFriendPickerOpen(false);}catch(e){showError(e);}finally{setBusy(false);}}
+ async function addGroupFriend(id:string){if(!selected)return;setBusy(true);setError('');try{const r=await fetch('/api/friends/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:id})});const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível solicitar amizade.');setStatus(j.status==='friends'?'Vocês já são amigos.':'Solicitação de amizade enviada.');const detail=await groupApi('/detail?id='+encodeURIComponent(selected.id));setSelected(detail.group);}catch(e){showError(e);}finally{setBusy(false);}}
  async function invite(){
   if(!selected)return;
   setBusy(true);setError('');
@@ -82,6 +87,7 @@ export default function FriendGroups(){
  const quickAlerts=[['palco','🎵','Bora pro palco!'],['bar','🥤','Bora pro bar!'],['encontro','📍','Me encontrem aqui!'],['agua','💧','Vou pegar água'],['banheiro','🚻','Estou no banheiro'],['onde','👥','Onde vocês estão?'],['entrada','🚶','Estou indo pra entrada'],['bem','💚','Está tudo bem comigo'],['embora','👋','Estou indo embora'],['mal','🚨','Estou passando mal, preciso de ajuda!'],['roubo','⚠️','Fui roubado, preciso de ajuda!']] as const;
  const loadAlerts=async(id:string)=>{const j=await groupApi('/alerts?id='+encodeURIComponent(id));setAlerts(j.alerts||[]);};
  async function sendAlert(){if(!selected||!alertChoice)return;setBusy(true);setError('');try{await groupApi('/alert',{id:selected.id,code:alertChoice});setAlertChoice('');setAlertTab('history');await loadAlerts(selected.id);setStatus('Aviso enviado aos integrantes do grupo.');}catch(e){showError(e);}finally{setBusy(false);}}
+ const friendSelect=(excludeMembers:boolean)=><div className="space-y-3"><label className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/[.035] px-3"><Search size={18} className="text-white/50"/><input type="search" value={friendQuery} onChange={e=>setFriendQuery(e.target.value)} placeholder="Buscar meus amigos pelo nome" className="min-w-0 w-full bg-transparent py-3 text-base text-white outline-none"/></label><p className="text-xs text-white/55">Escolha amigos para convidar. Cada pessoa aceita ou recusa o convite nas notificações.</p>{loadingFriends&&<p className="text-xs text-white/60">Buscando amigos...</p>}<div className="max-h-48 space-y-2 overflow-y-auto">{friendChoices.filter(p=>!excludeMembers||!selected?.members.some(m=>m.id===p.id)).map(p=><label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 p-3"><input type="checkbox" checked={pickedFriends.includes(p.id)} onChange={()=>toggleFriend(p.id)} className="accent-[#c4ff40]"/><SocialAvatar name={p.name} avatar={p.avatar} size="sm"/><span className="text-sm font-medium">{p.name}</span></label>)}{!loadingFriends&&!friendChoices.filter(p=>!excludeMembers||!selected?.members.some(m=>m.id===p.id)).length&&<p className="py-3 text-center text-xs text-white/55">Nenhum amigo encontrado. Adicione amigos pelo perfil dos integrantes ou pela área Meus amigos.</p>}</div><p className="text-xs text-[#c4ff40]">{pickedFriends.length} selecionado(s)</p></div>;
  const button='w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40';
  if(selected)return <div className="space-y-5">
   <div className="flex items-center justify-between"><button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>{(selected.role==='owner'||selected.editPolicy==='everyone')&&<button onClick={startEdit} className="inline-flex items-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-sm font-bold text-[#c4ff40]"><Pencil size={16}/> Editar grupo</button>}</div>
