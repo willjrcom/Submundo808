@@ -55,7 +55,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(resetToken)setMode('reset');
     request('me').then(data=>{
       if(!active)return;
-      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(formatMobile(data.user.phone||''));setProfileInstagram(data.user.instagram||'');setProfileAvatar(data.user.avatar||'');}
+      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(formatMobile(data.user.phone||''));setProfileInstagram(data.user.instagram||'');setProfileAvatar(data.user.avatar||'');const key='submundo-permissions-intro-'+data.user.id;if(!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');setPermissionOpen(true);}}
     }).catch(()=>{if(active)setInitialError(true);})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
