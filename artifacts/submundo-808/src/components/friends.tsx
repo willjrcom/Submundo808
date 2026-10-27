@@ -1,12 +1,17 @@
 import FriendQR from './friend-qr';
+import FriendGroups from './friend-groups';
+import SocialAvatar from './social-avatar';
 import { useEffect, useRef, useState } from 'react';
-import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2 } from 'lucide-react';
+import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2, Search } from 'lucide-react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
-type Friend={id:string;name:string};
+type Friend={id:string;name:string;avatar?:string};
+type SearchPerson=Friend&{relation:'friends'|'sent'|'received'|'none'};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
 export default function Friends(){
+  const [tab,setTab]=useState<'people'|'groups'>(new URLSearchParams(window.location.search).has('group_invite')?'groups':'people');
+  const [query,setQuery]=useState(''),[results,setResults]=useState<SearchPerson[]>([]),[searching,setSearching]=useState(false);
   const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [showMyQR,setShowMyQR]=useState(false);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
   const video=useRef<HTMLVideoElement>(null);const stream=useRef<MediaStream|null>(null);const scanning=useRef(false);const locked=useRef(false);
@@ -20,8 +25,23 @@ export default function Friends(){
     }
   }
   useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
+  useEffect(()=>{
+   if(tab!=='people'||access!=='authenticated'||query.trim().length<2){setResults([]);setSearching(false);return;}
+   let live=true;const controller=new AbortController();setSearching(true);
+   const timer=window.setTimeout(()=>{fetch('/api/friends/search?q='+encodeURIComponent(query.trim()),{credentials:'same-origin',signal:controller.signal})
+    .then(async r=>{const data=await r.json();if(!r.ok)throw Error(data.error||'Falha na pesquisa.');return data;})
+    .then(data=>{if(live)setResults(data.results||[]);})
+    .catch(e=>{if(live&&e.name!=='AbortError')setError(e instanceof Error?e.message:'Falha na busca.');})
+    .finally(()=>{if(live)setSearching(false);});},300);
+   return()=>{live=false;window.clearTimeout(timer);controller.abort();};
+  },[query,tab,access]);
+  async function sendRequest(personId:string){
+   setBusy(true);setError('');setStatus('');
+   try{const r=await api('/request',{userId:personId});setStatus(r.status==='friends'?'Vocês já são amigos.':'Solicitação de amizade enviada para '+r.person.name+'.');setResults(v=>v.map(p=>p.id===personId?{...p,relation:r.status==='friends'?'friends':'sent'}:p));await load();}
+   catch(e){setError(e instanceof Error?e.message:'Falha ao enviar solicitação.');}finally{setBusy(false);}
+  }
   function stop(){scanning.current=false;locked.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
-  async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.friend.name+' foi adicionado(a) aos seus amigos!');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
+  async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.status==='friends'?'Vocês já são amigos.':'Solicitação enviada para '+data.person.name+'. A pessoa poderá aceitar nas notificações.');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
   function logCameraFailure(err:unknown,stage:string){
     const exception=err as {name?:string;message?:string;constraint?:string};
     const displayMode=window.matchMedia('(display-mode: standalone)').matches?'standalone':window.matchMedia('(display-mode: fullscreen)').matches?'fullscreen':'browser';
@@ -120,10 +140,19 @@ export default function Friends(){
   if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
     <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
-    {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:<>
+    <div role="tablist" aria-label="Amigos" className="mb-5 grid grid-cols-2 rounded-xl border border-white/10 bg-white/[.04] p-1">
+     <button type="button" role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='people'?'bg-[#c4ff40] text-black':'text-white/65')}>Pessoas</button>
+     <button type="button" role="tab" aria-selected={tab==='groups'} onClick={()=>{stop();setTab('groups');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='groups'?'bg-[#c4ff40] text-black':'text-white/65')}>Grupos</button>
+    </div>
+    {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<FriendGroups/>:<>
+      <div className="mb-5 space-y-3">
+       <label className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/[.04] px-3"><Search className="shrink-0 text-white/45" size={18}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar pessoas pelo nome" className="min-w-0 w-full bg-transparent p-3 text-base text-white outline-none"/></label>
+       {query.trim().length===1&&<p className="text-xs text-white/50">Digite pelo menos duas letras.</p>}
+       {query.trim().length>=2&&<div className="space-y-2 rounded-2xl border border-white/10 bg-white/[.025] p-3"><h3 className="text-sm font-bold">Pessoas encontradas</h3>{searching?<p className="text-xs text-white/55">Buscando...</p>:results.length===0?<p className="text-xs text-white/55">Nenhuma pessoa encontrada.</p>:results.map(p=><div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/10 p-3"><SocialAvatar name={p.name} avatar={p.avatar}/><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{p.name}</p><p className="text-xs text-white/50">{p.relation==='friends'?'Já são amigos':p.relation==='sent'?'Solicitação pendente':p.relation==='received'?'Solicitação recebida':'Enviar solicitação'}</p></div><button type="button" disabled={busy||p.relation!=='none'} onClick={()=>void sendRequest(p.id)} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black disabled:opacity-40">{p.relation==='none'?'Adicionar':p.relation==='sent'?'Enviado':p.relation==='received'?'Notificações':'Amigo'}</button></div>)}</div>}
+      </div>
       <div className="mb-6 rounded-2xl border border-white/10 bg-white/[.04] p-5">
         <h3 className="mb-2 flex items-center gap-2 font-bold"><UserPlus className="text-[#c4ff40]" size={19}/> Novo amigo</h3>
-        <p className="mb-4 text-xs text-white/55">Escaneie o QR Code de outra pessoa ou cole o link de convite.</p>
+        <p className="mb-4 text-xs text-white/55">Escaneie o QR Code de outra pessoa ou cole o link para enviar uma solicitação de amizade.</p>
         <button type="button" onClick={()=>setShowMyQR(v=>!v)} className="mb-4 w-full rounded-xl border border-[#c4ff40]/40 px-4 py-3 text-sm font-bold text-[#c4ff40]">{showMyQR?'Ocultar meu QR Code':'Ver meu QR Code'}</button>
         {showMyQR&&<div className="mb-4"><FriendQR/></div>}
         {!scan?<button onClick={()=>void start()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-black"><ScanLine size={19}/> Adicionar amigo</button>:<><video ref={video} autoPlay muted playsInline className="aspect-square w-full rounded-xl bg-black object-cover"/><button onClick={stop} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-sm"><CameraOff size={17}/> Fechar câmera</button></>}
@@ -131,7 +160,7 @@ export default function Friends(){
         {error&&<p role="alert" className="mt-3 text-xs text-red-300">{error}</p>}{status&&<p role="status" className="mt-3 text-xs text-[#c4ff40]">{status}</p>}
       </div>
       <div className="mb-3 flex items-center justify-between"><h3 className="font-display text-sm font-bold uppercase">Minha lista</h3><button onClick={()=>void load()} aria-label="Atualizar lista" className="flex items-center gap-1 text-xs text-white/55"><RefreshCw size={14}/> {friends.length} amigos</button></div>
-      {friends.length===0?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]" size={34}/><p className="font-bold">Nenhum amigo ainda</p><p className="mt-2 text-sm text-white/50">Escaneie um QR Code para começar.</p></div>:<div className="space-y-3">{friends.map(f=><div key={f.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#c4ff40]/15 font-black text-[#c4ff40]">{f.name.slice(0,1).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate font-bold">{f.name}</p><p className="text-xs text-white/45">Amigo</p></div><button aria-label={'Remover '+f.name} onClick={async()=>{if(!window.confirm('Remover '+f.name+' dos amigos?'))return;try{await api('/remove',{id:f.id});await load();}catch(e){setError(String(e));}}} className="p-2 text-white/45"><X size={18}/></button></div>)}</div>}
+      {friends.length===0?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]" size={34}/><p className="font-bold">Nenhum amigo ainda</p><p className="mt-2 text-sm text-white/50">Escaneie um QR Code para começar.</p></div>:<div className="space-y-3">{friends.map(f=><div key={f.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4"><SocialAvatar name={f.name} avatar={f.avatar}/><div className="min-w-0 flex-1"><p className="truncate font-bold">{f.name}</p><p className="text-xs text-white/45">Amigo</p></div><button aria-label={'Remover '+f.name} onClick={async()=>{if(!window.confirm('Remover '+f.name+' dos amigos?'))return;try{await api('/remove',{id:f.id});await load();}catch(e){setError(String(e));}}} className="p-2 text-white/45"><X size={18}/></button></div>)}</div>}
     </>}
   </div>;
 }
