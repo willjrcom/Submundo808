@@ -471,7 +471,7 @@ http.createServer(async (req,res)=>{
       }
       if(url.pathname==='/api/notifications'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,200,{items:[],unread:0});
-        const items=db.prepare(`SELECT n.id,n.event_id AS eventId,n.title,n.body,n.kind,n.target_kind AS targetKind,n.target_id AS targetId,n.sent_at AS sentAt,r.read_at AS readAt,fr.status AS requestStatus FROM notification_receipts r JOIN notifications n ON n.id=r.notification_id LEFT JOIN friend_requests fr ON fr.id=n.target_id AND n.target_kind='friend_request' WHERE r.user_id=? AND n.status='sent' ORDER BY n.sent_at DESC LIMIT 100`).all(user.id);
+        const items=db.prepare(`SELECT n.id,n.event_id AS "eventId",n.title,n.body,n.kind,n.target_kind AS "targetKind",n.target_id AS "targetId",n.sent_at AS "sentAt",r.read_at AS "readAt",COALESCE(fr.status,gi.status) AS "requestStatus" FROM notification_receipts r JOIN notifications n ON n.id=r.notification_id LEFT JOIN friend_requests fr ON fr.id=n.target_id AND n.target_kind='friend_request' LEFT JOIN friend_group_invitations gi ON gi.id=n.target_id AND n.target_kind='group_invite' WHERE r.user_id=? AND n.status='sent' ORDER BY n.sent_at DESC LIMIT 100`).all(user.id);
         return json(res,200,{items,unread:items.filter(x=>!x.readAt).length});
       }
       if(url.pathname==='/api/notifications/read'&&req.method==='POST'){
