@@ -61,3 +61,22 @@ test('modo demo carrega a agenda real 808 e mantém o modo fictício apenas sob 
  assert.match(backend,/ensureRealTourDemo\(db\)/);
  assert.match(backend,/AUTO_SEED_LEGACY==='true'/);
 });
+
+
+test('convite abre direto o CTA de entrada e lista de participantes sob demanda',()=>{
+ const groups=readFileSync(new URL('components/friend-groups.tsx',root),'utf8');
+ const social=readFileSync(new URL('../server/social.mjs',import.meta.url),'utf8');
+ assert.doesNotMatch(groups,/>Ver grupo<\/button>/);
+ assert.match(groups,/linkedInvite\?0:220/);
+ assert.match(groups,/preview\?\.joined\?'Abrir grupo':'Entrar no grupo'/);
+ assert.match(groups,/Ver participantes/);
+ assert.match(social,/includeMembers=url\.searchParams\.get\('members'\)==='1'/);
+});
+test('barra inferior compensa espaço nativo do navegador iOS sem subir os ícones do PWA',()=>{
+ const css=readFileSync(new URL('index.css',root),'utf8');
+ assert.match(app,/submundo-bottom-nav fixed/);
+ assert.match(css,/@media \(display-mode: browser\)/);
+ assert.match(css,/--submundo-browser-bleed:/);
+ assert.match(css,/bottom: calc\(0px - var\(--submundo-browser-bleed\)\)/);
+ assert.match(css,/padding-bottom: calc\(var\(--submundo-bottom-inset\) \+ var\(--submundo-browser-bleed\)\)/);
+});
