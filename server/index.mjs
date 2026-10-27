@@ -706,7 +706,7 @@ http.createServer(async (req,res)=>{
           if(!event)return json(res,404,{error:'Evento não encontrado.'});
           if(publish){
             if(!event.name.trim()||!event.valid_venue||!event.starts_at||!event.ends_at||!Number.isFinite(Date.parse(event.starts_at))||!Number.isFinite(eventEndMillis(event.ends_at))||eventEndMillis(event.ends_at)<=Date.parse(event.starts_at))return json(res,400,{error:'Defina nome, estabelecimento e datas válidas de início e término antes de publicar.'});
-            if(!event.meaple_event_id&&!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
+            if(!event.meaple_event_id&&!event.id.startsWith('meaple-808-event-')&&!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
           }
           db.prepare('UPDATE events SET is_published=? WHERE id=?').run(publish?1:0,id);
           return json(res,200,{ok:true,is_published:publish?1:0});
@@ -763,7 +763,7 @@ http.createServer(async (req,res)=>{
           if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
           const currentEvent=db.prepare('SELECT is_published,meaple_event_id FROM events WHERE id=?').get(id);
-          if(currentEvent.is_published&&((!ids.length&&!currentEvent.meaple_event_id)||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
+          if(currentEvent.is_published&&((!ids.length&&!currentEvent.meaple_event_id&&!id.startsWith('meaple-808-event-'))||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
            if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120||!validDjSocial(d)))return json(res,400,{error:'Lineup inválido.'});
           if(b.location_sharing_enabled!==undefined&&typeof b.location_sharing_enabled!=='boolean')return json(res,400,{error:'Configuração de localização inválida.'});
           db.exec('BEGIN');try{
