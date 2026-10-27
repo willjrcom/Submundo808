@@ -258,8 +258,7 @@ export function ensureRealTourDemo(db){
  for(const e of REAL_808_TOUR){
   const venueId='meaple-808-venue-'+e.id;
   const eventId='meaple-808-event-'+e.id;
-  const sourceId=e.url.split('/').at(-1);
-  const existing=db.prepare('SELECT id FROM events WHERE id=? OR tickets_url=? OR meaple_event_id=? LIMIT 1').get(eventId,e.url,sourceId);
+  const existing=db.prepare('SELECT id FROM events WHERE id=? OR tickets_url=? LIMIT 1').get(eventId,e.url);
   if(existing){eventsExisting++;continue;}
   let venue=db.prepare('SELECT id FROM venues WHERE id=? OR (lower(name)=lower(?) AND lower(city)=lower(?)) LIMIT 1').get(venueId,e.venue,e.city);
   if(!venue){
@@ -274,7 +273,8 @@ export function ensureRealTourDemo(db){
   db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(
    eventId,venue.id,e.name,description,starts,ends,'https://meaple.com.br/808',e.url,'',JSON.stringify(lineup),Date.now()
   );
-  db.prepare('UPDATE events SET meaple_event_id=?,doors_at=?,is_published=1,location_sharing_enabled=0 WHERE id=?').run(sourceId,doors,eventId);
+  // A URL pública não é o identificador interno da integração Meaple.
+  db.prepare('UPDATE events SET doors_at=?,is_published=1,location_sharing_enabled=0 WHERE id=?').run(doors,eventId);
   eventsAdded++;
  }
  db.exec('COMMIT');
