@@ -12,12 +12,18 @@ async function groupApi(route:string,data?:object){
  const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível concluir a operação.');return j;
 }
 const colors=['#8957e5','#14b87a','#f48a31','#ffc24b','#eb6076'];
+function inviteToken(value:string){
+ const text=value.trim();
+ try{const url=new URL(text);return url.searchParams.get('group_invite')||'';}catch{return text;}
+}
 export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boolean)=>void}){
  const [groups,setGroups]=useState<Group[]>([]),[selected,setSelected]=useState<GroupDetail|null>(null);
  useEffect(()=>{onDetailChange?.(selected!==null);},[selected,onDetailChange]);
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]),[photo,setPhoto]=useState('');
  const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
+ const [linkedInvite,setLinkedInvite]=useState(()=>Boolean(new URLSearchParams(window.location.search).get('group_invite')));
+ const [previewLoading,setPreviewLoading]=useState(false),[participantsOpen,setParticipantsOpen]=useState(false),[participantNames,setParticipantNames]=useState<{name:string}[]>([]),[participantsLoading,setParticipantsLoading]=useState(false);
  const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
  const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
  const [copied,setCopied]=useState(false);
@@ -26,7 +32,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
- useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite'))setMode('join');return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
+ useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite')){setLinkedInvite(true);setMode('join');}return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
  useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
  const open=async(id:string)=>{setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
@@ -34,18 +40,35 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   try{const j=await groupApi('/create',{name:name.trim(),description:description.trim(),color,photo});setName('');setPhoto('');setDescription('');await load();await open(j.group.id);if(pickedFriends.length){try{const invites=await groupApi('/invite-friends',{id:j.group.id,friendIds:pickedFriends});setStatus(invites.invited.length+' convite(s) enviado(s) aos amigos.');}catch(e){setError('Grupo criado, mas não foi possível enviar os convites: '+(e instanceof Error?e.message:'Erro desconhecido'));}}setPickedFriends([]);setFriendQuery('');}
   catch(e){showError(e);}finally{setBusy(false);}
  }
- async function lookup(){
-  setBusy(true);setError('');setPreview(null);
-  try{
-   let token=joinLink.trim();
-   try{const u=new URL(token);token=u.searchParams.get('group_invite')||'';}catch{}
-   const j=await groupApi('/preview?token='+encodeURIComponent(token));setPreview(j.group);
-  }catch(e){showError(e);}finally{setBusy(false);}
+ // The invitation is resolved on arrival; joining takes only one explicit tap.
+ useEffect(()=>{
+  if(mode!=='join')return;
+  const token=inviteToken(joinLink);
+  setPreview(null);setParticipantNames([]);setParticipantsOpen(false);
+  if(!/^[a-f0-9]{64}$/.test(token)){setPreviewLoading(false);return;}
+  let active=true;
+  const timer=window.setTimeout(()=>{
+   setPreviewLoading(true);setError('');
+   groupApi('/preview?token='+encodeURIComponent(token))
+    .then(j=>{if(active)setPreview(j.group);})
+    .catch(e=>{if(active)showError(e);})
+    .finally(()=>{if(active)setPreviewLoading(false);});
+  },linkedInvite?0:220);
+  return()=>{active=false;window.clearTimeout(timer);};
+ },[mode,joinLink,linkedInvite]);
+ async function toggleParticipants(){
+  if(!preview)return;
+  if(participantsOpen){setParticipantsOpen(false);return;}
+  setParticipantsOpen(true);
+  if(participantNames.length)return;
+  setParticipantsLoading(true);setError('');
+  try{const j=await groupApi('/preview?token='+encodeURIComponent(inviteToken(joinLink))+'&members=1');setParticipantNames(j.members||[]);}
+  catch(e){setParticipantsOpen(false);showError(e);}finally{setParticipantsLoading(false);}
  }
  async function join(){
   setBusy(true);setError('');
   try{
-   const j=await groupApi('/join',{token:joinLink.trim()});
+   const j=await groupApi('/join',{token:inviteToken(joinLink)});
    setJoinLink('');setPreview(null);window.history.replaceState({},'',window.location.pathname);await load();await open(j.id);
   }catch(e){showError(e);}finally{setBusy(false);}
  }
@@ -176,7 +199,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  return <div className="space-y-4">
   {mode==='list'?<><div className="grid grid-cols-2 gap-3">
     <button className={button} onClick={()=>{setMode('create');setError('');}}><Plus className="mr-1 inline" size={16}/> Criar grupo</button>
-    <button className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold" onClick={()=>{setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
+    <button className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold" onClick={()=>{setLinkedInvite(false);setJoinLink('');setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
    </div><h3 className="pt-3 text-sm font-black uppercase">Meus grupos ({groups.length})</h3>
    {!groups.length?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users size={32} className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-semibold">Nenhum grupo ainda</p><p className="mt-2 text-sm text-white/55">Crie um grupo para organizar sua galera nas próximas festas.</p></div>:
    groups.map(g=><button key={g.id} onClick={()=>void open(g.id)} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left">
@@ -192,8 +215,17 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
      <div className="space-y-2 border-t border-white/10 pt-4"><h4 className="text-sm font-bold">Convidar meus amigos (opcional)</h4>{friendSelect(false)}</div>
       <button type="submit" disabled={busy||photoBusy||name.trim().length<2} className={button}>Criar grupo{pickedFriends.length?' e convidar '+pickedFriends.length+' amigo(s)':''}</button>
     </form>:
-    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><h3 className="text-lg font-bold">Entrar em grupo</h3><p className="text-xs text-white/55">Cole um link ou código de convite recebido.</p><input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);setPreview(null);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/><button disabled={busy||!joinLink.trim()} onClick={()=>void lookup()} className={button}>Ver grupo</button>
-     {preview&&<div className="space-y-3 rounded-xl border border-white/15 p-4"><div className="flex items-center gap-3"><GroupAvatar name={preview.name} color={preview.color} icon={preview.icon} photo={preview.photo} size="sm"/><div><p className="font-bold">{preview.name}</p><p className="text-xs text-white/55">{preview.memberCount} integrantes</p></div></div><button disabled={busy||preview.joined} onClick={()=>void join()} className={button}>{preview.joined?'Você já participa':'Entrar no grupo'}</button></div>}
+    <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
+     <h3 className="text-lg font-bold">Entrar em grupo</h3>
+     {!linkedInvite&&<><p className="text-xs text-white/55">Cole um link ou código de convite recebido.</p><input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);setPreview(null);setParticipantsOpen(false);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/></>}
+     {previewLoading&&<p role="status" className="text-sm text-white/65">Carregando convite...</p>}
+     {preview&&<div className="space-y-3 rounded-xl border border-white/15 p-4">
+      <div className="flex items-center gap-3"><GroupAvatar name={preview.name} color={preview.color} icon={preview.icon} photo={preview.photo} size="sm"/><div className="min-w-0"><p className="font-bold">{preview.name}</p><p className="text-xs text-white/55">{preview.memberCount} {preview.memberCount===1?'integrante':'integrantes'}</p></div></div>
+      <button type="button" disabled={busy} onClick={()=>preview.joined?void open(preview.id):void join()} className={button}>{busy?'Aguarde...':preview.joined?'Abrir grupo':'Entrar no grupo'}</button>
+      <button type="button" aria-expanded={participantsOpen} onClick={()=>void toggleParticipants()} className="flex w-full items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-white/60 hover:text-[#c4ff40]"><Users size={15}/>{participantsOpen?'Ocultar participantes':'Ver participantes'} <span aria-hidden="true">{participantsOpen?'⌃':'⌄'}</span></button>
+      {participantsOpen&&<div className="space-y-2 border-t border-white/10 pt-3">{participantsLoading?<p className="text-xs text-white/50">Carregando participantes...</p>:participantNames.map((p,i)=><div key={i} className="flex items-center gap-2 text-sm text-white/75"><SocialAvatar name={p.name} size="sm"/><span>{p.name}</span></div>)}</div>}
+     </div>}
+     {!preview&&!previewLoading&&!linkedInvite&&<button type="button" disabled={busy||!joinLink.trim()} onClick={()=>void join()} className={button}>{busy?'Entrando...':'Entrar no grupo'}</button>}
     </div>}
    </div>}
   {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}{status&&<p role="status" className="text-xs text-[#c4ff40]">{status}</p>}
