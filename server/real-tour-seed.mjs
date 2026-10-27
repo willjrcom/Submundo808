@@ -253,6 +253,8 @@ function archiveUnmodifiedLegacyEvents(db){
 export function ensureRealTourDemo(db){
  const legacyArchived=archiveUnmodifiedLegacyEvents(db);
  let venuesAdded=0,eventsAdded=0,eventsExisting=0;
+ db.exec('BEGIN');
+ try{
  for(const e of REAL_808_TOUR){
   const venueId='meaple-808-venue-'+e.id;
   const eventId='meaple-808-event-'+e.id;
@@ -275,5 +277,7 @@ export function ensureRealTourDemo(db){
   db.prepare('UPDATE events SET meaple_event_id=?,doors_at=?,is_published=1,location_sharing_enabled=0 WHERE id=?').run(sourceId,doors,eventId);
   eventsAdded++;
  }
+ db.exec('COMMIT');
+ }catch(error){db.exec('ROLLBACK');throw error;}
  return {eventsAdded,eventsExisting,venuesAdded,legacyArchived,total:REAL_808_TOUR.length};
 }
