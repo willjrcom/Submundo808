@@ -10,8 +10,9 @@ async function groupApi(route:string,data?:object){
  const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível concluir a operação.');return j;
 }
 const colors=['#8957e5','#14b87a','#f48a31','#ffc24b','#eb6076'];
-export default function FriendGroups(){
+export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boolean)=>void}){
  const [groups,setGroups]=useState<Group[]>([]),[selected,setSelected]=useState<GroupDetail|null>(null);
+ useEffect(()=>{onDetailChange?.(selected!==null);},[selected,onDetailChange]);
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]);
  const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
