@@ -70,7 +70,7 @@ Idiomas/UX: interface em **português brasileiro**; visual escuro, identidade da
 
 ### Avaliações
 - Admin → **Avaliações**: indicadores, filtros por evento, notas, tags e comentários privados.
-- Participante pode avaliar evento **após o término e até sete dias depois**, nota de 1–5 obrigatória, tags e comentário opcionais; uma avaliação por pessoa/evento, editável dentro do prazo.
+- Participante pode avaliar evento **durante o evento e até sete dias após o encerramento**, nota de 1–5 obrigatória, tags e comentário opcionais; uma avaliação por pessoa/evento, editável dentro do prazo. A API aceita avaliações antes do encerramento do evento, desde que ele esteja publicado e o participante o tenha selecionado; a restrição de sete dias só é aplicada após seu término.
 - Ao finalizar um evento, o servidor gera convite de avaliação idempotente para participantes. Evitar convites duplicados e não reenviar para quem já avaliou.
 
 ### Conta e permissões

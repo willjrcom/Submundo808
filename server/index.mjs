@@ -453,7 +453,7 @@ http.createServer(async (req,res)=>{
         const event=db.prepare('SELECT ends_at FROM events WHERE id=? AND is_published=1').get(eventId);
         if(!event)return json(res,404,{error:'Evento não encontrado.'});
         const ends=eventEndMillis(event.ends_at);
-        if(!Number.isFinite(ends)||Date.now()<ends||Date.now()>ends+7*86400000)return json(res,409,{error:'Avaliação disponível somente durante os sete dias após o término do evento.'});
+        if(Number.isFinite(ends)&&Date.now()>ends+7*86400000)return json(res,409,{error:'O período de avaliação deste evento terminou.'});
         if(!db.prepare('SELECT 1 FROM event_participants WHERE event_id=? AND user_id=?').get(eventId,user.id))return json(res,403,{error:'Selecione o evento para poder avaliá-lo.'});
         const rating=Number(b.rating),tags=b.tags,comment=String(b.comment||'').trim();
         if(!Number.isInteger(rating)||rating<1||rating>5||!Array.isArray(tags)||tags.length>15||tags.some(x=>typeof x!=='string'||x.length>60)||comment.length>2000)return json(res,400,{error:'Avaliação inválida.'});
