@@ -26,7 +26,7 @@ const EVENTS=[
   description:'Uma noite de graves intensos, luzes neon e sets de house e techno.',
   djs:['NØX','LUNA BASS','MAYA VOLT','KAYO 808','VEXX','SUBZERO'],
   areas:[place('Área VIP','vip',0,0,100,38,'#9747FF'),place('Pista','pista',0,38,100,62,'#3B82F6')],
-  markers:[point('Palco','palco',50,0,'top'),point('Entrada principal','entrada',50,100,'bottom'),point('Bar principal','bar',10,51),point('Banheiros','banheiro',90,51),point('Bar de cerveja','bar',20,78),point('Saída de emergência','saida',95,89,'right')]
+  markers:[point('Palco','palco',50,0,'top'),point('Entrada principal','entrada',50,100,'bottom'),point('Bar principal','bar',10,51),point('Banheiros','banheiro',90,51),point('Saída de emergência','saida',95,89,'right')]
  },
  {
   slug:'bass',title:'SUBMUNDO 808 — Bass Warehouse',venue:'armazem',
@@ -42,7 +42,7 @@ const EVENTS=[
   description:'Fim de tarde com melodic house, pista aberta e um lounge para descansar.',
   djs:['SOLAR','AMBER','LUNA BASS','AURA','JUNO','MAYA VOLT'],
   areas:[place('Pista aberta','pista',0,0,100,65,'#3B82F6'),place('Lounge','descanso',0,65,52,35,'#00BDD6'),place('Área VIP','vip',52,65,48,35,'#9747FF')],
-  markers:[point('Palco sunset','palco',50,12),point('Entrada','entrada',10,100,'bottom'),point('Bar do terraço','bar',85,48),point('Banheiros','banheiro',90,89),point('Bar de cerveja','bar',20,88),point('Alimentação','alimentacao',43,93)]
+  markers:[point('Palco sunset','palco',50,12),point('Entrada','entrada',10,100,'bottom'),point('Bar do terraço','bar',85,48),point('Banheiros','banheiro',90,89),point('Alimentação','alimentacao',43,93)]
  },
  {
   slug:'after',title:'SUBMUNDO 808 — After Hours',venue:'armazem',
@@ -58,7 +58,7 @@ const EVENTS=[
   description:'Duas pistas, área VIP e bares temáticos para uma noite de música eletrônica.',
   djs:['LUNA BASS','RAVEN','KAYO 808','AMBER','DARK MIND','NØX'],
   areas:[place('Pista principal','pista',0,0,75,66,'#3B82F6'),place('Área VIP','vip',75,0,25,66,'#9747FF'),place('Pista alternativa','principal',0,66,100,34,'#FF456C')],
-  markers:[point('Palco principal','palco',37,4),point('Palco alternativo','palco',45,79),point('Entrada','entrada',50,100,'bottom'),point('Banheiros','banheiro',90,53),point('Bar principal','bar',13,39),point('Bar VIP','bar',88,22),point('Food trucks','alimentacao',80,84),point('Saída','saida',100,93,'right')]
+  markers:[point('Palco principal','palco',37,4),point('Palco alternativo','palco',45,79),point('Entrada','entrada',50,100,'bottom'),point('Banheiros','banheiro',90,53),point('Bar principal','bar',13,39),point('Food trucks','alimentacao',80,84),point('Saída','saida',100,93,'right')]
  }
 ];
 
@@ -75,12 +75,15 @@ const POINT_PROFILES={
  'Espetinhos':{categories:['Espetinhos'],opens_at:'20:00',closes_at:'02:00'},
  'Porções':{categories:['Porções','Comidas'],opens_at:'21:00',closes_at:'04:00'}
 };
-const EXTRA_POINTS={
- neon:[point('Lanchonete','alimentacao',78,77),point('Espetinhos','alimentacao',54,80)],
- bass:[point('Espetinhos','alimentacao',64,78),point('Porções','alimentacao',46,78)],
- sunset:[point('Lanchonete','alimentacao',53,83),point('Espetinhos','alimentacao',70,85)],
- after:[point('Lanchonete','alimentacao',56,88),point('Espetinhos','alimentacao',72,85)],
- underground:[point('Espetinhos','alimentacao',65,86),point('Lanchonete','alimentacao',34,87)]
+const EXTRA_POINTS={};
+// Marcadores suplementares dos seeds antigos são removidos apenas quando permanecem
+// idênticos ao modelo, para não apagar alterações feitas no painel administrativo.
+const LEGACY_EXTRA_POINTS={
+ neon:[['Lanchonete',78,77],['Espetinhos',54,80]],
+ bass:[['Espetinhos',64,78],['Porções',46,78]],
+ sunset:[['Lanchonete',53,83],['Espetinhos',70,85]],
+ after:[['Lanchonete',56,88],['Espetinhos',72,85]],
+ underground:[['Espetinhos',65,86],['Lanchonete',34,87]]
 };
 function provisionDemoPointMenus(db,now){
  let markersAdded=0,pointsAssociated=0,productsLinked=0;
@@ -93,6 +96,16 @@ function provisionDemoPointMenus(db,now){
   let markers;try{markers=JSON.parse(row.markers_json);}catch{continue;}
   if(!Array.isArray(markers))continue;
   let changed=false;
+  const previousCount=markers.length;
+  markers=markers.filter(m=>{
+   const extras=LEGACY_EXTRA_POINTS[event.slug]||[];
+   return !extras.some(([name,x,y],i)=>m.id===makeId('marker',event.slug+'-extra-'+i)&&m.name===name&&m.x===x&&m.y===y&&m.description==='Ponto de venda demonstrativo');
+  });
+  if(markers.length!==previousCount)changed=true;
+  // Segundo bar padrão: mantém sempre um bar principal, sem duplicatas visuais.
+  const secondary=event.markers.filter(p=>p.type==='bar').slice(1);
+  const clean=markers.filter(m=>!secondary.some(p=>m.name===p.name&&m.type===p.type&&m.x===p.x&&m.y===p.y&&(!m.description||m.description==='Ponto de referência no mapa.')));
+  if(clean.length!==markers.length){markers=clean;changed=true;}
   for(const marker of markers){
    const profile=POINT_PROFILES[marker.name];
    if(!profile||marker.type!=='bar'&&marker.type!=='alimentacao'&&marker.type!=='cozinha')continue;
