@@ -10,9 +10,10 @@ type SearchPerson=Friend&{relation:'friends'|'sent'|'received'|'none'};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
 export default function Friends(){
-  const [tab,setTab]=useState<'people'|'groups'>((window.location.pathname==='/groups'||new URLSearchParams(window.location.search).has('group_invite'))?'groups':'people');
-  const switchTab=(next:'people'|'groups')=>{setTab(next);window.history.pushState({social:next},'',next==='groups'?'/groups':'/friends');};
-  useEffect(()=>{const sync=()=>setTab(window.location.pathname==='/groups'||new URLSearchParams(window.location.search).has('group_invite')?'groups':'people');window.addEventListener('popstate',sync);window.addEventListener('submundo-navigation',sync);return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('submundo-navigation',sync);};},[]);
+  const peopleView=()=>new URLSearchParams(window.location.search).has('invite')||new URLSearchParams(window.location.search).get('view')==='people';
+  const [tab,setTab]=useState<'people'|'groups'>(peopleView()?'people':'groups');
+  const switchTab=(next:'people'|'groups')=>{setTab(next);setError('');window.history.pushState({social:next},'',next==='groups'?'/friends':'/friends?view=people');window.scrollTo(0,0);};
+  useEffect(()=>{const sync=()=>setTab(peopleView()?'people':'groups');window.addEventListener('popstate',sync);window.addEventListener('submundo-navigation',sync);return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('submundo-navigation',sync);};},[]);
   const [query,setQuery]=useState(''),[results,setResults]=useState<SearchPerson[]>([]),[searching,setSearching]=useState(false);
   const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [showMyQR,setShowMyQR]=useState(false);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
@@ -26,7 +27,7 @@ export default function Friends(){
       else {setAccess('error');setError(e instanceof Error?e.message:'Não foi possível carregar os amigos.');}
     }
   }
-  useEffect(()=>{void load();return()=>{stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
+  useEffect(()=>{void load();const refresh=()=>{void load();};window.addEventListener('submundo-social-updated',refresh);return()=>{window.removeEventListener('submundo-social-updated',refresh);stream.current?.getTracks().forEach(t=>t.stop());scanning.current=false;};},[]);
   useEffect(()=>{
    if(tab!=='people'||access!=='authenticated'||query.trim().length<2){setResults([]);setSearching(false);return;}
    let live=true;const controller=new AbortController();setSearching(true);
@@ -141,12 +142,9 @@ export default function Friends(){
   if(showLoading)return <PageLoading label="Carregando amigos" description="Verificando seu acesso e preparando sua lista de amigos."/>;
   if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
-    <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
-    <div role="tablist" aria-label="Amigos" className="mb-5 grid grid-cols-2 rounded-xl border border-white/10 bg-white/[.04] p-1">
-     <button type="button" role="tab" aria-selected={tab==='people'} onClick={()=>{switchTab('people');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='people'?'bg-[#c4ff40] text-black':'text-white/65')}>Pessoas</button>
-     <button type="button" role="tab" aria-selected={tab==='groups'} onClick={()=>{stop();switchTab('groups');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='groups'?'bg-[#c4ff40] text-black':'text-white/65')}>Grupos</button>
-    </div>
-    {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<FriendGroups/>:<>
+    <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">{tab==='groups'?'Grupos de amigos':'Meus amigos'}</h2></div>
+    {tab==='people'&&<button type="button" onClick={()=>{stop();switchTab('groups');}} className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75">← Voltar aos grupos</button>}
+    {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<><FriendGroups/><button type="button" onClick={()=>switchTab('people')} className="mt-6 flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[.035] px-4 py-4 text-left"><span className="flex items-center gap-3"><Users size={20} className="text-[#c4ff40]"/><span><span className="block font-bold">Meus amigos</span><span className="text-xs text-white/55">Contatos salvos para suas próximas festas</span></span></span><span className="text-xs text-[#c4ff40]">{friends.length} amigo(s) ›</span></button></>:<>
       <div className="mb-5 space-y-3">
        <label className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/[.04] px-3"><Search className="shrink-0 text-white/45" size={18}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar pessoas pelo nome" className="min-w-0 w-full bg-transparent p-3 text-base text-white outline-none"/></label>
        {query.trim().length===1&&<p className="text-xs text-white/50">Digite pelo menos duas letras.</p>}
