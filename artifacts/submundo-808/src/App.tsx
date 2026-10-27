@@ -55,6 +55,19 @@ export default function App() {
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [inboxOpen,setInboxOpen]=useState(false);
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const linkEvent=params.get('event');
+    if(linkEvent){saveActiveEventId(linkEvent);setActiveEventId(linkEvent);}
+    if(params.get('review')==='1')setInboxOpen(true);
+    const focusPoint=params.get('point');
+    if(focusPoint){
+      const selected=linkEvent||getActiveEventId();
+      const dispatch=()=>window.dispatchEvent(new CustomEvent('submundo-map-focus',{detail:{pointId:focusPoint,eventId:selected}}));
+      window.setTimeout(dispatch,600);
+    }
+  },[]);
+
   const [brandLogo,setBrandLogo]=useState('');
   useEffect(()=>{let alive=true;const load=()=>{fetch('/api/public/branding').then(r=>r.json()).then(j=>{if(alive)setBrandLogo(j.logo||'');}).catch(()=>{});};load();window.addEventListener('focus',load);return()=>{alive=false;window.removeEventListener('focus',load);};},[]);
   const [tab, setTab] = useState<Tab>(tabFromUrl);
