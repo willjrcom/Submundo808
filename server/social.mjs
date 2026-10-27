@@ -26,11 +26,18 @@ export function ensureSocialSchema(db){
   UNIQUE(group_id,recipient_id)
  );
  CREATE INDEX IF NOT EXISTS idx_friend_group_invitations_recipient ON friend_group_invitations(recipient_id,status);`);
- for(const [col,def] of [['edit_policy',"TEXT NOT NULL DEFAULT 'admin'"],['join_policy',"TEXT NOT NULL DEFAULT 'direct'"],['icon',"TEXT NOT NULL DEFAULT 'users'"]])if(!db.prepare('PRAGMA table_info(friend_groups)').all().some(c=>c.name===col))db.exec('ALTER TABLE friend_groups ADD COLUMN '+col+' '+def);
+ for(const [col,def] of [['edit_policy',"TEXT NOT NULL DEFAULT 'admin'"],['join_policy',"TEXT NOT NULL DEFAULT 'direct'"],['icon',"TEXT NOT NULL DEFAULT 'users'"],['photo_data',"TEXT NOT NULL DEFAULT ''"]])if(!db.prepare('PRAGMA table_info(friend_groups)').all().some(c=>c.name===col))db.exec('ALTER TABLE friend_groups ADD COLUMN '+col+' '+def);
 }
 
 const sha256=s=>createHash('sha256').update(s).digest('hex');
 const validColor=s=>/^#[0-9a-fA-F]{6}$/.test(s);
+const validGroupPhoto=s=>{
+ if(s==='')return true;
+ if(typeof s!=='string'||s.length>160000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(s))return false;
+ const payload=s.split(',')[1];
+ const bin=Buffer.from(payload,'base64');
+ return bin.length<=120000&&bin.length>=20&&bin.subarray(0,4).toString('ascii')==='RIFF'&&bin.subarray(8,12).toString('ascii')==='WEBP'&&bin.toString('base64')===payload;
+};
 const verifiedId=s=>typeof s==='string'&&s.length>0&&s.length<=100;
 const httpError=(status,error)=>Object.assign(new Error(error),{status});
 const groupAlerts={
@@ -80,10 +87,11 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
  };
  const groupRow=id=>db.prepare('SELECT * FROM friend_groups WHERE id=?').get(id);
  const member=(id,uid=user.id)=>db.prepare('SELECT role FROM friend_group_members WHERE group_id=? AND user_id=?').get(id,uid);
+ const isManager=g=>!!g&&(g.owner_id===user.id||member(g.id)?.role==='admin');
  const groupSummary=g=>{
   const count=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
   const avatars=db.prepare('SELECT u.id,u.name,u.avatar_data AS avatar FROM friend_group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined_at LIMIT 5').all(g.id);
-  return {id:g.id,name:g.name,description:g.description,color:g.color,ownerId:g.owner_id,memberCount:count,avatars,editPolicy:g.edit_policy||'admin',joinPolicy:g.join_policy||'direct',icon:g.icon||'users'};
+  return {id:g.id,name:g.name,description:g.description,color:g.color,ownerId:g.owner_id,memberCount:count,avatars,editPolicy:g.edit_policy||'admin',joinPolicy:g.join_policy||'direct',icon:g.icon||'users',photo:g.photo_data||''};
  };
  try{
   if(pathname==='/api/friends'&&method==='GET'){
@@ -150,7 +158,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
   if(pathname==='/api/groups/invite-friends'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
    if(!g||!member(id))return reject(404,'Grupo não encontrado.');
-   if(g.owner_id!==user.id)return reject(403,'Somente o administrador pode convidar integrantes diretamente.');
+   if(!isManager(g))return reject(403,'Apenas administradores podem convidar integrantes diretamente.');
    const ids=p.friendIds;
    if(!Array.isArray(ids)||!ids.length||ids.length>30||new Set(ids).size!==ids.length||!ids.every(verifiedId))return reject(400,'Selecione até 30 amigos diferentes.');
    const now=Date.now(),invited=[],skipped=[];
@@ -212,18 +220,27 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
   if(pathname==='/api/groups/edit'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
    if(!g||!member(id))return reject(404,'Grupo não encontrado.');
-   if(g.owner_id!==user.id&&g.edit_policy!=='everyone')return reject(403,'Somente o administrador pode editar este grupo.');
+   if(!isManager(g)&&g.edit_policy!=='everyone')return reject(403,'Somente administradores podem editar este grupo.');
    const name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||''),icon=String(p.icon||'users');
    if(name.length<2||name.length>60||description.length>250||!validColor(color)||!['users','music','fire','party','star','heart'].includes(icon))return reject(400,'Nome, descrição, cor ou ícone inválidos.');
    const owner=g.owner_id===user.id;
    const editPolicy=owner?String(p.editPolicy||'admin'):g.edit_policy;
    const joinPolicy=owner?String(p.joinPolicy||'direct'):g.join_policy;
    if(!['admin','everyone'].includes(editPolicy)||!['direct','approval'].includes(joinPolicy))return reject(400,'Permissões inválidas.');
-   db.prepare('UPDATE friend_groups SET name=?,description=?,color=?,icon=?,edit_policy=?,join_policy=? WHERE id=?').run(name,description,color,icon,editPolicy,joinPolicy,id);
+   const photoProvided=Object.hasOwn(p,'photo');
+   if(photoProvided&&!validGroupPhoto(p.photo))return reject(400,'Foto inválida. Envie um WebP otimizado com no máximo 120 KB.');
+   db.exec('BEGIN');
+   try{
+    db.prepare('UPDATE friend_groups SET name=?,description=?,color=?,icon=?,edit_policy=?,join_policy=? WHERE id=?').run(name,description,color,icon,editPolicy,joinPolicy,id);
+    if(photoProvided)db.prepare('UPDATE friend_groups SET photo_data=? WHERE id=?').run(p.photo,id);
+    db.exec('COMMIT');
+   }catch(e){db.exec('ROLLBACK');throw e;}
    json(res,200,{group:groupSummary(groupRow(id))});return true;
   }
   if(pathname==='/api/groups/create'&&method==='POST'){
-   const p=await readBody(req),name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||'#8957e5');
+   const p=await readBody(req),name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||'#8957e5'); 
+   const photo=p.photo===undefined?'':p.photo;
+   if(!validGroupPhoto(photo))return reject(400,'Foto inválida. Envie um WebP otimizado com no máximo 120 KB.');
    if(name.length<2||name.length>60||description.length>250||!validColor(color))return reject(400,'Informe um nome válido (2 a 60 caracteres), descrição curta e cor válida.');
    const total=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE user_id=?').get(user.id).n;
    if(total>=40)return reject(409,'Você atingiu o limite de grupos.');
@@ -231,6 +248,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    db.exec('BEGIN');
    try{
     db.prepare('INSERT INTO friend_groups(id,owner_id,name,description,color,invite_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(id,user.id,name,description,color,sha256(token),now);
+    db.prepare('UPDATE friend_groups SET photo_data=? WHERE id=?').run(photo,id);
     db.prepare("INSERT INTO friend_group_members(group_id,user_id,role,joined_at) VALUES(?,?,'owner',?)").run(id,user.id,now);
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
@@ -318,10 +336,25 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    }catch(e){db.exec('ROLLBACK');throw e;}
    json(res,200,{ok:true,deleted:true});return true;
   }
+  if(pathname==='/api/groups/role'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),targetId=p.userId,role=String(p.role||''),g=groupRow(id);
+   if(!g)return reject(404,'Grupo não encontrado.');
+   if(g.owner_id!==user.id)return reject(403,'Somente o proprietário pode promover ou rebaixar administradores.');
+   if(!verifiedId(targetId)||targetId===g.owner_id||!['admin','member'].includes(role))return reject(400,'Integrante ou função inválidos.');
+   const target=member(id,targetId);
+   if(!target)return reject(404,'Integrante não encontrado.');
+   if(target.role===role)return json(res,200,{ok:true,role});
+   db.prepare('UPDATE friend_group_members SET role=? WHERE group_id=? AND user_id=?').run(role,id,targetId);
+   socialNotification(targetId,{title:'Permissão do grupo alterada',body:role==='admin'?'Você agora é administrador de '+g.name+'.':'Seu papel em '+g.name+' agora é integrante.',targetId:id,targetKind:'group_alert',kind:'group_role'});
+   json(res,200,{ok:true,role});return true;
+  }
   if(pathname==='/api/groups/remove'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
-   if(!g||g.owner_id!==user.id)return reject(403,'Apenas o administrador do grupo pode remover integrantes.');
+   if(!g||!isManager(g))return reject(403,'Apenas administradores podem remover integrantes.');
    if(!verifiedId(p.userId)||p.userId===user.id)return reject(400,'Selecione outro integrante.');
+   const target=member(id,p.userId);
+   if(!target)return reject(404,'Integrante não encontrado.');
+   if(target.role==='owner'||target.role==='admin'&&g.owner_id!==user.id)return reject(403,'Administradores não podem remover outros administradores.');
    db.prepare('DELETE FROM friend_group_members WHERE group_id=? AND user_id=?').run(id,p.userId);
    json(res,200,{ok:true});return true;
   }
