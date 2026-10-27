@@ -343,13 +343,21 @@ http.createServer(async (req,res)=>{
         const b=await body(req),id=String(b.id||''),eventId=String(b.eventId||''),title=String(b.title||'').trim(),message=String(b.message||'').trim();
         const kind=String(b.kind||'info'),targetKind=String(b.targetKind||'event'),targetId=String(b.targetId||'');
         const audience=String(b.audience||'event'),schedule=Number(b.scheduledAt)||null,dispatch=String(b.action||'draft');
-        if(!title||title.length>120||!message||message.length>700||!['promo','info','lineup','survey'].includes(kind)||!['event','map','point','menu','lineup','survey'].includes(targetKind)||!['event','all'].includes(audience)||!['draft','send','schedule'].includes(dispatch))return json(res,400,{error:'Dados da notificação inválidos.'});
+        if(!title||title.length>120||!message||message.length>700||!['promo','info','lineup','survey'].includes(kind)||!['event','map','point','menu','lineup','survey'].includes(targetKind)||!['event','all'].includes(audience)||!['draft','send','schedule','test'].includes(dispatch))return json(res,400,{error:'Dados da notificação inválidos.'});
         if(audience==='event'&&!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Selecione um evento.'});
         if(targetKind==='point'){
           const rows=db.prepare('SELECT mm.markers_json FROM event_maps em JOIN map_markers mm ON mm.map_id=em.map_id WHERE em.event_id=?').all(eventId);
           if(!targetId||!rows.some(x=>{try{return JSON.parse(x.markers_json).some(m=>m.id===targetId);}catch{return false;}}))return json(res,400,{error:'Ponto não está cadastrado nos mapas do evento.'});
         }
         if(dispatch==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe um agendamento futuro.'});
+        if(dispatch==='test'){
+          const testId=randomUUID(),now=Date.now();
+          db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(testId,eventId||null,title,message,kind,targetKind,targetId,'test','sent',null,u.id,now,now);
+          db.prepare('INSERT INTO notification_receipts(notification_id,user_id) VALUES(?,?)').run(testId,u.id);
+          void pushToUser(u.id,{id:testId,event_id:eventId,title,body:message,target_kind:targetKind,target_id:targetId});
+          return json(res,200,{ok:true,test:true});
+        }
+
         if(id){
           const old=db.prepare('SELECT status,created_by FROM notifications WHERE id=?').get(id);
           if(!old||old.status!=='draft'&&old.status!=='scheduled')return json(res,409,{error:'A notificação já foi enviada ou não existe.'});
