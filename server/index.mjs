@@ -11,6 +11,7 @@ import {ensureDemoShowcase} from './demo-showcase.mjs';
 import {ensureDemoNotifications} from './demo-notifications.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
+import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
 import webpush from 'web-push';
 import fs from 'node:fs';
@@ -68,6 +69,7 @@ CREATE TABLE IF NOT EXISTS notification_receipts (
  PRIMARY KEY(notification_id,user_id)
 );
 CREATE INDEX IF NOT EXISTS idx_notification_receipts_user ON notification_receipts(user_id,read_at);`);
+ensureSocialSchema(db);
 
 db.exec(`CREATE TABLE IF NOT EXISTS venues(id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT DEFAULT '',city TEXT DEFAULT '',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,created_at INTEGER NOT NULL);
@@ -260,6 +262,7 @@ http.createServer(async (req,res)=>{
         console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),requestId,page,component,code,errorType}));
         return json(res,202,{ok:true});
       }
+      if(await handleSocialApi({db,req,res,url,getUser,readBody:body,json,friendSecret:FRIEND_SECRET,drainPushQueue}))return;
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         let invite=db.prepare('SELECT token_hash FROM friend_invites WHERE user_id=?').get(user.id);
@@ -364,7 +367,7 @@ http.createServer(async (req,res)=>{
         if(!event)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const now=Date.now();expireLocationShares(db,now);
         if(!event.location_sharing_enabled)return json(res,200,{friends:[],locationSharingEnabled:false});
-        const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now,eventId);
+        const rows=db.prepare(`SELECT DISTINCT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM users u JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE u.id<>? AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? AND (EXISTS (SELECT 1 FROM friendships f WHERE (f.user_a=? AND f.user_b=u.id) OR (f.user_b=? AND f.user_a=u.id)) OR EXISTS (SELECT 1 FROM friend_group_members mine JOIN friend_group_members other ON other.group_id=mine.group_id WHERE mine.user_id=? AND other.user_id=u.id)) ORDER BY u.name`).all(user.id,now-LOCATION_FRESH_MS,now,eventId,user.id,user.id,user.id);
         return json(res,200,{friends:rows,locationSharingEnabled:true});
       }
       // O evento selecionado pelo usuário autenticado fica registrado no servidor.
@@ -467,7 +470,7 @@ http.createServer(async (req,res)=>{
       }
       if(url.pathname==='/api/notifications'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,200,{items:[],unread:0});
-        const items=db.prepare(`SELECT n.id,n.event_id AS eventId,n.title,n.body,n.kind,n.target_kind AS targetKind,n.target_id AS targetId,n.sent_at AS sentAt,r.read_at AS readAt FROM notification_receipts r JOIN notifications n ON n.id=r.notification_id WHERE r.user_id=? AND n.status='sent' ORDER BY n.sent_at DESC LIMIT 100`).all(user.id);
+        const items=db.prepare(`SELECT n.id,n.event_id AS eventId,n.title,n.body,n.kind,n.target_kind AS targetKind,n.target_id AS targetId,n.sent_at AS sentAt,r.read_at AS readAt,fr.status AS requestStatus FROM notification_receipts r JOIN notifications n ON n.id=r.notification_id LEFT JOIN friend_requests fr ON fr.id=n.target_id AND n.target_kind='friend_request' WHERE r.user_id=? AND n.status='sent' ORDER BY n.sent_at DESC LIMIT 100`).all(user.id);
         return json(res,200,{items,unread:items.filter(x=>!x.readAt).length});
       }
       if(url.pathname==='/api/notifications/read'&&req.method==='POST'){
