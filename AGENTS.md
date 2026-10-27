@@ -114,3 +114,6 @@ docker build -t submundo808 .
 - `artifacts/submundo-808/src/components/admin-engagement.tsx` — admin notificações e avaliações.
 - `artifacts/submundo-808/src/components/account.tsx` — conta/perfil.
 - `artifacts/submundo-808/src/components/venue-map.tsx` — mapa e modais de marcadores.
+
+## Padrão de notificações reutilizáveis
+Notificações cadastradas são modelos salvos; criação/edição apenas salva. Na listagem, oferecer Editar, Enviar teste, Enviar agora e Agendar/detalhes. Cada disparo/agendamento cria uma ocorrência independente sem destruir o modelo; confirmar ações em modais internos.

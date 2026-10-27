@@ -367,11 +367,24 @@ http.createServer(async (req,res)=>{
 
         if(id){
           const old=db.prepare('SELECT status,created_by FROM notifications WHERE id=?').get(id);
-          if(!old||old.status!=='draft'&&old.status!=='scheduled')return json(res,409,{error:'A notificação já foi enviada ou não existe.'});
+          if(!old||old.status!=='draft')return json(res,409,{error:'A notificação já foi enviada ou não existe.'});
           db.prepare('UPDATE notifications SET event_id=?,title=?,body=?,kind=?,target_kind=?,target_id=?,audience=?,status=?,scheduled_at=? WHERE id=?').run(eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,id);
         }else db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,u.id,Date.now());
         if(dispatch==='send')dispatchDueNotifications();
         return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/admin/notifications/dispatch'&&req.method==='POST'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        const b=await body(req),id=String(b.id||''),action=String(b.action||''),schedule=Number(b.scheduledAt)||null;
+        if(!['send','schedule','test'].includes(action))return json(res,400,{error:'Ação inválida.'});
+        const source=db.prepare("SELECT * FROM notifications WHERE id=? AND status='draft'").get(id);
+        if(!source)return json(res,404,{error:'Modelo salvo não encontrado.'});
+        if(action==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe uma data futura.'});
+        const now=Date.now(),sendId=randomUUID(),status=action==='test'?'sent':action==='schedule'?'scheduled':'pending';
+        db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(sendId,source.event_id,source.title,source.body,source.kind,source.target_kind,source.target_id,action==='test'?'test':source.audience,status,action==='schedule'?schedule:null,u.id,now,action==='test'?now:null);
+        if(action==='test'){db.prepare('INSERT INTO notification_receipts(notification_id,user_id) VALUES(?,?)').run(sendId,u.id);void pushToUser(u.id,{...source,id:sendId});}
+        else if(action==='send')dispatchDueNotifications();
+        return json(res,200,{ok:true,id:sendId});
       }
       if(url.pathname==='/api/admin/notifications/cancel'&&req.method==='POST'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
