@@ -118,7 +118,8 @@ db.exec('CREATE TABLE IF NOT EXISTS location_preferences(user_id TEXT PRIMARY KE
 for(const [column,definition] of [
  ['share_mode',"TEXT NOT NULL DEFAULT 'event'"],
  ['share_expires_at','INTEGER'],
- ['share_event_id','TEXT']
+ ['share_event_id','TEXT'],
+ ['share_with_groups','INTEGER NOT NULL DEFAULT 0']
 ]){
  if(!db.prepare('PRAGMA table_info(location_preferences)').all().some(c=>c.name===column))db.exec('ALTER TABLE location_preferences ADD COLUMN '+column+' '+definition);
 }
@@ -301,18 +302,18 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/location/preferences'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const now=Date.now();expireLocationShares(db,now);
-        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id FROM location_preferences WHERE user_id=?').get(user.id);
+        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups FROM location_preferences WHERE user_id=?').get(user.id);
         const shareEnabled=!!row?.share_enabled&&row.share_expires_at>now;
         return json(res,200,{
           gpsEnabled:shareEnabled&&!!row?.gps_enabled,shareEnabled,
-          mode:row?.share_mode||'event',eventId:shareEnabled?row?.share_event_id||null:null,
+          mode:row?.share_mode||'event',eventId:shareEnabled?row?.share_event_id||null:null,shareWithGroups:shareEnabled&&!!row?.share_with_groups,
           expiresAt:shareEnabled?row.share_expires_at:null
         });
       }
       if(url.pathname==='/api/location/preferences'&&req.method==='POST'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req);
-        if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled))return json(res,400,{error:'Preferências inválidas.'});
+        if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled)||(b.shareWithGroups!==undefined&&typeof b.shareWithGroups!=='boolean'))return json(res,400,{error:'Preferências inválidas.'});
         const now=Date.now();
         let choice=null;
         if(b.shareEnabled){
@@ -323,10 +324,10 @@ http.createServer(async (req,res)=>{
           try{choice=resolveSharingExpiry(db,{mode:b.mode,eventId:b.eventId,now});}
           catch(e){return json(res,e.status||400,{error:e.message});}
         }
-        db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,updated_at=excluded.updated_at')
-          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,now);
+        db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,share_with_groups=excluded.share_with_groups,updated_at=excluded.updated_at')
+          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,b.shareEnabled&&b.shareWithGroups===true?1:0,now);
         if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
-        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,expiresAt:choice?.expiresAt||null});
+        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,shareWithGroups:b.shareEnabled&&b.shareWithGroups===true,expiresAt:choice?.expiresAt||null});
       }
       if (url.pathname==='/api/location/me' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
@@ -367,7 +368,7 @@ http.createServer(async (req,res)=>{
         if(!event)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const now=Date.now();expireLocationShares(db,now);
         if(!event.location_sharing_enabled)return json(res,200,{friends:[],locationSharingEnabled:false});
-        const rows=db.prepare(`SELECT DISTINCT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM users u JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE u.id<>? AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? AND (EXISTS (SELECT 1 FROM friendships f WHERE (f.user_a=? AND f.user_b=u.id) OR (f.user_b=? AND f.user_a=u.id)) OR EXISTS (SELECT 1 FROM friend_group_members mine JOIN friend_group_members other ON other.group_id=mine.group_id WHERE mine.user_id=? AND other.user_id=u.id)) ORDER BY u.name`).all(user.id,now-LOCATION_FRESH_MS,now,eventId,user.id,user.id,user.id);
+        const rows=db.prepare(`SELECT DISTINCT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM users u JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE u.id<>? AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? AND (EXISTS (SELECT 1 FROM friendships f WHERE (f.user_a=? AND f.user_b=u.id) OR (f.user_b=? AND f.user_a=u.id)) OR (p.share_with_groups=1 AND EXISTS (SELECT 1 FROM friend_group_members mine JOIN friend_group_members other ON other.group_id=mine.group_id WHERE mine.user_id=? AND other.user_id=u.id))) ORDER BY u.name`).all(user.id,now-LOCATION_FRESH_MS,now,eventId,user.id,user.id,user.id);
         return json(res,200,{friends:rows,locationSharingEnabled:true});
       }
       // O evento selecionado pelo usuário autenticado fica registrado no servidor.
@@ -760,7 +761,7 @@ http.createServer(async (req,res)=>{
               if(!b.location_sharing_enabled){
                 // Revogação imediata, sem aguardar a limpeza periódica.
                 db.prepare('DELETE FROM live_locations WHERE user_id IN (SELECT user_id FROM location_preferences WHERE share_event_id=?)').run(id);
-                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
+                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_with_groups=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
               }
             }
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
@@ -834,7 +835,7 @@ http.createServer(async (req,res)=>{
         if(!user || !validPassword(pass,user.password)) return json(res,401,{error:'E-mail ou senha incorretos.'});
         loginLimit.clear(key);createSession(req,res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
       }
-      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user){db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE user_id=?').run(Date.now(),user.id);db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);}res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
+      if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user){db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_with_groups=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE user_id=?').run(Date.now(),user.id);db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);}res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
       if (url.pathname==='/api/auth/password' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login primeiro.'});
         const b=await body(req);const stored=db.prepare('SELECT password FROM users WHERE id=?').get(user.id);
