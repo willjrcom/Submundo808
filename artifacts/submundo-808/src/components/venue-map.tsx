@@ -40,6 +40,13 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [pointMenuOpen,setPointMenuOpen]=useState(false),[pointProducts,setPointProducts]=useState<PointProduct[]>([]),[pointCategory,setPointCategory]=useState(''),[pointMenuError,setPointMenuError]=useState(''),[pointMenuLoading,setPointMenuLoading]=useState(false);
  useEffect(()=>{setSelectedMarkerId(null);setPointMenuOpen(false);},[activeEventId,selectedMap]);
+ const pendingFocus=useRef<{eventId:string;pointId:string}|null>(null);
+ useEffect(()=>{
+  const receive=(event:Event)=>{const detail=(event as CustomEvent<{eventId:string;pointId:string}>).detail;if(detail?.pointId)pendingFocus.current=detail;};
+  window.addEventListener('submundo-map-focus',receive);
+  return()=>window.removeEventListener('submundo-map-focus',receive);
+ },[]);
+
  useEffect(()=>{if(!pointMenuOpen||!activeEventId)return;let alive=true;setPointMenuLoading(true);setPointMenuError('');
  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId)).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao carregar produtos');return j;}).then(j=>{if(alive)setPointProducts(j.items||[]);}).catch(e=>{if(alive)setPointMenuError(e instanceof Error?e.message:'Falha ao carregar produtos');}).finally(()=>{if(alive)setPointMenuLoading(false);});
  return()=>{alive=false;};},[pointMenuOpen,activeEventId]);
@@ -77,6 +84,12 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
    .finally(()=>{if(active)setMapDataReady(true);});
   return()=>{active=false;};
  },[selectedMap]);
+ useEffect(()=>{
+  const focus=pendingFocus.current;
+  if(focus&&data?.markers.some(m=>m.id===focus.pointId)&&focus.eventId===activeEventId){
+   setSelectedMarkerId(focus.pointId);pendingFocus.current=null;
+  }
+ },[data,activeEventId]);
  const calibrated=data?.areas.find(a=>['tl','tr','br','bl'].every(k=>a.gps?.[k as keyof Bounds]));
  const bounds=calibrated?.gps as Bounds|undefined;
   const [location,setLocation]=useState<GpsFix|null>(null);
