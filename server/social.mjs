@@ -156,7 +156,8 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(!/^[a-f0-9]{64}$/.test(token))return reject(400,'Link de convite inválido.');
    const g=db.prepare('SELECT * FROM friend_groups WHERE invite_hash=?').get(sha256(token));
    if(!g)return reject(404,'Convite expirado ou grupo removido.');
-   json(res,200,{group:{...groupSummary(g),joined:!!member(g.id)}});return true;
+   const {id,name,description,color,memberCount}=groupSummary(g);
+   json(res,200,{group:{id,name,description,color,memberCount,joined:!!member(g.id)}});return true;
   }
   if(pathname==='/api/groups/join'&&method==='POST'){
    const p=await readBody(req);let token=String(p.token||'');
@@ -167,6 +168,8 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(member(g.id))return json(res,200,{ok:true,joined:true,id:g.id});
    const count=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
    if(count>=50)return reject(409,'O grupo atingiu o limite de 50 pessoas.');
+   const mine=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE user_id=?').get(user.id).n;
+   if(mine>=40)return reject(409,'Você atingiu o limite de 40 grupos.');
    db.prepare("INSERT INTO friend_group_members(group_id,user_id,role,joined_at) VALUES(?,?,'member',?)").run(g.id,user.id,Date.now());
    json(res,200,{ok:true,joined:true,id:g.id});return true;
   }
@@ -190,7 +193,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
   if(pathname==='/api/groups/remove'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
    if(!g||g.owner_id!==user.id)return reject(403,'Apenas o administrador do grupo pode remover integrantes.');
-   if(id===p.userId||!verifiedId(p.userId)||p.userId===user.id)return reject(400,'Selecione outro integrante.');
+   if(!verifiedId(p.userId)||p.userId===user.id)return reject(400,'Selecione outro integrante.');
    db.prepare('DELETE FROM friend_group_members WHERE group_id=? AND user_id=?').run(id,p.userId);
    json(res,200,{ok:true});return true;
   }
