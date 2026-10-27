@@ -23,7 +23,7 @@ export default function FriendGroups(){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
- useEffect(()=>{void load().catch(showError);if(new URLSearchParams(window.location.search).has('group_invite'))setMode('join');},[]);
+ useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite'))setMode('join');return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
  useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
  const open=async(id:string)=>{setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
