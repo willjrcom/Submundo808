@@ -16,6 +16,7 @@ import webpush from 'web-push';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { PostgresSync } from './postgres-sync.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 
 const PORT = Number(process.env.PORT || 80);
@@ -25,7 +26,9 @@ fs.mkdirSync(DATA, { recursive: true });
 const secretFile=path.join(DATA,'friend-invite-secret');
 if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,randomBytes(32).toString('hex'),{mode:0o600});
 const FRIEND_SECRET=process.env.FRIEND_INVITE_SECRET||fs.readFileSync(secretFile,'utf8').trim();
-const db = new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
+const db = process.env.DATABASE_URL
+ ? new PostgresSync(process.env.DATABASE_URL)
+ : new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
 const JWT_SECRET=loadJwtSecret(DATA);
 const PUBLIC_APP_ORIGIN=publicAppOrigin();
 db.exec(`PRAGMA journal_mode=WAL;
@@ -127,7 +130,9 @@ for(const [column,definition] of [['description',"TEXT NOT NULL DEFAULT ''"],['c
 }
 if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
-if(adminEmail){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
+// Em PostgreSQL novo não conceder admin automaticamente a e-mails não verificados.
+// Conceda o primeiro administrador explicitamente via SQL após o cadastro.
+if(adminEmail&&!process.env.DATABASE_URL){const row=db.prepare('SELECT id FROM users WHERE email=?').get(adminEmail);if(row)db.prepare('INSERT OR IGNORE INTO admin_users VALUES(?,?)').run(row.id,Date.now());}
 const isAdmin=user=>!!user&&!!db.prepare('SELECT 1 FROM admin_users WHERE user_id=?').get(user.id);
 const json = (res, status, body, headers={}) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(body)); };
 const hashToken = value => createHash('sha256').update(value).digest('hex');
@@ -170,7 +175,7 @@ const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.
 // e pode ser desligado quando a plataforma entrar em produção.
 // O container usa NODE_ENV=production mesmo no piloto. APP_ENV=production
 // ativa o modo comercial e exige opt-in explícito para dados demonstrativos.
-if(process.env.AUTO_SEED_DEMO==='true'||(process.env.APP_ENV!=='production'&&process.env.AUTO_SEED_DEMO!=='false')){
+if(process.env.AUTO_SEED_DEMO==='true'||(!process.env.DATABASE_URL&&process.env.APP_ENV!=='production'&&process.env.AUTO_SEED_DEMO!=='false')){
  try{
   const initial=ensureDemoData(db);
   const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
@@ -189,7 +194,7 @@ async function drainPushQueue(){
  if(pushQueueBusy)return;
  pushQueueBusy=true;
  try{
-  // A fila fica no SQLite e sobrevive ao reinício. Não processar em paralelo
+  // A fila é persistida no banco ativo e sobrevive ao reinício. Não processar em paralelo
   // neste servidor; cada lote tem concorrência limitada no módulo da fila.
   for(let i=0;i<20;i++){
    const result=await processPendingPushes(db,(subscription,payload,options)=>webpush.sendNotification(subscription,payload,options),{batchSize:50,pushConfigured:!!(VAPID_PUBLIC&&VAPID_PRIVATE)});

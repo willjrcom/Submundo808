@@ -20,8 +20,8 @@ Idiomas/UX: interface em **português brasileiro**; visual escuro, identidade da
 - Frontend: React + TypeScript + Vite + Tailwind, em `artifacts/submundo-808/`.
 - Entrada do PWA: `src/App.tsx`; componentes em `src/components/`.
 - Navegação admin: `src/components/admin-shell.tsx` e `admin-route.ts`.
-- Backend: Node.js com HTTP nativo + `node:sqlite`, em `server/index.mjs`; autenticação `server/auth.mjs`; OAuth `server/oauth.mjs`.
-- SQLite persistente: `/data/submundo.sqlite`, volume `/data` **não deve ser apagado ou substituído**.
+- Backend: Node.js com HTTP nativo + PostgreSQL por `server/postgres-sync.mjs` quando `DATABASE_URL` definida, SQLite legado quando ausente; código em `server/index.mjs`; autenticação `server/auth.mjs`; OAuth `server/oauth.mjs`.
+- PostgreSQL vazio: `DATABASE_URL` opt-in e inicialização de schema no startup, **sem importar SQLite**. SQLite legado: `/data/submundo.sqlite` preservado para rollback, volume `/data` retém também as chaves JWT e convites.
 - Assets públicos e service worker: `artifacts/submundo-808/public/`.
 - O `Dockerfile` da raiz compila o frontend e cria contêiner com API + assets, porta interna **80**.
 - Publicação: `.github/workflows/deploy.yml` → GHCR `ghcr.io/willjrcom/submundo808:latest` → Dokploy; instruções em `docs/deploy-ghcr-dokploy.md`.
@@ -148,8 +148,14 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - GPS sem leitura recente não deve continuar exibindo a posição antiga; atualizações posteriores do watcher devem restaurá-la.
 
 ## Auditoria — segurança, observabilidade e privacidade sem migração de banco
-- Não mexer no SQLite nem em migrações, tabelas, backups ou Postgres: infraestrutura e próxima implementação da persistência estão fora do escopo atual, conforme decisão do responsável.
+- A decisão anterior de adiar PostgreSQL foi substituída: `DATABASE_URL` ativa PostgreSQL no banco novo **vazio**, sem importar dados SQLite; manter o volume original e não apagar dados. Veja `docs/postgresql.md`.
 - `server/route-limits.mjs` acrescenta limites por IP/rota ao limite geral; rotas de localização frequente não recebem limites agressivos. São controles em memória (um processo); em deploys multi-instância, exigir limitador compartilhado no futuro.
 - A CSP de `server/request-security.mjs` funciona em modo `Content-Security-Policy-Report-Only` por padrão. O endpoint `POST /api/csp-report` registra **somente a diretiva**, sem URL bloqueada, headers ou código-fonte. **Não habilitar `CSP_ENFORCE=true` sem validar relatórios reais e login OAuth/PWA.**
 - Logs HTTP operacionais fornecem um `X-Request-ID` gerado pelo servidor e agregam rota/latência/status em falhas 5xx e limites 429; não registrar IP, query string, tokens, dados de localização ou corpos.
 - Textos do Perfil explicam a diferença entre permissão de localização e compartilhamento voluntário. Falha ao desativar GPS no servidor deve ter feedback, jamais ser ocultada. Isso não substitui política de privacidade, base legal, retenção e processos LGPD validados pela empresa.
+
+## Migração para PostgreSQL — banco vazio
+- `server/postgres-sync.mjs`: adaptador PostgreSQL por pg-native/libpq com acesso síncrono compatível com a API `db.prepare(...).get/all/run`, SQL parametrizado, suporte a `BEGIN IMMEDIATE`, `INSERT OR IGNORE` e `PRAGMA table_info`, e conversão de INTEGER para BIGINT no DDL. É solução transitória: HTTP bloqueia nas consultas, sem escalabilidade multi-réplica garantida.
+- Somente `DATABASE_URL` explicitamente configurada seleciona PostgreSQL; não criar nem importar dados do SQLite. Em banco novo, seeding demo fica desativado por padrão, salvo `AUTO_SEED_DEMO=true` explícito.
+- Sem verificação de e-mail, não atribuir admin automaticamente pela variável `ADMIN_EMAIL` quando PostgreSQL está ativo; papel do primeiro admin deve ser concedido manualmente após conferir a identidade.
+- O CI deve executar teste de inicialização e CRUD contra PostgreSQL 16 isolado **antes da publicação Docker/Dokploy**; preservar também o conjunto legado SQLite.

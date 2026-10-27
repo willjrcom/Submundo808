@@ -55,3 +55,7 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - Limites extras em memória aplicam-se a cadastro, login, recuperação/reset de senha, alterações de perfil, convites, inscrição push, telemetria e rotas administrativas. Cada instância mantém seus contadores; no futuro, infraestrutura multi-réplica exige limitador compartilhado ou regras no proxy.
 - Os avisos de privacidade no Perfil distinguem concessão da permissão de GPS do compartilhamento com amigos, que depende de ativação voluntária no Mapa e prazo escolhido. Uma falha no encerramento remoto deixa alerta visível para o participante.
 - **Nenhuma migração de banco, rotina de backup ou integração PostgreSQL faz parte deste lote.** A estratégia de armazenamento, retenção e políticas de privacidade devem ser aprovadas separadamente.
+
+## PostgreSQL
+
+O backend aceita `DATABASE_URL` para operar no PostgreSQL sem importar dados SQLite. A estratégia de implantação, a concessão do primeiro administrador e o rollback estão em [docs/postgresql.md](postgresql.md). **Não exclua `/data`**, pois ainda contém as chaves de autenticação e os dados da versão SQLite anterior.
