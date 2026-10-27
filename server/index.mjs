@@ -7,6 +7,7 @@ import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
+import {ensureRealTourDemo} from './real-tour-seed.mjs';
 import {ensureDemoShowcase} from './demo-showcase.mjs';
 import {ensureDemoNotifications} from './demo-notifications.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
@@ -182,10 +183,17 @@ const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.
 // ativa o modo comercial e exige opt-in explícito para dados demonstrativos.
 if(process.env.AUTO_SEED_DEMO==='true'||(!process.env.DATABASE_URL&&process.env.APP_ENV!=='production'&&process.env.AUTO_SEED_DEMO!=='false')){
  try{
-  const initial=ensureDemoData(db);
-  const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
-  const templates=ensureDemoNotifications(db,{eventId:initial.id});
-  console.log('POC catalog ready:',initial.created?'created':'reused',initial.id,'showcase events added:',showcase.eventsAdded,'showcase maps added:',showcase.mapsAdded,'notification templates added:',templates.count);
+  // AUTO_SEED_DEMO agora significa agenda oficial da Meaple, não festas inventadas.
+  // Os exemplos antigos só são gerados quando solicitados explicitamente pelo modo legado.
+  if(process.env.AUTO_SEED_LEGACY==='true'){
+   const initial=ensureDemoData(db);
+   const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
+   const templates=ensureDemoNotifications(db,{eventId:initial.id});
+   console.log('Legacy demo catalog:',initial.created?'created':'reused','showcase:',showcase.eventsAdded,'templates:',templates.count);
+  }else{
+   const official=ensureRealTourDemo(db);
+   console.log('Official 808 Meaple catalog:',official.eventsAdded,'events created;',official.eventsExisting,'already present;',official.venuesAdded,'venues created.');
+  }
  }catch(error){
   console.error('Could not initialize sample data:',error);
  }
@@ -698,7 +706,7 @@ http.createServer(async (req,res)=>{
           if(!event)return json(res,404,{error:'Evento não encontrado.'});
           if(publish){
             if(!event.name.trim()||!event.valid_venue||!event.starts_at||!event.ends_at||!Number.isFinite(Date.parse(event.starts_at))||!Number.isFinite(eventEndMillis(event.ends_at))||eventEndMillis(event.ends_at)<=Date.parse(event.starts_at))return json(res,400,{error:'Defina nome, estabelecimento e datas válidas de início e término antes de publicar.'});
-            if(!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
+            if(!event.meaple_event_id&&!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
           }
           db.prepare('UPDATE events SET is_published=? WHERE id=?').run(publish?1:0,id);
           return json(res,200,{ok:true,is_published:publish?1:0});
