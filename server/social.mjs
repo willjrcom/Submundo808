@@ -278,8 +278,8 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(!/^[a-f0-9]{64}$/.test(token))return reject(400,'Link de convite inválido.');
    const g=db.prepare('SELECT * FROM friend_groups WHERE invite_hash=?').get(sha256(token));
    if(!g)return reject(404,'Convite expirado ou grupo removido.');
-   const {id,name,description,color,memberCount}=groupSummary(g);
-   json(res,200,{group:{id,name,description,color,memberCount,joined:!!member(g.id)}});return true;
+   const {id,name,description,color,icon,photo,memberCount}=groupSummary(g);
+   json(res,200,{group:{id,name,description,color,icon,photo,memberCount,joined:!!member(g.id)}});return true;
   }
   if(pathname==='/api/groups/join'&&method==='POST'){
    const p=await readBody(req);let token=String(p.token||'');
