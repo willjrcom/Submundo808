@@ -74,7 +74,7 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
      <p className="text-lg font-black uppercase">{displayLabel(e.name)}</p>
      <p className="mt-2 flex items-center gap-2 text-sm text-white/70"><CalendarDays size={15} className="shrink-0 text-[#c4ff40]"/>{date(e.starts_at)}</p>
      <p className="mt-2 flex items-center gap-2 text-xs text-white/60"><MapPin size={15} className="shrink-0"/>{displayLabel(e.venue.name)} · {e.venue.city}</p>
-     <p className="mt-2 flex items-center gap-2 text-xs text-white/50"><Music2 size={15} className="shrink-0"/>{e.lineup.length} DJs · {e.map_ids.length} {e.map_ids.length===1?'mapa':'mapas'}</p>
+     {(e.lineup.length>0||e.map_ids.length>0)&&<p className="mt-2 flex items-center gap-2 text-xs text-white/50"><Music2 size={15} className="shrink-0"/>{[e.lineup.length>0?e.lineup.length+' DJs':'',e.map_ids.length>0?e.map_ids.length+' '+(e.map_ids.length===1?'mapa':'mapas'):''].filter(Boolean).join(' · ')}</p>}
      <p className="mt-3 text-sm font-bold text-[#c4ff40]">Ver programação</p>
     </div>
     <ChevronRight size={23} className="shrink-0 text-[#c4ff40] transition group-hover:translate-x-1"/>
