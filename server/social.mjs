@@ -176,19 +176,39 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
   if(pathname==='/api/groups/leave'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
    if(!g||!member(id))return reject(404,'Grupo não encontrado.');
+   const others=db.prepare('SELECT user_id FROM friend_group_members WHERE group_id=? AND user_id<>? ORDER BY joined_at').all(id,user.id);
+   if(g.owner_id===user.id&&others.length){
+    if(!verifiedId(p.successorId)||!others.some(m=>m.user_id===p.successorId))return reject(400,'Escolha um integrante válido para ser o próximo administrador.');
+   }
+   if(others.length===0&&p.confirmation!=='EXCLUIR')return reject(400,'Digite EXCLUIR para encerrar o último grupo.');
    db.exec('BEGIN');
    try{
-    db.prepare('DELETE FROM friend_group_members WHERE group_id=? AND user_id=?').run(id,user.id);
-    if(g.owner_id===user.id){
-     const next=db.prepare('SELECT user_id FROM friend_group_members WHERE group_id=? ORDER BY joined_at LIMIT 1').get(id);
-     if(next){
-      db.prepare('UPDATE friend_groups SET owner_id=? WHERE id=?').run(next.user_id,id);
-      db.prepare("UPDATE friend_group_members SET role='owner' WHERE group_id=? AND user_id=?").run(id,next.user_id);
-     }else db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
+    if(!others.length){
+     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
+     db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
+    }else{
+     if(g.owner_id===user.id){
+      db.prepare('UPDATE friend_groups SET owner_id=? WHERE id=?').run(p.successorId,id);
+      db.prepare("UPDATE friend_group_members SET role='owner' WHERE group_id=? AND user_id=?").run(id,p.successorId);
+     }
+     db.prepare('DELETE FROM friend_group_members WHERE group_id=? AND user_id=?').run(id,user.id);
     }
     db.exec('COMMIT');
    }catch(e){db.exec('ROLLBACK');throw e;}
-   json(res,200,{ok:true});return true;
+   json(res,200,{ok:true,deleted:others.length===0});return true;
+  }
+  if(pathname==='/api/groups/delete'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
+   if(!g)return reject(404,'Grupo não encontrado.');
+   if(g.owner_id!==user.id)return reject(403,'Somente o administrador pode excluir o grupo.');
+   if(p.confirmation!=='EXCLUIR')return reject(400,'Digite EXCLUIR para confirmar.');
+   db.exec('BEGIN');
+   try{
+    db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
+    db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
+    db.exec('COMMIT');
+   }catch(e){db.exec('ROLLBACK');throw e;}
+   json(res,200,{ok:true,deleted:true});return true;
   }
   if(pathname==='/api/groups/remove'&&method==='POST'){
    const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
