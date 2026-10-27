@@ -178,12 +178,18 @@ async function pushToUser(userId,notification){
   }
  }
 }
+function eventEndMillis(value){
+ const normalized=String(value||'');
+ // Event dates are authored as Brazilian venue-local datetime-local values.
+ // Explicit offsets are respected; otherwise use São Paulo standard time.
+ return Date.parse(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?$/.test(normalized)?normalized+'-03:00':normalized);
+}
 function dispatchDueNotifications(){
  const now=Date.now();
  // Uma notificação gerada por evento tem chave determinística para evitar duplicações.
  const finished=db.prepare("SELECT id,name,ends_at FROM events WHERE is_published=1 AND ends_at<>''").all();
  for(const event of finished){
-  const ends=Date.parse(event.ends_at);
+  const ends=eventEndMillis(event.ends_at);
   if(!Number.isFinite(ends)||now<ends||now>ends+7*86400000)continue;
   const id='survey-'+event.id;
   db.prepare("INSERT OR IGNORE INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id,event.id,'Como foi a '+event.name+'? ⭐','Avalie sua experiência e ajude a melhorar a próxima festa.','survey','survey','', 'event','pending',null,'system',now);
@@ -419,7 +425,7 @@ http.createServer(async (req,res)=>{
         const b=await body(req),eventId=String(b.eventId||'');
         const event=db.prepare('SELECT ends_at FROM events WHERE id=? AND is_published=1').get(eventId);
         if(!event)return json(res,404,{error:'Evento não encontrado.'});
-        const ends=Date.parse(event.ends_at);
+        const ends=eventEndMillis(event.ends_at);
         if(!Number.isFinite(ends)||Date.now()<ends||Date.now()>ends+7*86400000)return json(res,409,{error:'Avaliação disponível somente durante os sete dias após o término do evento.'});
         if(!db.prepare('SELECT 1 FROM event_participants WHERE event_id=? AND user_id=?').get(eventId,user.id))return json(res,403,{error:'Selecione o evento para poder avaliá-lo.'});
         const rating=Number(b.rating),tags=b.tags,comment=String(b.comment||'').trim();
@@ -626,7 +632,7 @@ http.createServer(async (req,res)=>{
           const event=db.prepare('SELECT e.*,v.id AS valid_venue FROM events e LEFT JOIN venues v ON v.id=e.venue_id WHERE e.id=?').get(id);
           if(!event)return json(res,404,{error:'Evento não encontrado.'});
           if(publish){
-            if(!event.name.trim()||!event.valid_venue||!event.starts_at||!event.ends_at||!Number.isFinite(Date.parse(event.starts_at))||!Number.isFinite(Date.parse(event.ends_at))||Date.parse(event.ends_at)<=Date.parse(event.starts_at))return json(res,400,{error:'Defina nome, estabelecimento e datas válidas de início e término antes de publicar.'});
+            if(!event.name.trim()||!event.valid_venue||!event.starts_at||!event.ends_at||!Number.isFinite(Date.parse(event.starts_at))||!Number.isFinite(eventEndMillis(event.ends_at))||eventEndMillis(event.ends_at)<=Date.parse(event.starts_at))return json(res,400,{error:'Defina nome, estabelecimento e datas válidas de início e término antes de publicar.'});
             if(!db.prepare('SELECT 1 FROM event_maps em JOIN venue_maps m ON m.id=em.map_id WHERE em.event_id=? AND m.venue_id=?').get(id,event.venue_id))return json(res,400,{error:'Selecione ao menos um mapa do estabelecimento para publicar.'});
           }
           db.prepare('UPDATE events SET is_published=? WHERE id=?').run(publish?1:0,id);
