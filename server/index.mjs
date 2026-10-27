@@ -161,6 +161,31 @@ if(process.env.AUTO_SEED_DEMO!=='false'){
   console.error('Could not initialize sample data:',error);
  }
 }
+function dispatchDueNotifications(){
+ const now=Date.now();
+ // Uma notificação gerada por evento tem chave determinística para evitar duplicações.
+ const finished=db.prepare("SELECT id,name,ends_at FROM events WHERE is_published=1 AND ends_at<>''").all();
+ for(const event of finished){
+  const ends=Date.parse(event.ends_at);
+  if(!Number.isFinite(ends)||now<ends||now>ends+7*86400000)continue;
+  const id='survey-'+event.id;
+  db.prepare("INSERT OR IGNORE INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id,event.id,'Como foi a '+event.name+'? ⭐','Avalie sua experiência e ajude a melhorar a próxima festa.','survey','survey','', 'event','pending',null,'system',now);
+ }
+ const due=db.prepare("SELECT * FROM notifications WHERE status='pending' OR (status='scheduled' AND scheduled_at<=?)").all(now);
+ for(const n of due){
+  const recipients=n.audience==='all'?db.prepare('SELECT id AS user_id FROM users').all():db.prepare('SELECT user_id FROM event_participants WHERE event_id=?').all(n.event_id);
+  const insert=db.prepare('INSERT OR IGNORE INTO notification_receipts(notification_id,user_id) VALUES(?,?)');
+  for(const r of recipients){
+   if(n.kind==='survey'&&db.prepare('SELECT 1 FROM event_reviews WHERE event_id=? AND user_id=?').get(n.event_id,r.user_id))continue;
+   insert.run(n.id,r.user_id);
+  }
+  db.prepare("UPDATE notifications SET status='sent',sent_at=? WHERE id=? AND status IN ('pending','scheduled')").run(now,n.id);
+ }
+}
+try{dispatchDueNotifications();}catch(e){console.error('notification dispatch startup:',e);}
+const notificationInterval=setInterval(()=>{try{dispatchDueNotifications();}catch(e){console.error('notification dispatch:',e);}},60000);
+notificationInterval.unref?.();
+
 http.createServer(async (req,res)=>{
   const url = new URL(req.url || '/', 'http://localhost');
   try {
@@ -285,6 +310,42 @@ http.createServer(async (req,res)=>{
       }
       // O evento selecionado pelo usuário autenticado fica registrado no servidor.
       // Esse registro não comprova presença física, compra de ingresso ou autorização push.
+      if(url.pathname==='/api/admin/notifications'&&req.method==='GET'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        return json(res,200,{items:db.prepare("SELECT n.*,e.name AS event_name,(SELECT COUNT(*) FROM notification_receipts r WHERE r.notification_id=n.id) AS recipients FROM notifications n LEFT JOIN events e ON e.id=n.event_id ORDER BY n.created_at DESC LIMIT 300").all()});
+      }
+      if(url.pathname==='/api/admin/reviews'&&req.method==='GET'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        const eventId=String(url.searchParams.get('event_id')||'');
+        const items=eventId?db.prepare('SELECT r.*,e.name AS event_name FROM event_reviews r JOIN events e ON e.id=r.event_id WHERE r.event_id=? ORDER BY r.updated_at DESC').all(eventId):db.prepare('SELECT r.*,e.name AS event_name FROM event_reviews r JOIN events e ON e.id=r.event_id ORDER BY r.updated_at DESC LIMIT 500').all();
+        return json(res,200,{items:items.map(x=>({...x,tags:JSON.parse(x.tags_json||'[]'),tags_json:undefined}))});
+      }
+      if(url.pathname==='/api/admin/notifications/save'&&req.method==='POST'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        const b=await body(req),id=String(b.id||''),eventId=String(b.eventId||''),title=String(b.title||'').trim(),message=String(b.message||'').trim();
+        const kind=String(b.kind||'info'),targetKind=String(b.targetKind||'event'),targetId=String(b.targetId||'');
+        const audience=String(b.audience||'event'),schedule=Number(b.scheduledAt)||null,dispatch=String(b.action||'draft');
+        if(!title||title.length>120||!message||message.length>700||!['promo','info','lineup','survey'].includes(kind)||!['event','map','point','menu','lineup','survey'].includes(targetKind)||!['event','all'].includes(audience)||!['draft','send','schedule'].includes(dispatch))return json(res,400,{error:'Dados da notificação inválidos.'});
+        if(audience==='event'&&!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Selecione um evento.'});
+        if(targetKind==='point'){
+          const rows=db.prepare('SELECT mm.markers_json FROM event_maps em JOIN map_markers mm ON mm.map_id=em.map_id WHERE em.event_id=?').all(eventId);
+          if(!targetId||!rows.some(x=>{try{return JSON.parse(x.markers_json).some(m=>m.id===targetId);}catch{return false;}}))return json(res,400,{error:'Ponto não está cadastrado nos mapas do evento.'});
+        }
+        if(dispatch==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe um agendamento futuro.'});
+        if(id){
+          const old=db.prepare('SELECT status,created_by FROM notifications WHERE id=?').get(id);
+          if(!old||old.status!=='draft'&&old.status!=='scheduled')return json(res,409,{error:'A notificação já foi enviada ou não existe.'});
+          db.prepare('UPDATE notifications SET event_id=?,title=?,body=?,kind=?,target_kind=?,target_id=?,audience=?,status=?,scheduled_at=? WHERE id=?').run(eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,id);
+        }else db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(randomUUID(),eventId||null,title,message,kind,targetKind,targetId,audience,dispatch==='schedule'?'scheduled':dispatch==='send'?'pending':'draft',dispatch==='schedule'?schedule:null,u.id,Date.now());
+        if(dispatch==='send')dispatchDueNotifications();
+        return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/admin/notifications/cancel'&&req.method==='POST'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        const b=await body(req);
+        db.prepare("UPDATE notifications SET status='cancelled' WHERE id=? AND status IN ('draft','scheduled')").run(String(b.id||''));
+        return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/events/participation'&&req.method==='POST'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login para vincular este evento.'});
         const b=await body(req),id=String(b.eventId||'');
