@@ -68,7 +68,7 @@ test('convite abre direto o CTA de entrada e lista de participantes sob demanda'
  const social=readFileSync(new URL('../server/social.mjs',import.meta.url),'utf8');
  assert.doesNotMatch(groups,/>Ver grupo<\/button>/);
  assert.match(groups,/linkedInvite\?0:220/);
- assert.match(groups,/preview\?\.joined\?'Abrir grupo':'Entrar no grupo'/);
+ assert.match(groups,/preview\.joined\?'Abrir grupo':'Entrar no grupo'/);
  assert.match(groups,/Ver participantes/);
  assert.match(social,/includeMembers=url\.searchParams\.get\('members'\)==='1'/);
 });
