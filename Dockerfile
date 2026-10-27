@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends librsvg2-bin \
  && rsvg-convert -w 192 -h 192 artifacts/submundo-808/public/app-icon.svg > artifacts/submundo-808/public/icon-192.png \
  && rsvg-convert -w 512 -h 512 artifacts/submundo-808/public/app-icon.svg > artifacts/submundo-808/public/icon-512.png \
  && rsvg-convert -w 512 -h 512 artifacts/submundo-808/public/app-icon-maskable.svg > artifacts/submundo-808/public/icon-maskable-512.png \
+ && rsvg-convert -w 1200 -h 630 artifacts/submundo-808/public/og-preview.svg > artifacts/submundo-808/public/og-preview.png \
  && rm -rf /var/lib/apt/lists/*
 RUN pnpm install --frozen-lockfile
 ENV NODE_ENV=production
