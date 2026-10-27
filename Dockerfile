@@ -23,7 +23,7 @@ WORKDIR /app
 COPY --from=builder /app/artifacts/submundo-808/dist/public/ /app/public/
 COPY server/ /app/server/
 RUN printf '{"name":"submundo-api-runtime","private":true,"type":"module"}\n' > /app/package.json \
- && npm install --omit=dev --ignore-scripts --no-save @meaple-com/core
+ && npm install --omit=dev --ignore-scripts --no-save @meaple-com/core web-push
 RUN node --check /app/server/index.mjs && node --check /app/server/auth.mjs && node --check /app/server/oauth.mjs
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
