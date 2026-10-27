@@ -1,0 +1,55 @@
+name: Validate PostgreSQL migration (pre-merge)
+
+on:
+  push:
+    branches: [postgres-migration-validation]
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: submundo_ci
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: submundo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U submundo_ci -d submundo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run regression tests
+        run: node --test tests/email-validation.test.mjs tests/postgres-sync.test.mjs
+      - name: Compile API and frontend into Docker
+        run: docker build --target runner --tag submundo808-pg-validate .
+      - name: Verify empty PostgreSQL and CRUD
+        env:
+          PG_TEST_DATABASE_URL: postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test
+        run: |
+          set -euo pipefail
+          docker run --rm -d --name submundo808-pg-validate --network host \
+            -e DATABASE_URL="$PG_TEST_DATABASE_URL" \
+            -e APP_ENV=production -e AUTO_SEED_DEMO=false \
+            -e PORT=18080 -e DATA_DIR=/tmp/submundo-ci \
+            submundo808-pg-validate
+          trap 'docker logs submundo808-pg-validate || true; docker rm -f submundo808-pg-validate || true' EXIT
+          ready=false
+          for i in $(seq 1 50); do
+            if curl --silent --fail http://127.0.0.1:18080/api/health >/dev/null; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          PG_TEST_CONTAINER=submundo808-pg-validate \
+            PG_TEST_BASE_URL=http://127.0.0.1:18080 \
+            node --test tests/postgres-integration.test.mjs

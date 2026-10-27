@@ -1,3 +1,4 @@
+import {isValidEmailAddress} from './email-validation.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
@@ -800,7 +801,7 @@ http.createServer(async (req,res)=>{
       }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
         const b=await body(req),email=String(b.email||'').trim().toLowerCase(),pass=String(b.password||''),name=String(b.name||'').trim().slice(0,60)||(email.split('@')[0].length>=2?email.split('@')[0].slice(0,60):'Participante'),phone=String(b.phone||'').replace(/[^0-9]/g,'');
-        if(name.length<2 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length!==11)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
+        if(name.length<2 || !isValidEmailAddress(email) || email.length>254 || pass.length<10 || pass.length>128||phone.length!==0&&(phone.length!==11)) return json(res,400,{error:'Informe e-mail válido, senha de 10 a 128 caracteres e, se quiser, um celular válido.'});
         if(db.prepare('SELECT id FROM users WHERE email=?').get(email)) return json(res,409,{error:'E-mail já cadastrado.'});
         const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,phone,created_at) VALUES(?,?,?,?,?,?)').run(id,name,email,passwordHash(pass),phone,Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
       }
