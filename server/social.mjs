@@ -215,7 +215,6 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    try{
     if(!others.length){
      db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
-     db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
      db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
     }else{
@@ -236,6 +235,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(p.confirmation!=='EXCLUIR')return reject(400,'Digite EXCLUIR para confirmar.');
    db.exec('BEGIN');
    try{
+    db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
     db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
     db.exec('COMMIT');
