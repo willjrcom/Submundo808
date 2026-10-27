@@ -37,6 +37,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  const [loadedForEventId,setLoadedForEventId]=useState('');
  const activeEventRef=useRef(activeEventId);
  activeEventRef.current=activeEventId;
+ const [data,setData]=useState<MapData|null>(null);
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [pointMenuOpen,setPointMenuOpen]=useState(false),[pointProducts,setPointProducts]=useState<PointProduct[]>([]),[pointCategory,setPointCategory]=useState(''),[pointMenuError,setPointMenuError]=useState(''),[pointMenuLoading,setPointMenuLoading]=useState(false);
  useEffect(()=>{setSelectedMarkerId(null);setPointMenuOpen(false);},[activeEventId,selectedMap]);
@@ -50,7 +51,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  useEffect(()=>{if(!pointMenuOpen||!activeEventId)return;let alive=true;setPointMenuLoading(true);setPointMenuError('');
  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId)).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao carregar produtos');return j;}).then(j=>{if(alive)setPointProducts(j.items||[]);}).catch(e=>{if(alive)setPointMenuError(e instanceof Error?e.message:'Falha ao carregar produtos');}).finally(()=>{if(alive)setPointMenuLoading(false);});
  return()=>{alive=false;};},[pointMenuOpen,activeEventId]);
- const [data,setData]=useState<MapData|null>(null);
+
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(data?.areas||EMPTY_AREAS,data?.markers||EMPTY_MARKERS);
  const [mapError,setMapError]=useState('');
  const [mapsReady,setMapsReady]=useState(false),[mapDataReady,setMapDataReady]=useState(false);
