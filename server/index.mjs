@@ -731,6 +731,10 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='POST'&&key==='seed-demo'){
           if(process.env.APP_ENV==='production'&&process.env.AUTO_SEED_DEMO!=='true')return json(res,403,{error:'Dados demonstrativos desativados neste ambiente.'});
+          if(process.env.AUTO_SEED_LEGACY!=='true'){
+           const result=ensureRealTourDemo(db);
+           return json(res,result.eventsAdded?201:200,{...result,mode:'official-meaple-808'});
+          }
           const request=await body(req);
           let location;
           try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}
@@ -758,7 +762,8 @@ http.createServer(async (req,res)=>{
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
           if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
-          if(db.prepare('SELECT is_published FROM events WHERE id=?').get(id).is_published && (!ids.length||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
+          const currentEvent=db.prepare('SELECT is_published,meaple_event_id FROM events WHERE id=?').get(id);
+          if(currentEvent.is_published&&((!ids.length&&!currentEvent.meaple_event_id)||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
            if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120||!validDjSocial(d)))return json(res,400,{error:'Lineup inválido.'});
           if(b.location_sharing_enabled!==undefined&&typeof b.location_sharing_enabled!=='boolean')return json(res,400,{error:'Configuração de localização inválida.'});
           db.exec('BEGIN');try{
