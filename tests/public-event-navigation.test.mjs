@@ -56,7 +56,8 @@ test('cardápio consulta apenas o preço de produtos do evento ativo',()=>{
  assert.match(menu,/fetch\('\/api\/public\/menu\?event_id='\+encodeURIComponent\(activeEventId\)\)/);
  assert.match(menu,/loadedEventId!==activeEventId/);
 });
-test('dados de exemplo continuam habilitados por padrão no servidor',()=>{
+test('modo demo carrega a agenda real 808 e mantém o modo fictício apenas sob opt-in legado',()=>{
  assert.match(backend,/AUTO_SEED_DEMO!=='false'/);
- assert.match(backend,/const initial=ensureDemoData\(db\)/);
+ assert.match(backend,/ensureRealTourDemo\(db\)/);
+ assert.match(backend,/AUTO_SEED_LEGACY==='true'/);
 });
