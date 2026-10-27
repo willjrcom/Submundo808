@@ -7,7 +7,7 @@ test('JWT rejeita alteração de payload',()=>{const token=signJwt('user-1',0,se
 test('JWT rejeita assinatura de outro servidor',()=>assert.equal(verifyJwt(signJwt('u',0,secret,now),'b'.repeat(64),now),null));
 test('JWT rejeita expiração',()=>assert.equal(verifyJwt(signJwt('u',0,secret,now),secret,now+JWT_TTL_SECONDS*1000),null));
 test('JWT rejeita token malformado',()=>{for(const token of ['','a.b.c','x','x.y.z.a',null])assert.equal(verifyJwt(token,secret,now),null);});
-test('cookie persistente compartilhado com admin',()=>{const cookie=authCookie('abc');assert.match(cookie,/Domain=submundo\.menudevendas\.com\.br/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Lax/);assert.match(cookie,/Max-Age=2592000/);});
+test('cookie persistente compartilhado com admin',()=>{const cookie=authCookie('abc',JWT_TTL_SECONDS,{headers:{host:'submundo.menudevendas.com.br'}});assert.match(cookie,/Domain=submundo\.menudevendas\.com\.br/);assert.match(cookie,/HttpOnly/);assert.match(cookie,/Secure/);assert.match(cookie,/SameSite=Lax/);assert.match(cookie,/Max-Age=2592000/);});
 test('logout limpa cookie',()=>assert.match(authCookie('',0),/Max-Age=0/));
 
 test('cookie compartilha login entre site e admin',()=>{

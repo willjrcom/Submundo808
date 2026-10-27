@@ -38,7 +38,7 @@ export function verifyJwt(token,secret,now=Date.now()){
   }catch{return null;}
 }
 export function authCookie(token,maxAge=JWT_TTL_SECONDS,req){
-  const hostname=String(req?.headers?.['x-forwarded-host']||req?.headers?.host||'').split(',')[0].trim().split(':')[0].toLowerCase();
+  const hostname=String(req?.headers?.host||'').split(',')[0].trim().split(':')[0].toLowerCase();
   const shared=hostname==='submundo.menudevendas.com.br'||hostname.endsWith('.submundo.menudevendas.com.br');
   const domain=shared?'; Domain=submundo.menudevendas.com.br':'';
   const secure=hostname!=='localhost'&&hostname!=='127.0.0.1'?'; Secure':'';

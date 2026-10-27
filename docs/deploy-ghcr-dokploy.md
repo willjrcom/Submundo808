@@ -26,3 +26,13 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - A imagem contém frontend e API no mesmo contêiner, portanto não mude a imagem para a do gfood-frontend.
 
 **Segurança:** não cole PAT ou tokens em screenshots. Revogue qualquer token exposto. O segredo padrão `GITHUB_TOKEN` do Actions tem apenas permissões do workflow e publica no GHCR sem token pessoal.
+
+## Liberação comercial (segurança)
+
+- Configure `APP_ENV=production` no Dokploy para impedir que o servidor recrie exemplos automaticamente.
+- `AUTO_SEED_DEMO=true` permite reativar **explicitamente** o seed durante um piloto; não use em produção pública. A troca não apaga dados demonstrativos já existentes: remova-os separadamente após backup.
+- Mantenha `ENABLE_DEMO_USERS` e `ENABLE_DEMO_ADMIN` desativados/não definidos na produção.
+- Configure `PUBLIC_APP_ORIGIN=https://submundo.menudevendas.com.br` (URL canônica para recuperação de senha). A aplicação valida essa origem na inicialização.
+- Por padrão `TRUST_PROXY=false`; o rate limiter usa o IP da conexão e **não** aceita `X-Forwarded-For` fornecido arbitrariamente pelo usuário. Somente habilite `TRUST_PROXY=true` quando o proxy de borda garantir a limpeza e substituição confiável de `X-Forwarded-For`.
+- Adicione monitoramento e backups do volume `/data` com teste de restauração; este commit não altera ou apaga dados persistentes.
+- O pipeline agora executa typecheck, testes Node e análise sintática antes do build da imagem. Um erro bloqueia a publicação.

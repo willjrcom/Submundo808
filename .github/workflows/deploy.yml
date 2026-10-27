@@ -27,6 +27,29 @@ jobs:
         run: |
           echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck frontend
+        run: pnpm --filter @workspace/submundo-808 typecheck
+
+      - name: Run automated tests
+        run: node --test tests/*.test.mjs
+
+      - name: Check backend syntax
+        run: |
+          node --check server/index.mjs
+          node --check server/auth.mjs
+          node --check server/request-security.mjs
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

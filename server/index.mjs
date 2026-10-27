@@ -1,4 +1,5 @@
 import {createOauth} from './oauth.mjs';
+import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
@@ -22,6 +23,7 @@ if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,randomBytes(32).toStri
 const FRIEND_SECRET=process.env.FRIEND_INVITE_SECRET||fs.readFileSync(secretFile,'utf8').trim();
 const db = new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
 const JWT_SECRET=loadJwtSecret(DATA);
+const PUBLIC_APP_ORIGIN=publicAppOrigin();
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, password TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS resets (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
@@ -143,8 +145,13 @@ const createSession=(req,res,id)=>{
   res.setHeader('Set-Cookie',authCookie(signJwt(id,user.token_version,JWT_SECRET),undefined,req));
 };
 const oauthHandler=createOauth({db,getUser,createSession,passwordHash,secret:JWT_SECRET});
-const attempts = new Map();
-function limited(req) { const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0]; const now = Date.now(); const item = attempts.get(ip) || { count:0, reset:now+60000 }; if (now > item.reset) { item.count=0; item.reset=now+60000; } item.count++; attempts.set(ip,item); if (attempts.size>5000) attempts.clear(); return item.count>20; }
+// O limite geral evita abuso sem punir todos os participantes de um mesmo evento.
+const generalPostLimit=createWindowLimiter({limit:300,windowMs:60_000});
+const loginLimit=createWindowLimiter({limit:10,windowMs:10*60_000});
+const trustedProxy=process.env.TRUST_PROXY==='true';
+const requestIp=req=>clientIp(req,{trustProxy:trustedProxy});
+const loginKey=(req,email)=>requestIp(req)+':'+email;
+function limited(req){return generalPostLimit.hit(requestIp(req));}
 async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>200000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
 async function sendReset(email, link) {
   if (!process.env.RESEND_API_KEY || !process.env.RESET_FROM_EMAIL) return false;
@@ -156,7 +163,9 @@ const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.
 // Durante o desenvolvimento, mantenha os dados de exemplo disponíveis sem
 // precisar clicar no botão do admin. É idempotente, não altera dados editados
 // e pode ser desligado quando a plataforma entrar em produção.
-if(process.env.AUTO_SEED_DEMO!=='false'){
+// O container usa NODE_ENV=production mesmo no piloto. APP_ENV=production
+// ativa o modo comercial e exige opt-in explícito para dados demonstrativos.
+if(process.env.AUTO_SEED_DEMO==='true'||(process.env.APP_ENV!=='production'&&process.env.AUTO_SEED_DEMO!=='false')){
  try{
   const initial=ensureDemoData(db);
   const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
@@ -214,14 +223,13 @@ const notificationInterval=setInterval(()=>{try{dispatchDueNotifications();}catc
 notificationInterval.unref?.();
 
 http.createServer(async (req,res)=>{
+  for(const [name,value] of Object.entries(securityHeaders(req)))res.setHeader(name,value);
   const url = new URL(req.url || '/', 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) {
       if(await oauthHandler(req,res,url)!==false)return;
       if (req.method === 'POST') {
-        const origin=req.headers.origin;
-        const host=req.headers['x-forwarded-host'] || req.headers.host;
-        if (origin && new URL(origin).host !== host) return json(res,403,{error:'Origem inválida'});
+        if(!allowPostOrigin(req))return json(res,403,{error:'Origem inválida'});
         if (limited(req)) return json(res,429,{error:'Muitas tentativas. Aguarde um minuto.'});
       }
       // Client error telemetry: avoid personal data, URLs with query strings, and raw stack traces.
@@ -779,9 +787,11 @@ http.createServer(async (req,res)=>{
         const id=randomUUID();db.prepare('INSERT INTO users(id,name,email,password,phone,created_at) VALUES(?,?,?,?,?,?)').run(id,name,email,passwordHash(pass),phone,Date.now());createSession(req,res,id);return json(res,201,{user:{id,name,email}});
       }
       if (url.pathname==='/api/auth/login' && req.method==='POST') {
-        const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const pass=String(b.password||'');const user=db.prepare('SELECT * FROM users WHERE email=?').get(email);
+        const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const pass=String(b.password||'');
+        const key=loginKey(req,email);if(loginLimit.hit(key))return json(res,429,{error:'Muitas tentativas de login. Aguarde dez minutos.'});
+        const user=db.prepare('SELECT * FROM users WHERE email=?').get(email);
         if(!user || !validPassword(pass,user.password)) return json(res,401,{error:'E-mail ou senha incorretos.'});
-        createSession(req,res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
+        loginLimit.clear(key);createSession(req,res,user.id);return json(res,200,{user:{id:user.id,name:user.name,email:user.email}});
       }
       if (url.pathname==='/api/auth/logout' && req.method==='POST') { const user=getUser(req);if(user){db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE user_id=?').run(Date.now(),user.id);db.prepare('UPDATE users SET token_version=token_version+1 WHERE id=?').run(user.id);}res.setHeader('Set-Cookie',sessionCookie('',0,req));return json(res,200,{ok:true}); }
       if (url.pathname==='/api/auth/password' && req.method==='POST') {
@@ -797,7 +807,7 @@ http.createServer(async (req,res)=>{
         if(!process.env.RESEND_API_KEY || !process.env.RESET_FROM_EMAIL) return json(res,503,{error:'Recuperação por e-mail ainda não configurada pelo administrador.'});
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const user=db.prepare('SELECT id,email FROM users WHERE email=?').get(email);
         if(user) {const token=randomBytes(32).toString('hex');const tokenHash=hashToken(token);db.prepare('INSERT INTO resets VALUES(?,?,?)').run(tokenHash,user.id,Date.now()+1800000);
-          const proto=req.headers['x-forwarded-proto']==='https'?'https':'https';const host=req.headers['x-forwarded-host']||req.headers.host;const link=`${proto}://${host}/reset-password?reset=${encodeURIComponent(token)}`;
+          const link=`${PUBLIC_APP_ORIGIN}/reset-password?reset=${encodeURIComponent(token)}`;
           try { await sendReset(user.email,link); } catch(e) {db.prepare('DELETE FROM resets WHERE token_hash=?').run(tokenHash);console.error('Reset email delivery failed',e);return json(res,502,{error:'Não foi possível enviar o e-mail agora.'});}
         }
         return json(res,200,{ok:true,message:'Se o e-mail estiver cadastrado, você receberá um link de recuperação.'});

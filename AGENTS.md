@@ -120,3 +120,9 @@ Notificações cadastradas são modelos salvos; criação/edição apenas salva.
 
 ## Abas internas de Notificações
 Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do mesmo menu administrativo. Modelos mostram somente status `draft`. Agendamentos mostram status `scheduled` com edição do horário e cancelamento, ambos confirmados em modais. Histórico mostra envios e cancelamentos. Mudar ou cancelar um agendamento não modifica o modelo reutilizável. O backend deve impedir alterações em disparos já executados.
+
+## Auditoria pré-produção — etapa 1
+- Definir `APP_ENV=production` no ambiente comercial: desativa o seed automático sem excluir dados já existentes. `AUTO_SEED_DEMO=true` permanece opt-in consciente para piloto.
+- `PUBLIC_APP_ORIGIN` deve apontar para a origem HTTPS canônica; reset de senha não deve construir links a partir de headers Host/X-Forwarded-Host.
+- Política de proxy: `TRUST_PROXY` somente com cabeçalho X-Forwarded-For saneado pelo proxy de borda. Limite geral 300 POST/min por IP; login limitado também por IP+e-mail (10/10min).
+- Respostas HTTP usam cabeçalhos anti-sniffing, anti-iframe, política de referência e permissões; CSP estrito e auditoria externa de segurança ficam para a próxima etapa.
