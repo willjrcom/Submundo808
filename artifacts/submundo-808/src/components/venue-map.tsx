@@ -127,6 +127,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [sharing,setSharing]=useState(false);
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [shareMode,setShareMode]=useState<ShareMode>('event');
+  const [shareWithGroups,setShareWithGroups]=useState(false);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
   const [sharingEventId,setSharingEventId]=useState<string|null>(null);
   const [prefsReady,setPrefsReady]=useState(false);
@@ -145,7 +146,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
    setPrefsSaving(true);
    try{
-    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId});
+    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups});
     setSharingExpiresAt(result.expiresAt||null);
     setSharingEventId(result.eventId||null);
     return result;
@@ -200,6 +201,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(!alive)return;
     setPrefsReady(true);
     setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
+    setShareWithGroups(p.shareWithGroups===true);
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
     if(p.shareEnabled){
@@ -489,6 +491,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      <span><span className="block text-sm font-bold">{option.title}</span><span className="text-[11px] text-white/50">{option.hint}</span></span>
     </label>)}
    </fieldset>
+   <label className="flex items-start gap-3 rounded-xl border border-white/15 p-3 text-sm"><input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Compartilhar também com meus grupos</strong><span className="mt-1 block text-xs text-white/55">Se ativado, membros dos seus grupos poderão ver sua posição neste evento. Participar de um grupo, sozinho, não ativa o GPS.</span></span></label>
    <div className="flex gap-2">
     <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold text-white/75">Cancelar</button>
     <button type="button" disabled={prefsSaving||gpsStarting} onClick={startSharing} className="flex-[1.4] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black disabled:opacity-50">Confirmar e ativar</button>
