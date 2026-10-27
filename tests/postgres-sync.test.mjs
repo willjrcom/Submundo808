@@ -17,10 +17,10 @@ test('SQLite INSERT OR IGNORE e BEGIN IMMEDIATE ganham semântica PostgreSQL',()
  'CREATE TABLE foo(id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, lat REAL)');
 });
 test('normalização preserva IDs, e-mails, CEP e converte apenas colunas numéricas',()=>{
- const row=normalizePostgresRow({id:'12345',user_id:'88',postal_code:'01800000',name:'808',created_at:'1790000000000',is_published:'0',recipients:'3',lat:'-23.5501',ok:'1',share_expires_at:null});
+ const row=normalizePostgresRow({id:'12345',user_id:'88',postal_code:'01800000',name:'808',created_at:'1790000000000',is_published:'0',location_sharing_enabled:'1',recipients:'3',lat:'-23.5501',ok:'1',share_expires_at:null});
  assert.equal(row.id,'12345');assert.equal(row.user_id,'88');
  assert.equal(row.postal_code,'01800000');assert.equal(row.name,'808');
- assert.equal(row.created_at,1790000000000);assert.equal(row.is_published,0);
+ assert.equal(row.created_at,1790000000000);assert.equal(row.is_published,0);assert.equal(row.location_sharing_enabled,1);
  assert.equal(row.recipients,3);assert.equal(row.lat,-23.5501);assert.equal(row.ok,1);
 });
 test('cliente síncrono mantém all/get/run/exec e count de DML',()=>{

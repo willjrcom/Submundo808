@@ -42,3 +42,13 @@ test('o compartilhamento pode ser desativado manualmente',()=>{
  assert.match(frontend,/await savePrefs\(false,false\)/);
  assert.match(backend,/if\(!b\.shareEnabled\)db\.prepare\('DELETE FROM live_locations WHERE user_id=\?'\)/);
 });
+
+test('admin controla permissão por evento; API e mapa respeitam o bloqueio',()=>{
+ const admin=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-editors.tsx',import.meta.url),'utf8');
+ assert.match(admin,/Permitir compartilhamento de localização neste evento/);
+ assert.match(admin,/location_sharing_enabled:locationSharingEnabled/);
+ assert.match(backend,/location_sharing_enabled=1/);
+ assert.match(backend,/locationSharingEnabled:false/);
+ assert.match(frontend,/Localização de amigos indisponível neste evento/);
+ assert.match(frontend,/location_sharing_enabled!==1/);
+});

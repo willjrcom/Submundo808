@@ -34,6 +34,17 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   assert.equal(mapDetail.status,200,JSON.stringify(mapDetail.data));assert.ok(Array.isArray(mapDetail.data.areas));
   const event=await api('/api/admin/events',{method:'POST',cookie:register.cookie,body:{name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00'}});
   assert.equal(event.status,201,JSON.stringify(event.data));
+  const blocked=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});
+  assert.equal(blocked.status,403,JSON.stringify(blocked.data));
+  assert.match(blocked.data.error,/desabilitada/);
+  const enabled=await api('/api/admin/edit-event',{method:'POST',cookie:register.cookie,body:{id:event.data.id,name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00',lineup:[],location_sharing_enabled:true}});
+  assert.equal(enabled.status,200,JSON.stringify(enabled.data));
+  const approved=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});
+  assert.equal(approved.status,200,JSON.stringify(approved.data));
+  const disabled=await api('/api/admin/edit-event',{method:'POST',cookie:register.cookie,body:{id:event.data.id,name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00',lineup:[],location_sharing_enabled:false}});
+  assert.equal(disabled.status,200,JSON.stringify(disabled.data));
+  const revoked=await api('/api/location/preferences',{cookie:register.cookie});
+  assert.equal(revoked.data.shareEnabled,false);
   const product=await api('/api/admin/save-product',{method:'POST',cookie:register.cookie,body:{name:'Água',category:'Bebidas',default_price_cents:500}});
   assert.equal(product.status,200,JSON.stringify(product.data));
   const listed=await api('/api/admin/search-venues?q=Local',{cookie:register.cookie});

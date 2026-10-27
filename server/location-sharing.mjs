@@ -36,8 +36,9 @@ export function resolveSharingExpiry(db,{mode,eventId,now=Date.now()}){
  // All durations belong to the selected event, including 1h and 4h.
  // An account must never broadcast the same GPS position into two parties.
  if(typeof eventId!=='string'||!eventId||eventId.length>100)throw Object.assign(new Error('Escolha primeiro a festa em que deseja compartilhar a localização.'),{status:400});
- const event=db.prepare('SELECT ends_at FROM events WHERE id=?').get(eventId);
+ const event=db.prepare('SELECT ends_at,location_sharing_enabled FROM events WHERE id=?').get(eventId);
  if(!event)throw Object.assign(new Error('Evento não encontrado.'),{status:404});
+ if(!event.location_sharing_enabled)throw Object.assign(new Error('A localização de amigos está desabilitada para este evento.'),{status:403});
  if(mode==='1h')return {mode,eventId,expiresAt:now+60*60*1000};
  if(mode==='4h')return {mode,eventId,expiresAt:now+4*60*60*1000};
  const end=eventEndTimestamp(event.ends_at);
@@ -51,6 +52,6 @@ export function expireLocationShares(db,now=Date.now()){
  // O filtro de leitura também exige expires_at > now, portanto não há janela
  // de exposição mesmo quando a manutenção roda depois do prazo.
  // Revoke old shares without an associated event and shares for deleted events.
- db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,updated_at=? WHERE share_enabled=1 AND (share_expires_at IS NULL OR share_expires_at<=? OR share_event_id IS NULL OR NOT EXISTS (SELECT 1 FROM events WHERE id=share_event_id))').run(now,now);
+ db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,updated_at=? WHERE share_enabled=1 AND (share_expires_at IS NULL OR share_expires_at<=? OR share_event_id IS NULL OR NOT EXISTS (SELECT 1 FROM events WHERE id=share_event_id AND location_sharing_enabled=1))').run(now,now);
  db.prepare('DELETE FROM live_locations WHERE updated_at<? OR user_id NOT IN (SELECT user_id FROM location_preferences WHERE share_enabled=1 AND share_expires_at>?)').run(now-LOCATION_FRESH_MS,now);
 }

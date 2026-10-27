@@ -12,7 +12,7 @@ type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
 type ShareMode='event'|'4h'|'1h';
-type EventChoice={id:string;name:string;ends_at:string;map_ids:string[]};
+type EventChoice={id:string;name:string;ends_at:string;map_ids:string[];location_sharing_enabled:number};
 const formatDeadline=(dateValue:number)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(dateValue));
 const eventEndLabel=(value:string)=>{
  const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
@@ -219,7 +219,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(!eventId){if(alive){setFriends([]);setFriendsReady(true);}return;}
     try{
      const data=await requestLocation('friends?event_id='+encodeURIComponent(eventId));
-     if(alive&&activeEventRef.current===eventId){setFriends(data.friends);setAuthRequired(false);setFriendError('');}
+     if(alive&&activeEventRef.current===eventId){setFriends(data.friends);if(typeof data.locationSharingEnabled==='boolean')setActiveEvent(current=>current?.id===eventId?{...current,location_sharing_enabled:data.locationSharingEnabled?1:0}:current);setAuthRequired(false);setFriendError('');}
     }catch(e){if(alive&&activeEventRef.current===eventId)setFriendError(e instanceof Error?e.message:'Falha ao carregar amigos.');}
     finally{if(alive)setFriendsReady(true);}
    };
@@ -323,6 +323,15 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    setGeoError(message);
   };
   useEffect(()=>{
+   if(!activeEvent||activeEvent.id!==activeEventId||activeEvent.location_sharing_enabled===1)return;
+   setFriends([]);setLocationSetupOpen(false);
+   if(sharingRef.current||gpsActivatingRef.current||watch.current!==null){
+    endLocalSharing('O organizador desabilitou a localização de amigos neste evento.');
+    void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
+    void requestLocation('stop',{}).catch(()=>{});
+   }
+  },[activeEvent?.id,activeEvent?.location_sharing_enabled,activeEventId]);
+  useEffect(()=>{
    if(!sharingExpiresAt)return;
    const check=()=>{
     if(Date.now()>=sharingExpiresAt)endLocalSharing('O compartilhamento terminou no horário escolhido.');
@@ -384,6 +393,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(gpsActivatingRef.current||watch.current!==null)return;
    setFriendError('');
    if(authRequired){setFriendError('Entre no Perfil para compartilhar sua posição.');return;}
+   if(activeEvent?.location_sharing_enabled!==1){setGeoError('A localização de amigos está desabilitada para este evento.');return;}
    if(!window.isSecureContext){setGeoError('GPS exige uma conexão HTTPS segura.');return;}
    if(!navigator.geolocation){setGeoError('GPS indisponível neste navegador.');return;}
    if(!sharingRef.current&&!activeEventId){
@@ -460,7 +470,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  </div>;
 
  return <section className="space-y-3">
- <div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
+ {eventForSharing?.location_sharing_enabled!==1?<div className="rounded-2xl border border-white/15 bg-white/[.035] p-4 text-sm text-white/65"><p className="font-bold text-white">Localização de amigos indisponível neste evento</p><p className="mt-1 text-xs">O organizador desabilitou o compartilhamento neste local. O mapa e seus pontos de referência continuam disponíveis.</p></div>:<div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
   <div className="mb-2 flex items-center gap-2"><Navigation size={17} className="text-[#c4ff40]"/><h3 className="text-sm font-bold">Localização com amigos</h3></div>
   {!locationSetupOpen&&<button
    type="button" disabled={!prefsReady||prefsSaving} aria-busy={gpsStarting}
@@ -492,7 +502,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
   {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
   {friends.length>0&&<details className="mt-2 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
- </div>
+ </div>}
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}

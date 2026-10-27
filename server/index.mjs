@@ -100,6 +100,8 @@ if(!db.prepare('PRAGMA table_info(app_branding)').all().some(c=>c.name==='accent
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
+// Habilitação explícita por evento, depois do teste de precisão no local.
+if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='location_sharing_enabled')) db.exec('ALTER TABLE events ADD COLUMN location_sharing_enabled INTEGER NOT NULL DEFAULT 0');
 const DEFAULT_MAP_FRAME={x:22,y:22,width:56,height:56};
 const isValidMapFrame=f=>f&&typeof f==='object'&&!Array.isArray(f)&&
  [f.x,f.y,f.width,f.height].every(n=>typeof n==='number'&&Number.isFinite(n))&&
@@ -338,6 +340,10 @@ http.createServer(async (req,res)=>{
         if(!pref?.share_enabled)return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
         if(!pref.share_event_id)return json(res,403,{error:'Escolha um evento e reative o compartilhamento.'});
         if(typeof b.eventId!=='string'||b.eventId!==pref.share_event_id)return json(res,409,{error:'Sua localização está vinculada a outra festa. Ative novamente no evento correto.'});
+        if(!db.prepare('SELECT 1 FROM events WHERE id=? AND location_sharing_enabled=1').get(pref.share_event_id)){
+          expireLocationShares(db,now);
+          return json(res,403,{error:'A localização de amigos está desabilitada para este evento.'});
+        }
         if(!pref.share_expires_at||pref.share_expires_at<=now){
           expireLocationShares(db,now);
           return json(res,410,{error:'O prazo de compartilhamento terminou. Ative novamente para continuar.'});
@@ -353,10 +359,13 @@ http.createServer(async (req,res)=>{
       if (url.pathname==='/api/location/friends' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const eventId=String(url.searchParams.get('event_id')||'');
-        if(!eventId||eventId.length>100||!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
+        if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
+        const event=db.prepare('SELECT location_sharing_enabled FROM events WHERE id=?').get(eventId);
+        if(!event)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const now=Date.now();expireLocationShares(db,now);
+        if(!event.location_sharing_enabled)return json(res,200,{friends:[],locationSharingEnabled:false});
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now,eventId);
-        return json(res,200,{friends:rows});
+        return json(res,200,{friends:rows,locationSharingEnabled:true});
       }
       // O evento selecionado pelo usuário autenticado fica registrado no servidor.
       // Esse registro não comprova presença física, compra de ingresso ou autorização push.
@@ -493,7 +502,7 @@ http.createServer(async (req,res)=>{
       }
       if(url.pathname==='/api/public/events'&&req.method==='GET'){
         const rows=db.prepare('SELECT e.*,v.name AS venue_name,v.address AS venue_address,v.city AS venue_city,v.services AS venue_services FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.is_published=1 ORDER BY CASE WHEN e.ends_at>=? THEN 0 ELSE 1 END,e.starts_at').all(new Date().toISOString().slice(0,16));
-        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,doors_at:e.doors_at||'',cover_image:e.cover_image||'',services:e.services||'',venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city,services:e.venue_services||''},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[]}))});
+        return json(res,200,{items:rows.map(e=>({id:e.id,name:e.name,description:e.description,starts_at:e.starts_at,ends_at:e.ends_at,site_url:e.site_url,tickets_url:e.tickets_url,instagram_url:e.instagram_url,doors_at:e.doors_at||'',cover_image:e.cover_image||'',services:e.services||'',venue:{id:e.venue_id,name:e.venue_name,address:e.venue_address,city:e.venue_city,services:e.venue_services||''},map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(e.id).map(m=>m.map_id),lineup:JSON.parse(e.lineup_json||'[]')||[],location_sharing_enabled:e.location_sharing_enabled}))});
       }
       if(url.pathname==='/api/public/maps'&&req.method==='GET'){
         const rows=db.prepare('SELECT id,venue_id,name,frame_json FROM venue_maps').all();
@@ -695,11 +704,13 @@ http.createServer(async (req,res)=>{
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||''),ids=[...new Set(Array.isArray(b.map_ids)?b.map_ids:[])];
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(id=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(id,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos. Todos os mapas devem pertencer ao mesmo estabelecimento.'});
           if(Array.isArray(b.lineup)&&b.lineup.some(d=>!validDjSocial(d)))return json(res,400,{error:'Use URLs HTTPS completas do Instagram e Spotify no lineup.'});
+          if(b.location_sharing_enabled!==undefined&&typeof b.location_sharing_enabled!=='boolean')return json(res,400,{error:'Configuração de localização inválida.'});
           const id=randomUUID();db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
             db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
             db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
+            db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled===true?1:0,id);
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
              db.prepare('UPDATE events SET is_published=0 WHERE id=?').run(id);
             db.exec('COMMIT');
@@ -737,9 +748,18 @@ http.createServer(async (req,res)=>{
           if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId)||ids.some(mid=>!db.prepare('SELECT 1 FROM venue_maps WHERE id=? AND venue_id=?').get(mid,venueId)))return json(res,400,{error:'Nome, estabelecimento ou mapas inválidos.'});
           if(db.prepare('SELECT is_published FROM events WHERE id=?').get(id).is_published && (!ids.length||!b.starts_at||!b.ends_at||!Number.isFinite(Date.parse(b.starts_at))||!Number.isFinite(Date.parse(b.ends_at))||Date.parse(b.ends_at)<=Date.parse(b.starts_at)))return json(res,400,{error:'Despublique o evento antes de remover mapas ou datas obrigatórias.'});
            if(!Array.isArray(b.lineup)||b.lineup.length>100||b.lineup.some(d=>!d||typeof d.nome!=='string'||d.nome.length>120||!validDjSocial(d)))return json(res,400,{error:'Lineup inválido.'});
+          if(b.location_sharing_enabled!==undefined&&typeof b.location_sharing_enabled!=='boolean')return json(res,400,{error:'Configuração de localização inválida.'});
           db.exec('BEGIN');try{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
             db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
+            if(typeof b.location_sharing_enabled==='boolean'){
+              db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled?1:0,id);
+              if(!b.location_sharing_enabled){
+                // Revogação imediata, sem aguardar a limpeza periódica.
+                db.prepare('DELETE FROM live_locations WHERE user_id IN (SELECT user_id FROM location_preferences WHERE share_event_id=?)').run(id);
+                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
+              }
+            }
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
             for(const mid of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mid);
             db.exec('COMMIT');

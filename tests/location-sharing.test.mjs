@@ -10,7 +10,7 @@ const HOUR=3600000;
 function fixture(){
  const db=new DatabaseSync(':memory:');
  db.exec(`
- CREATE TABLE events(id TEXT PRIMARY KEY,ends_at TEXT NOT NULL);
+ CREATE TABLE events(id TEXT PRIMARY KEY,ends_at TEXT NOT NULL,location_sharing_enabled INTEGER NOT NULL DEFAULT 0);
  CREATE TABLE location_preferences(
  user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,
  share_enabled INTEGER NOT NULL DEFAULT 0,share_mode TEXT NOT NULL DEFAULT 'event',
@@ -18,7 +18,7 @@ function fixture(){
  );
  CREATE TABLE live_locations(user_id TEXT PRIMARY KEY,lat REAL,lng REAL,accuracy REAL,updated_at INTEGER NOT NULL);
  `);
- db.prepare('INSERT INTO events VALUES(?,?)').run('festival','2026-11-02T02:30');
+ db.prepare('INSERT INTO events VALUES(?,?,?)').run('festival','2026-11-02T02:30',1);
  return db;
 }
 const NOW=Date.parse('2026-11-01T23:00:00Z');
@@ -97,6 +97,19 @@ test('usuário ativo continua visível, mas uma posição com mais de 90 segundo
   assert.ok(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('active'));
   assert.equal(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('stale'),undefined);
   assert.equal(db.prepare('SELECT share_enabled FROM location_preferences WHERE user_id=?').get('active').share_enabled,1);
+ }finally{db.close();}
+});
+test('evento com localização desabilitada bloqueia novos compartilhamentos e revoga os existentes',()=>{
+ const db=fixture();
+ try{
+  db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('active',1,1,'event',NOW+HOUR,'festival',NOW);
+  db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run('active',-23.55,-46.63,6,NOW);
+  db.prepare('UPDATE events SET location_sharing_enabled=0 WHERE id=?').run('festival');
+  assert.throws(()=>resolveSharingExpiry(db,{mode:'event',eventId:'festival',now:NOW}),e=>e.status===403&&/desabilitada/.test(e.message));
+  assert.throws(()=>resolveSharingExpiry(db,{mode:'1h',eventId:'festival',now:NOW}),e=>e.status===403);
+  expireLocationShares(db,NOW);
+  assert.equal(db.prepare('SELECT share_enabled FROM location_preferences WHERE user_id=?').get('active').share_enabled,0);
+  assert.equal(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('active'),undefined);
  }finally{db.close();}
 });
 test('sessão antiga sem evento não continua divulgando GPS após migração',()=>{
