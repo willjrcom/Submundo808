@@ -117,3 +117,6 @@ docker build -t submundo808 .
 
 ## Padrão de notificações reutilizáveis
 Notificações cadastradas são modelos salvos; criação/edição apenas salva. Na listagem, oferecer Editar, Enviar teste, Enviar agora e Agendar/detalhes. Cada disparo/agendamento cria uma ocorrência independente sem destruir o modelo; confirmar ações em modais internos.
+
+## Abas internas de Notificações
+Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do mesmo menu administrativo. Modelos mostram somente status `draft`. Agendamentos mostram status `scheduled` com edição do horário e cancelamento, ambos confirmados em modais. Histórico mostra envios e cancelamentos. Mudar ou cancelar um agendamento não modifica o modelo reutilizável. O backend deve impedir alterações em disparos já executados.

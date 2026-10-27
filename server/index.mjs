@@ -386,6 +386,17 @@ http.createServer(async (req,res)=>{
         else if(action==='send')dispatchDueNotifications();
         return json(res,200,{ok:true,id:sendId});
       }
+      if(url.pathname==='/api/admin/notifications/schedule'&&req.method==='POST'){
+        const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
+        const b=await body(req),id=String(b.id||''),action=String(b.action||''),when=Number(b.scheduledAt)||null;
+        if(!['cancel','reschedule'].includes(action))return json(res,400,{error:'Ação inválida.'});
+        if(action==='reschedule'&&(!when||!Number.isSafeInteger(when)||when<=Date.now()))return json(res,400,{error:'Informe data e horário futuros.'});
+        const result=action==='cancel'
+          ?db.prepare("UPDATE notifications SET status='cancelled',scheduled_at=NULL WHERE id=? AND status='scheduled' AND created_by<>'system'").run(id)
+          :db.prepare("UPDATE notifications SET scheduled_at=? WHERE id=? AND status='scheduled' AND created_by<>'system'").run(when,id);
+        if(!result.changes)return json(res,409,{error:'Agendamento não encontrado ou já processado. Atualize a listagem.'});
+        return json(res,200,{ok:true});
+      }
       if(url.pathname==='/api/admin/notifications/cancel'&&req.method==='POST'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
         const b=await body(req);
