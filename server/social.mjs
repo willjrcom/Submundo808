@@ -17,13 +17,21 @@ export function ensureSocialSchema(db){
   group_id TEXT NOT NULL,user_id TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'member',joined_at INTEGER NOT NULL,
   PRIMARY KEY(group_id,user_id)
  );
- CREATE INDEX IF NOT EXISTS idx_friend_group_members_user ON friend_group_members(user_id,group_id);`);
+ CREATE INDEX IF NOT EXISTS idx_friend_group_members_user ON friend_group_members(user_id,group_id);
+ CREATE TABLE IF NOT EXISTS group_alerts(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,sender_id TEXT NOT NULL,code TEXT NOT NULL,event_id TEXT,created_at INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS idx_group_alerts_group ON group_alerts(group_id,created_at);`);
 }
 
 const sha256=s=>createHash('sha256').update(s).digest('hex');
 const validColor=s=>/^#[0-9a-fA-F]{6}$/.test(s);
 const verifiedId=s=>typeof s==='string'&&s.length>0&&s.length<=100;
 const httpError=(status,error)=>Object.assign(new Error(error),{status});
+const groupAlerts={
+ palco:'Bora pro palco!',bar:'Bora pro bar!',encontro:'Me encontrem aqui!',agua:'Vou pegar água',
+ banheiro:'Estou no banheiro',onde:'Onde vocês estão?',entrada:'Estou indo pra entrada',
+ bem:'Está tudo bem comigo',mal:'Estou passando mal, preciso de ajuda!',embora:'Estou indo embora',
+ roubo:'Fui roubado, preciso de ajuda!'
+};
 
 export async function handleSocialApi({db,req,res,url,getUser,readBody,json,friendSecret,drainPushQueue}){
  const pathname=url.pathname;
@@ -125,6 +133,28 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    const groups=db.prepare('SELECT g.* FROM friend_groups g JOIN friend_group_members gm ON gm.group_id=g.id WHERE gm.user_id=? ORDER BY g.created_at DESC').all(user.id).map(groupSummary);
    json(res,200,{groups});return true;
   }
+  if(pathname==='/api/groups/alerts'&&method==='GET'){
+   const id=String(url.searchParams.get('id')||'');
+   if(!groupRow(id)||!member(id))return reject(404,'Grupo não encontrado.');
+   const alerts=db.prepare('SELECT a.id,a.code,a.created_at AS createdAt,a.event_id AS eventId,u.id AS senderId,u.name AS senderName,u.avatar_data AS avatar FROM group_alerts a JOIN users u ON u.id=a.sender_id WHERE a.group_id=? ORDER BY a.created_at DESC LIMIT 100').all(id).map(a=>({...a,message:groupAlerts[a.code]||'Aviso'}));
+   json(res,200,{alerts});return true;
+  }
+  if(pathname==='/api/groups/alert'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),code=String(p.code||'');
+   if(!groupRow(id)||!member(id))return reject(404,'Grupo não encontrado.');
+   if(!Object.hasOwn(groupAlerts,code))return reject(400,'Aviso inválido.');
+   const now=Date.now();
+   const last=db.prepare('SELECT created_at FROM group_alerts WHERE group_id=? AND sender_id=? ORDER BY created_at DESC LIMIT 1').get(id,user.id);
+   if(last&&now-last.created_at<60000)return reject(429,'Aguarde 60 segundos antes de enviar outro aviso.');
+   const eventId=typeof p.eventId==='string'&&p.eventId.length<=100&&db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(p.eventId)?p.eventId:null;
+   const alertId=randomUUID();
+   db.prepare('INSERT INTO group_alerts(id,group_id,sender_id,code,event_id,created_at) VALUES(?,?,?,?,?,?)').run(alertId,id,user.id,code,eventId,now);
+   const recipients=db.prepare('SELECT user_id FROM friend_group_members WHERE group_id=? AND user_id<>?').all(id,user.id);
+   for(const recipient of recipients){
+    socialNotification(recipient.user_id,{title:code==='mal'||code==='roubo'?'Atenção! Aviso da galera':'Aviso do grupo',body:user.name+': '+groupAlerts[code],targetId:id,targetKind:'group_alert',kind:code==='mal'||code==='roubo'?'group_urgent':'group_alert'});
+   }
+   json(res,201,{ok:true,id:alertId,recipients:recipients.length});return true;
+  }
   if(pathname==='/api/groups/create'&&method==='POST'){
    const p=await readBody(req),name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||'#8957e5');
    if(name.length<2||name.length>60||description.length>250||!validColor(color))return reject(400,'Informe um nome válido (2 a 60 caracteres), descrição curta e cor válida.');
@@ -184,7 +214,9 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    db.exec('BEGIN');
    try{
     if(!others.length){
-     db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
+     db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
+     db.prepare('DELETE FROM group_alerts WHERE group_id=?').run(id);
+    db.prepare('DELETE FROM friend_group_members WHERE group_id=?').run(id);
      db.prepare('DELETE FROM friend_groups WHERE id=?').run(id);
     }else{
      if(g.owner_id===user.id){
