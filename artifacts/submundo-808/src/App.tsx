@@ -59,6 +59,12 @@ function ParticipantApp() {
   const [activeEventId,setActiveEventId]=useState(getActiveEventId);
   const selectEvent=(id:string)=>{saveActiveEventId(id);setActiveEventId(id);};
   const clearEvent=()=>{resetActiveEventId();setActiveEventId('');};
+  useEffect(()=>{
+    if(!activeEventId)return;
+    // Reconciliar a seleção guardada no localStorage após login/refresh.
+    void fetch('/api/events/participation',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:activeEventId})}).catch(()=>{});
+  },[activeEventId]);
+
   const chooseAnotherEvent=()=>{clearEvent();window.history.pushState({tab:'inicio'},'','/');setTab('inicio');window.dispatchEvent(new Event('submundo-navigation'));window.scrollTo(0,0);};
   useEffect(()=>{
     // Keep deep-link selection when a participant opens /programacao/:id
