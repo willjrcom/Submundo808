@@ -4,6 +4,7 @@ import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {ensureDemoData} from './demo-seed.mjs';
 import {ensureDemoShowcase} from './demo-showcase.mjs';
+import {ensureDemoNotifications} from './demo-notifications.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
 import webpush from 'web-push';
@@ -159,7 +160,8 @@ if(process.env.AUTO_SEED_DEMO!=='false'){
  try{
   const initial=ensureDemoData(db);
   const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
-  console.log('POC catalog ready:',initial.created?'created':'reused',initial.id,'showcase events added:',showcase.eventsAdded,'showcase maps added:',showcase.mapsAdded);
+  const templates=ensureDemoNotifications(db,{eventId:initial.id});
+  console.log('POC catalog ready:',initial.created?'created':'reused',initial.id,'showcase events added:',showcase.eventsAdded,'showcase maps added:',showcase.mapsAdded,'notification templates added:',templates.count);
  }catch(error){
   console.error('Could not initialize sample data:',error);
  }
@@ -685,7 +687,8 @@ http.createServer(async (req,res)=>{
           try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}
           const result=ensureDemoData(db,{location});
           const showcase=ensureDemoShowcase(db,{baseEventId:result.id});
-          return json(res,result.created||showcase.created?201:200,{...result,showcase});
+          const notifications=ensureDemoNotifications(db,{eventId:result.id});
+          return json(res,result.created||showcase.created||notifications.created?201:200,{...result,showcase,notifications});
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
