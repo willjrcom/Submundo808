@@ -20,6 +20,7 @@ export function ensureSocialSchema(db){
  CREATE INDEX IF NOT EXISTS idx_friend_group_members_user ON friend_group_members(user_id,group_id);
  CREATE TABLE IF NOT EXISTS group_alerts(id TEXT PRIMARY KEY,group_id TEXT NOT NULL,sender_id TEXT NOT NULL,code TEXT NOT NULL,event_id TEXT,created_at INTEGER NOT NULL);
  CREATE INDEX IF NOT EXISTS idx_group_alerts_group ON group_alerts(group_id,created_at);`);
+ for(const [col,def] of [['edit_policy',"TEXT NOT NULL DEFAULT 'admin'"],['join_policy',"TEXT NOT NULL DEFAULT 'direct'"],['icon',"TEXT NOT NULL DEFAULT 'users'"]])if(!db.prepare('PRAGMA table_info(friend_groups)').all().some(c=>c.name===col))db.exec('ALTER TABLE friend_groups ADD COLUMN '+col+' '+def);
 }
 
 const sha256=s=>createHash('sha256').update(s).digest('hex');
@@ -76,7 +77,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
  const groupSummary=g=>{
   const count=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
   const avatars=db.prepare('SELECT u.id,u.name,u.avatar_data AS avatar FROM friend_group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined_at LIMIT 5').all(g.id);
-  return {id:g.id,name:g.name,description:g.description,color:g.color,ownerId:g.owner_id,memberCount:count,avatars};
+  return {id:g.id,name:g.name,description:g.description,color:g.color,ownerId:g.owner_id,memberCount:count,avatars,editPolicy:g.edit_policy||'admin',joinPolicy:g.join_policy||'direct',icon:g.icon||'users'};
  };
  try{
   if(pathname==='/api/friends'&&method==='GET'){
@@ -154,6 +155,19 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
     socialNotification(recipient.user_id,{title:code==='mal'||code==='roubo'?'Atenção! Aviso da galera':'Aviso do grupo',body:user.name+': '+groupAlerts[code],targetId:id,targetKind:'group_alert',kind:code==='mal'||code==='roubo'?'group_urgent':'group_alert'});
    }
    json(res,201,{ok:true,id:alertId,recipients:recipients.length});return true;
+  }
+  if(pathname==='/api/groups/edit'&&method==='POST'){
+   const p=await readBody(req),id=String(p.id||''),g=groupRow(id);
+   if(!g||!member(id))return reject(404,'Grupo não encontrado.');
+   if(g.owner_id!==user.id&&g.edit_policy!=='everyone')return reject(403,'Somente o administrador pode editar este grupo.');
+   const name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||''),icon=String(p.icon||'users');
+   if(name.length<2||name.length>60||description.length>250||!validColor(color)||!['users','music','fire','party','star','heart'].includes(icon))return reject(400,'Nome, descrição, cor ou ícone inválidos.');
+   const owner=g.owner_id===user.id;
+   const editPolicy=owner?String(p.editPolicy||'admin'):g.edit_policy;
+   const joinPolicy=owner?String(p.joinPolicy||'direct'):g.join_policy;
+   if(!['admin','everyone'].includes(editPolicy)||!['direct','approval'].includes(joinPolicy))return reject(400,'Permissões inválidas.');
+   db.prepare('UPDATE friend_groups SET name=?,description=?,color=?,icon=?,edit_policy=?,join_policy=? WHERE id=?').run(name,description,color,icon,editPolicy,joinPolicy,id);
+   json(res,200,{group:groupSummary(groupRow(id))});return true;
   }
   if(pathname==='/api/groups/create'&&method==='POST'){
    const p=await readBody(req),name=String(p.name||'').trim(),description=String(p.description||'').trim(),color=String(p.color||'#8957e5');
