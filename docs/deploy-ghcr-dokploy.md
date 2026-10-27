@@ -36,3 +36,5 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - Por padrão `TRUST_PROXY=false`; o rate limiter usa o IP da conexão e **não** aceita `X-Forwarded-For` fornecido arbitrariamente pelo usuário. Somente habilite `TRUST_PROXY=true` quando o proxy de borda garantir a limpeza e substituição confiável de `X-Forwarded-For`.
 - Adicione monitoramento e backups do volume `/data` com teste de restauração; este commit não altera ou apaga dados persistentes.
 - O pipeline executa como bloqueantes testes críticos (segurança, sessão, localização e seed) e checagem de sintaxe. Typecheck e suíte completa rodam inicialmente como diagnóstico (`continue-on-error`) até a adequação dos testes legados; **não** interpretar sucesso do build como aprovação integral da auditoria.
+
+**Observação sobre alta concorrência:** o limitador geral permite até 1200 POST/min por IP da conexão, para evitar bloquear várias pessoas sob o mesmo proxy na fase de testes. Recomenda-se aplicar limites específicos por rota e identidade na etapa seguinte, após teste de carga.

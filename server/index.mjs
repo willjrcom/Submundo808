@@ -146,7 +146,7 @@ const createSession=(req,res,id)=>{
 };
 const oauthHandler=createOauth({db,getUser,createSession,passwordHash,secret:JWT_SECRET});
 // O limite geral evita abuso sem punir todos os participantes de um mesmo evento.
-const generalPostLimit=createWindowLimiter({limit:300,windowMs:60_000});
+const generalPostLimit=createWindowLimiter({limit:1200,windowMs:60_000});
 const loginLimit=createWindowLimiter({limit:10,windowMs:10*60_000});
 const trustedProxy=process.env.TRUST_PROXY==='true';
 const requestIp=req=>clientIp(req,{trustProxy:trustedProxy});

@@ -1,3 +1,4 @@
+import {isIP} from 'node:net';
 // Segurança de requisições: funções sem estado global, testáveis isoladamente.
 const DEFAULT_ORIGIN='https://submundo.menudevendas.com.br';
 
@@ -18,7 +19,7 @@ export function clientIp(req,{trustProxy=false}={}){
  const direct=String(req.socket?.remoteAddress||'unknown').slice(0,64);
  if(!trustProxy)return direct;
  const first=String(req.headers?.['x-forwarded-for']||'').split(',')[0].trim();
- return /^[0-9a-fA-F:.]{3,64}$/.test(first)?first:direct;
+ return isIP(first)?first:direct;
 }
 
 export function allowPostOrigin(req){
