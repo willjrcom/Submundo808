@@ -182,7 +182,7 @@ function eventEndMillis(value){
  const normalized=String(value||'');
  // Event dates are authored as Brazilian venue-local datetime-local values.
  // Explicit offsets are respected; otherwise use São Paulo standard time.
- return Date.parse(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2})?$/.test(normalized)?normalized+'-03:00':normalized);
+ return Date.parse(/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2})?$/.test(normalized)?normalized+'-03:00':normalized);
 }
 function dispatchDueNotifications(){
  const now=Date.now();
