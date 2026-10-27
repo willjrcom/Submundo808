@@ -59,3 +59,18 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 ## PostgreSQL
 
 O backend aceita `DATABASE_URL` para operar no PostgreSQL sem importar dados SQLite. A estratégia de implantação, a concessão do primeiro administrador e o rollback estão em [docs/postgresql.md](postgresql.md). **Não exclua `/data`**, pois ainda contém as chaves de autenticação e os dados da versão SQLite anterior.
+
+## Agenda oficial 808 no modo demo
+
+O catálogo acionado por `AUTO_SEED_DEMO=true` agora é uma fotografia dos **oito eventos reais futuros da Meaple em 27/10/2026** (Brasília, Bauru, Sorocaba, Porto Alegre, Fortaleza, São José dos Campos, Vitória/Vila Velha e Festival São Paulo). Fonte: `https://meaple.com.br/808`. Os URLs dos ingressos individuais são armazenados por evento.
+
+- Para cadastrar os eventos ao iniciar o container: `APP_ENV=production`, `AUTO_SEED_DEMO=true` e `DATABASE_URL=...` no Dokploy; recrie/reinicie o container após alterar a variável.
+- **Idempotente**: não duplica os registros ao reiniciar e não sobrescreve datas, line-ups ou descrições editadas posteriormente no admin.
+- Os eventos ficam **publicados** na agenda e têm localização compartilhada **desabilitada**. Não são criadas plantas fictícias do estabelecimento.
+- Registros antigos da POC, enquanto ainda intactos e sem link de ingressos, são **despublicados uma única vez**; não são apagados nem se desfazem edições manuais.
+- `AUTO_SEED_DEMO=false` desliga a geração automática em inicializações futuras, mas não apaga o que já foi cadastrado.
+- `AUTO_SEED_LEGACY=true` junto com `AUTO_SEED_DEMO=true` permite executar explicitamente o modelo fictício anterior em um ambiente separado.
+- O botão administrativo `seed-demo` também gera a agenda real, exceto quando `AUTO_SEED_LEGACY=true`.
+- O catálogo **não é uma integração em tempo real**. Se a Meaple alterar datas/endereço/line-up, atualize o cadastro no admin ou o snapshot em `server/real-tour-seed.mjs`. Os horários individuais de DJs não estão disponíveis nos anúncios verificados e ficam em branco.
+
+Para validar: consulte `GET /api/public/events` (deve listar oito eventos novos, se não houver outros registros publicados), revise a agenda em Início, abra os links de ingressos e confirme o endereço antes da festa.
