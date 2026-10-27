@@ -11,6 +11,7 @@ import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} fro
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
+import {gpsToMap,distanceMeters,type MapCorners} from './map-location-utils';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
@@ -56,10 +57,36 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
+ const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
+ const gpsWatch=useRef<number|null>(null),walkActive=useRef(false);
  const [pendingDelete,setPendingDelete]=useState<{id:string;name:string;kind:'area'|'marker'}|null>(null);
  const calibrationArea=areas.find(a=>(['tl','tr','br','bl'] as const).some(k=>a.gps?.[k]))||areas[0];
  const calibrationKeys=['tl','tr','bl','br'] as const;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
+ const corners=calibrationArea?.gps;
+ const ready=!!(corners?.tl&&corners?.tr&&corners?.bl&&corners?.br);
+ const distances=ready?{
+  top:distanceMeters(corners!.tl!,corners!.tr!),bottom:distanceMeters(corners!.bl!,corners!.br!),
+  left:distanceMeters(corners!.tl!,corners!.bl!),right:distanceMeters(corners!.tr!,corners!.br!)
+ }:null;
+ const averageWidth=distances?(distances.top+distances.bottom)/2:0;
+ const averageLength=distances?(distances.left+distances.right)/2:0;
+ const geo=(p:GPS)=>({x:p.lng*111320*Math.cos(p.lat*Math.PI/180),y:-p.lat*111320});
+ const cross=(a:GPS,b:GPS,c:GPS)=>{const x=geo(a),y=geo(b),z=geo(c);return(y.x-x.x)*(z.y-x.y)-(y.y-x.y)*(z.x-x.x);};
+ const geometryValid=!!(ready&&corners&&
+  cross(corners.tl!,corners.tr!,corners.br!)*cross(corners.tr!,corners.br!,corners.bl!)>0&&
+  cross(corners.tr!,corners.br!,corners.bl!)*cross(corners.br!,corners.bl!,corners.tl!)>0&&
+  cross(corners.br!,corners.bl!,corners.tl!)*cross(corners.bl!,corners.tl!,corners.tr!)>0);
+ const accuracyMax=ready?Math.max(...(['tl','tr','bl','br'] as const).map(k=>corners?.[k]?.accuracy||999)):0;
+ const accuracyReasonable=ready&&Math.min(averageWidth,averageLength)>accuracyMax*2;
+ const widthExpected=Number(expectedWidth.replace(',','.')),lengthExpected=Number(expectedLength.replace(',','.'));
+ const expectationsValid=widthExpected>0&&lengthExpected>0&&Number.isFinite(widthExpected)&&Number.isFinite(lengthExpected);
+ const relativeError=(measured:number,expected:number)=>Math.abs(measured-expected)/expected;
+ const measurementsMatch=!!(expectationsValid&&distances&&relativeError(averageWidth,widthExpected)<=.25&&relativeError(averageLength,lengthExpected)<=.25);
+ const qualityOK=geometryValid&&accuracyReasonable&&measurementsMatch;
+ const projectedLive=ready&&gpsLive?gpsToMap(gpsLive,corners as MapCorners):null;
+ const projectedWalk=ready?walkPoints.map(p=>gpsToMap(p,corners as MapCorners)).filter((x):x is NonNullable<typeof x>=>!!x):[];
+ 
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
@@ -80,6 +107,19 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
  },[map.id]);
+ useEffect(()=>{
+  if(!calibrationOpen){if(gpsWatch.current!==null){navigator.geolocation.clearWatch(gpsWatch.current);gpsWatch.current=null;}walkActive.current=false;setWalkTesting(false);return;}
+  if(!navigator.geolocation){setGpsStatus('Este dispositivo não disponibiliza GPS.');return;}
+  setGpsStatus('Aguardando GPS. Permita a localização quando solicitado.');
+  gpsWatch.current=navigator.geolocation.watchPosition(
+   p=>{const fix={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
+    setGpsLive(fix);setGpsStatus('Localização atualizada · precisão ±'+Math.round(fix.accuracy)+' m');
+    if(walkActive.current)setWalkPoints(v=>[...v.slice(-399),fix]);},
+   e=>setGpsStatus('Não foi possível acompanhar sua localização: '+e.message),
+   {enableHighAccuracy:true,maximumAge:0,timeout:20000});
+  return()=>{if(gpsWatch.current!==null)navigator.geolocation.clearWatch(gpsWatch.current);gpsWatch.current=null;walkActive.current=false;};
+ },[calibrationOpen]);
+ 
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
  useEffect(()=>{
   const onKeyboard=(event:KeyboardEvent)=>{
@@ -215,7 +255,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');}
   finally{setSaving(false);}
  }
- async function capture(corner:string){
+ function requestCalibrationSave(){
+  if(!ready){setError('Registre os quatro cantos antes de salvar.');return;}
+  setShowCalibrationConfirm(true);
+ }
+  async function capture(corner:string){
   if(!calibrationArea){setError('Crie um ambiente antes de calibrar o mapa.');return;}
   if(!navigator.geolocation){setError('GPS indisponível neste navegador.');return;}
   setCalibrationBusy(true);setError('');
@@ -415,12 +459,24 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <div className="relative overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(frame),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
     {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
     {([['tl','top-1 left-1'],['tr','top-1 right-1'],['bl','bottom-1 left-1'],['br','bottom-1 right-1']] as const).map(([key,pos],i)=><div key={key} className={'absolute z-10 rounded-full border px-2 py-1 text-xs font-bold '+pos+' '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] bg-[#c4ff40] text-black':'border-purple-400 bg-[#21132d] text-white')}>{calibrationArea?.gps?.[key]?'✓':i+1}</div>)}
-    {calibrationPosition&&<div className="absolute bottom-1/2 left-1/2 rounded bg-blue-500 px-2 py-1 text-[10px] font-bold">GPS capturado ±{Math.round(calibrationPosition.accuracy)} m</div>}
+    {ready&&projectedWalk.length>1&&<svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={projectedWalk.map(p=>p.x+','+p.y).join(' ')} fill="none" stroke="#60a5fa" strokeWidth=".7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+    {projectedLive&&<div aria-label="Sua localização atual" title={'Precisão GPS ±'+Math.round(gpsLive?.accuracy||0)+' m'} className="pointer-events-none absolute z-30 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-blue-500 shadow-[0_0_0_7px_#3b82f633]" style={{left:Math.max(0,Math.min(100,projectedLive.x))+'%',top:Math.max(0,Math.min(100,projectedLive.y))+'%'}}/>}
+    {!ready&&gpsLive&&<div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-blue-700 px-2 py-1 text-[10px] font-bold">GPS ativo · marque os cantos para projetar sua posição</div>}
    </div>
    <div className="grid grid-cols-2 gap-2">{calibrationKeys.map((key,i)=><button key={key} disabled={calibrationBusy||!calibrationArea} onClick={()=>void capture(key)} className={button+' flex-col text-xs '+(calibrationArea?.gps?.[key]?'border-[#c4ff40] text-[#c4ff40]':'')}><span>{calibrationArea?.gps?.[key]?'✓ ':'○ '}{calibrationLabels[i]}</span><span className="text-[10px] opacity-65">{calibrationArea?.gps?.[key]?'Recalibrar · ±'+Math.round(calibrationArea.gps[key]?.accuracy??0)+' m':'Registrar ponto'}</span></button>)}</div>
-   <p className="text-xs text-white/60">{calibrationKeys.filter(k=>calibrationArea?.gps?.[k]).length}/4 pontos calibrados. Após salvar, a localização será projetada usando esses quatro pontos. Confira sua posição na aba Mapa.</p>
+   <div role="status" className="rounded-xl border border-blue-400/25 bg-blue-500/10 p-3 text-xs text-blue-100">{gpsStatus}{gpsLive&&<> · {gpsLive.lat.toFixed(6)}, {gpsLive.lng.toFixed(6)}</>}</div>
+   <section className="space-y-3 rounded-xl border border-white/15 p-3">
+    <h4 className="font-bold">Medidas e validação</h4>
+    <p className="text-xs text-white/60">Digite as dimensões reais aproximadas (trena, distância conhecida ou referência confiável). A estimativa do GPS pode ter erro maior do que o ambiente.</p>
+    <div className="grid grid-cols-2 gap-2"><label className="text-xs">Largura esperada (m)<input className={input} type="number" inputMode="decimal" min="0.1" step="0.1" value={expectedWidth} onChange={e=>setExpectedWidth(e.target.value)} placeholder="Ex.: 10"/></label><label className="text-xs">Comprimento esperado (m)<input className={input} type="number" inputMode="decimal" min="0.1" step="0.1" value={expectedLength} onChange={e=>setExpectedLength(e.target.value)} placeholder="Ex.: 50"/></label></div>
+    <div className="grid grid-cols-2 gap-2 text-xs">{([['tl','tr','Superior'],['bl','br','Inferior'],['tl','bl','Esquerda'],['tr','br','Direita']] as const).map(([a,b,label])=><p key={label} className="rounded-lg bg-white/5 p-2">{label}: <strong>{corners?.[a]&&corners?.[b]?distanceMeters(corners[a],corners[b]).toFixed(1)+' m':'Aguardando pontos'}</strong></p>)}</div>
+    {ready&&<div className="space-y-1 text-xs"><p className={geometryValid?'text-green-300':'text-red-300'}>{geometryValid?'✓ Quatro cantos formam um quadrilátero consistente':'✕ Possível inversão de cantos ou geometria cruzada'}</p><p className={accuracyReasonable?'text-green-300':'text-amber-300'}>{accuracyReasonable?'✓ Precisão compatível com a menor dimensão':'⚠ Precisão GPS insuficiente para confirmar os lados desse espaço (pior leitura ±'+Math.round(accuracyMax)+' m)'}</p><p className={!expectationsValid?'text-amber-300':measurementsMatch?'text-green-300':'text-amber-300'}>{!expectationsValid?'Informe as distâncias esperadas para comparar.':measurementsMatch?'✓ Dimensões aproximadas compatíveis (tolerância de 25%)':'⚠ Distância calculada diferente da esperada — calibre novamente ou confira as medidas.'}</p><p className="text-white/60">Estimado pelo GPS: {averageWidth.toFixed(1)} m de largura × {averageLength.toFixed(1)} m de comprimento.</p></div>}
+   </section>
+   {ready&&<div className="space-y-2 rounded-xl border border-white/15 p-3"><h4 className="font-bold">Teste de caminhada</h4><p className="text-xs text-white/60">Ande em linha reta em um trecho conhecido. O caminho azul revela desvios e oscilações. O teste não corrige automaticamente o GPS.</p><button className={button} onClick={()=>{if(walkActive.current){walkActive.current=false;setWalkTesting(false);}else{setWalkPoints([]);walkActive.current=true;setWalkTesting(true);}}}>{walkTesting?'Encerrar teste':'Iniciar caminhada'}</button><p className="text-xs text-white/50">{walkPoints.length} leituras registradas nesta sessão.</p></div>}
+    <p className="text-xs text-white/60">{calibrationKeys.filter(k=>calibrationArea?.gps?.[k]).length}/4 pontos calibrados. Após salvar, a localização será projetada usando esses quatro pontos. Confira sua posição na aba Mapa.</p>
+   {showCalibrationConfirm&&<div className="rounded-xl border-2 border-[#c4ff40]/60 bg-[#251d30] p-4 space-y-3"><h4 className="font-bold">Confirmação final da calibração</h4><p className="text-sm">Você espera aproximadamente <strong>{expectedWidth||'?'} m de largura</strong> e <strong>{expectedLength||'?'} m de comprimento</strong>. O GPS estimou <strong>{averageWidth.toFixed(1)} m × {averageLength.toFixed(1)} m</strong>.</p><p className="text-xs">{qualityOK?'Geometria e dimensões compatíveis com as tolerâncias do teste. Confirme também, presencialmente, que esquerda/direita e frente/fundo não foram invertidos.':'A calibração apresenta inconsistência ou precisão insuficiente. Refaça os cantos antes de publicar.'}</p><p className="text-xs text-amber-200">O GPS do telefone não pode garantir 100% de precisão nem detectar um espelhamento completo da planta.</p><div className="flex gap-2"><button className={button} onClick={()=>setShowCalibrationConfirm(false)}>Voltar</button><button className={button+' border-[#c4ff40] text-[#c4ff40]'} disabled={!qualityOK||saving} onClick={async()=>{await save();setShowCalibrationConfirm(false);setCalibrationOpen(false);}}>Confirmar orientação e salvar</button></div></div>}
    {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
-   <button disabled={saving||dirty===false||!calibrationKeys.every(k=>calibrationArea?.gps?.[k])} onClick={async()=>{await save();setCalibrationOpen(false);}} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-40">Salvar calibração global</button>
+   <button disabled={saving||dirty===false||!ready} onClick={requestCalibrationSave} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-40">Salvar calibração global</button>
   </div></div>}
   {notice&&<p role="status" className="rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-sm text-[#c4ff40]">{notice}</p>}
   {error&&<p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
