@@ -479,13 +479,12 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
   const Icon=mapIcon(room.icon||room.kind);
   return <span key={'label-'+label.id} className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded border border-white/15 bg-[#100d18]/90 px-1.5 py-1 text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%',maxWidth:Math.max(room.width,10)+'%'}}><Icon size={12} className="shrink-0" style={{color:validColor(room.color)}}/><span className="truncate">{room.name}</span></span>;
  })}
- {data?.markers.map(m=>{const Icon=mapIcon(m.type),color=validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
+ {data?.markers.map(m=>{const Icon=mapIcon(m.type),selected=selectedMarkerId===m.id,color=selected?'#ff4b57':validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
   return <button key={m.id} type="button" onClick={()=>{setSelectedMarkerId(m.id);setPointCategory('');setPointMenuOpen(true);}}
-    aria-label={m.name} title={m.description||m.name}
-    className="z-10 text-center"
+    aria-label={m.name+(selected?' (selecionado)':'')} aria-pressed={selected} title={m.description||m.name}
+    className={'text-center transition-[filter] duration-200 '+(selected?'z-[25] drop-shadow-[0_0_10px_#ff4b57]':'z-10')}
     style={markerIconStyle(m,size)}>
-    <span className={'flex h-full w-full items-center justify-center border-2 bg-[#15101b] shadow-lg '+(m.shape==='circle'?'rounded-full':'rounded-lg')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/></span>
-
+    <span className={'relative flex h-full w-full items-center justify-center border-2 shadow-lg transition-colors duration-200 '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(selected?' bg-[#45151f] ring-[3px] ring-[#ff4b57] ring-offset-2 ring-offset-[#110e17]':' bg-[#15101b]')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)}/>{selected&&<span aria-hidden="true" className="pointer-events-none absolute -right-2 -top-2 h-3 w-3 rounded-full border-2 border-[#110e17] bg-[#ff4b57]"/>}</span>
   </button>;})}
  {pointLabels.filter(label=>label.visible).map(label=>{const m=data?.markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
  {mapped?.inside&&location&&scale&&<div aria-label={'Margem de precisão do seu GPS: ±'+Math.round(location.accuracy)+' m'} className="pointer-events-none absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-blue-400/40 bg-blue-400/10" style={{left:mapped.x+'%',top:mapped.y+'%',width:Math.min(75,2*location.accuracy/Math.max(scale.width,1)*100)+'%',height:Math.min(75,2*location.accuracy/Math.max(scale.height,1)*100)+'%'}}/>}
