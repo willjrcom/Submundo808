@@ -7,6 +7,7 @@ import Account from './components/account';
 import NotFound from './pages/not-found';
 import {ErrorBoundary} from './components/error-boundary';
 import Friends from './components/friends';
+import NotificationCenter from './components/notification-center';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
@@ -53,6 +54,7 @@ export default function App() {
 }
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
+  const [inboxOpen,setInboxOpen]=useState(false);
   const [brandLogo,setBrandLogo]=useState('');
   useEffect(()=>{let alive=true;const load=()=>{fetch('/api/public/branding').then(r=>r.json()).then(j=>{if(alive)setBrandLogo(j.logo||'');}).catch(()=>{});};load();window.addEventListener('focus',load);return()=>{alive=false;window.removeEventListener('focus',load);};},[]);
   const [tab, setTab] = useState<Tab>(tabFromUrl);
@@ -122,7 +124,7 @@ function ParticipantApp() {
     <div className="relative mx-auto max-w-xl pb-28">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#0b090f]/90 px-5 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-2">{brandLogo&&<img src={brandLogo} alt="Logo Submundo 808" className="h-9 w-9 rounded-lg object-cover"/>}<p className="font-display text-[16px] font-black uppercase tracking-[-.06em] text-white">SUBMUNDO<span className="text-[#c4ff40]">808</span></p></div>
-        <button aria-label="Avisos" onClick={() => message('Nenhum comunicado oficial cadastrado.')} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
+        <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
       </header>
       <main className="px-5 pt-7">
        {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
@@ -133,6 +135,7 @@ function ParticipantApp() {
        </ErrorBoundary>}
       </main>
     </div>
+    {inboxOpen&&<NotificationCenter onClose={()=>setInboxOpen(false)} onNavigate={(kind,eventId,pointId)=>{setInboxOpen(false);if(eventId)selectEvent(eventId);const next:Tab=kind==='menu'?'cardapio':kind==='map'||kind==='point'?'mapa':'inicio';navigate(next);if(kind==='point'&&pointId){window.setTimeout(()=>window.dispatchEvent(new CustomEvent('submundo-map-focus',{detail:{pointId,eventId}})),200);}}}/>}
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
     <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;
