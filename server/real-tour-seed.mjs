@@ -1,3 +1,5 @@
+import {DEMO_EVENT_NAME} from './demo-seed.mjs';
+import {SHOWCASE_EVENTS} from './demo-showcase.mjs';
 // Agenda oficial consultada em 27/10/2026: https://meaple.com.br/808
 // Snapshot intencional: sem scraping em runtime, sem inventar horários de DJs ou mapas.
 // AUTO_SEED_DEMO=true cria apenas os registros ausentes, preservando edições existentes.
@@ -228,7 +230,28 @@ function followingDay(date){
  d.setUTCDate(d.getUTCDate()+1);
  return d.toISOString().slice(0,10);
 }
+// Remove da agenda pública somente registros fictícios intactos da antiga POC.
+// Não exclui eventos, locais, mapas nem registros personalizados e não repete
+// a arquivação caso o administrador republique algo posteriormente.
+function archiveUnmodifiedLegacyEvents(db){
+ db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
+ const key='real_tour_v1_archived_legacy_examples';
+ if(db.prepare('SELECT 1 FROM app_settings WHERE key=?').get(key))return 0;
+ let archived=0;
+ const legacyId=db.prepare('SELECT value FROM app_settings WHERE key=?').get('default_demo_event_id')?.value;
+ if(legacyId){
+  const r=db.prepare("UPDATE events SET is_published=0 WHERE id=? AND name=? AND tickets_url='' AND is_published=1").run(legacyId,DEMO_EVENT_NAME);
+  archived+=r.changes||0;
+ }
+ for(const example of SHOWCASE_EVENTS){
+  const r=db.prepare("UPDATE events SET is_published=0 WHERE id=? AND name=? AND tickets_url='' AND is_published=1").run('poc-v2-event-'+example.slug,example.name);
+  archived+=r.changes||0;
+ }
+ db.prepare('INSERT OR IGNORE INTO app_settings(key,value) VALUES(?,?)').run(key,'1');
+ return archived;
+}
 export function ensureRealTourDemo(db){
+ const legacyArchived=archiveUnmodifiedLegacyEvents(db);
  let venuesAdded=0,eventsAdded=0,eventsExisting=0;
  for(const e of REAL_808_TOUR){
   const venueId='meaple-808-venue-'+e.id;
@@ -252,5 +275,5 @@ export function ensureRealTourDemo(db){
   db.prepare('UPDATE events SET meaple_event_id=?,doors_at=?,is_published=1,location_sharing_enabled=0 WHERE id=?').run(sourceId,doors,eventId);
   eventsAdded++;
  }
- return {eventsAdded,eventsExisting,venuesAdded,total:REAL_808_TOUR.length};
+ return {eventsAdded,eventsExisting,venuesAdded,legacyArchived,total:REAL_808_TOUR.length};
 }
