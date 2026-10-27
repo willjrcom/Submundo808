@@ -35,4 +35,4 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - Configure `PUBLIC_APP_ORIGIN=https://submundo.menudevendas.com.br` (URL canônica para recuperação de senha). A aplicação valida essa origem na inicialização.
 - Por padrão `TRUST_PROXY=false`; o rate limiter usa o IP da conexão e **não** aceita `X-Forwarded-For` fornecido arbitrariamente pelo usuário. Somente habilite `TRUST_PROXY=true` quando o proxy de borda garantir a limpeza e substituição confiável de `X-Forwarded-For`.
 - Adicione monitoramento e backups do volume `/data` com teste de restauração; este commit não altera ou apaga dados persistentes.
-- O pipeline agora executa typecheck, testes Node e análise sintática antes do build da imagem. Um erro bloqueia a publicação.
+- O pipeline executa como bloqueantes testes críticos (segurança, sessão, localização e seed) e checagem de sintaxe. Typecheck e suíte completa rodam inicialmente como diagnóstico (`continue-on-error`) até a adequação dos testes legados; **não** interpretar sucesso do build como aprovação integral da auditoria.

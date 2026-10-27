@@ -126,3 +126,4 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - `PUBLIC_APP_ORIGIN` deve apontar para a origem HTTPS canônica; reset de senha não deve construir links a partir de headers Host/X-Forwarded-Host.
 - Política de proxy: `TRUST_PROXY` somente com cabeçalho X-Forwarded-For saneado pelo proxy de borda. Limite geral 300 POST/min por IP; login limitado também por IP+e-mail (10/10min).
 - Respostas HTTP usam cabeçalhos anti-sniffing, anti-iframe, política de referência e permissões; CSP estrito e auditoria externa de segurança ficam para a próxima etapa.
+- Pipeline: testes críticos bloqueiam a publicação; typecheck e suíte completa rodam como baseline sem bloquear até a correção de testes legados. Tratar os resultados como pendências explícitas, não validação completa.
