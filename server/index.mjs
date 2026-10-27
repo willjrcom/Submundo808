@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash 
 CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
 for(const [column,def] of [['phone',"TEXT NOT NULL DEFAULT ''"],['instagram',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===column))db.exec('ALTER TABLE users ADD COLUMN '+column+' '+def);}
 db.exec('CREATE TABLE IF NOT EXISTS admin_users(user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
+if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='avatar_data'))db.exec("ALTER TABLE users ADD COLUMN avatar_data TEXT NOT NULL DEFAULT ''");
 db.exec("CREATE TABLE IF NOT EXISTS push_subscriptions(user_id TEXT NOT NULL,endpoint TEXT NOT NULL PRIMARY KEY,subscription_json TEXT NOT NULL,created_at INTEGER NOT NULL)");
 db.exec(`CREATE TABLE IF NOT EXISTS event_participants (
  event_id TEXT NOT NULL,
@@ -129,10 +130,10 @@ const cookie = (req, key) => (req.headers.cookie || '').split(';').map(x => x.tr
 const getUser = req => {
   const claims=verifyJwt(cookie(req,JWT_COOKIE_NAME),JWT_SECRET);
   if(!claims)return null;
-  const user=db.prepare('SELECT id,name,email,phone,instagram,token_version FROM users WHERE id=?').get(claims.sub);
+  const user=db.prepare('SELECT id,name,email,phone,instagram,avatar_data,token_version FROM users WHERE id=?').get(claims.sub);
   if(!user||user.token_version!==claims.ver)return null;
   db.prepare('INSERT INTO user_activity(user_id,last_seen) VALUES(?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen=excluded.last_seen').run(user.id,Date.now());
-  return {id:user.id,name:user.name,email:user.email,phone:user.phone||'',instagram:user.instagram||''};
+  return {id:user.id,name:user.name,email:user.email,phone:user.phone||'',instagram:user.instagram||'',avatar:user.avatar_data||''};
 };
 const sessionCookie=authCookie;
 const createSession=(req,res,id)=>{
@@ -738,7 +739,10 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req),name=String(b.name||'').trim().slice(0,60),phone=String(b.phone||'').replace(/[^0-9]/g,''),instagram=String(b.instagram||'').trim().replace(/^@/,'').slice(0,30);
         if(name.length<2||phone.length!==0&&(phone.length!==11)||instagram&&!/^[a-zA-Z0-9._]+$/.test(instagram))return json(res,400,{error:'Nome, celular ou Instagram inválido.'});
-        db.prepare('UPDATE users SET name=?,phone=?,instagram=? WHERE id=?').run(name,phone,instagram,user.id);
+        const avatar=b.avatar===undefined?null:String(b.avatar||'');
+        if(avatar!==null&&avatar!==''&&(!/^data:image\/(webp|png|jpeg);base64,[A-Za-z0-9+/=]+$/.test(avatar)||avatar.length>180000))return json(res,400,{error:'Imagem de perfil inválida ou muito grande (máximo ~130 KB).'});
+        if(avatar===null)db.prepare('UPDATE users SET name=?,phone=?,instagram=? WHERE id=?').run(name,phone,instagram,user.id);
+        else db.prepare('UPDATE users SET name=?,phone=?,instagram=?,avatar_data=? WHERE id=?').run(name,phone,instagram,avatar,user.id);
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/auth/register' && req.method==='POST') {
