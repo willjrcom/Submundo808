@@ -45,7 +45,7 @@ function tabFromUrl():Tab {
   if(params.has('invite')||params.has('group_invite'))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
   if(segment==='programacao'||segment==='schedule')return 'inicio';
-  const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
+  const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',groups:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
   return routes[segment]||'inicio';
 }
 export default function App() {
@@ -133,7 +133,7 @@ function ParticipantApp() {
   const addFriend = () => { const value = friendName.trim(); if (!value) return; if (friends.some(f => f.name.toLowerCase() === value.toLowerCase())) { message('Esse nome já está na sua lista.'); return; } setFriends(v => [...v, { id: Date.now(), name: value, status: 'pendente', share: false }]); setFriendName(''); message('Convite demonstrativo criado neste aparelho.'); };
   const changeFriend = (id: number, patch: Partial<Friend>) => setFriends(v => v.map(f => f.id === id ? { ...f, ...patch } : f));
   const parts=routePath.split('/').filter(Boolean);
-  const allowed=parts.length===0||(parts.length===1&&['map','menu','friends','profile','login','register','recovery','reset-password','change-password','mapa','cardapio','amigos','perfil','cadastrar'].includes(parts[0]))||(parts.length===2&&['schedule','programacao'].includes(parts[0])&&!!parts[1]);
+  const allowed=parts.length===0||(parts.length===1&&['map','menu','friends','groups','profile','login','register','recovery','reset-password','change-password','mapa','cardapio','amigos','perfil','cadastrar'].includes(parts[0]))||(parts.length===2&&['schedule','programacao'].includes(parts[0])&&!!parts[1]);
   return <div className="min-h-dvh bg-[#0b090f] text-[#f5f2fa] selection:bg-[#c4ff40] selection:text-black">
     <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_50%_-10%,rgba(164,49,207,.2),transparent_50%)]" />
     <div className="relative mx-auto max-w-xl pb-28">
