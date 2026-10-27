@@ -42,10 +42,10 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  useEffect(()=>{setSelectedMarkerId(null);setPointMenuOpen(false);},[activeEventId,selectedMap]);
  const pendingFocus=useRef<{eventId:string;pointId:string}|null>(null);
  useEffect(()=>{
-  const receive=(event:Event)=>{const detail=(event as CustomEvent<{eventId:string;pointId:string}>).detail;if(detail?.pointId)pendingFocus.current=detail;};
+  const receive=(event:Event)=>{const detail=(event as CustomEvent<{eventId:string;pointId:string}>).detail;if(!detail?.pointId)return;pendingFocus.current=detail;if(detail.eventId===activeEventId&&data?.markers.some(m=>m.id===detail.pointId)){setSelectedMarkerId(detail.pointId);pendingFocus.current=null;}};
   window.addEventListener('submundo-map-focus',receive);
   return()=>window.removeEventListener('submundo-map-focus',receive);
- },[]);
+ },[data,activeEventId]);
 
  useEffect(()=>{if(!pointMenuOpen||!activeEventId)return;let alive=true;setPointMenuLoading(true);setPointMenuError('');
  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId)).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao carregar produtos');return j;}).then(j=>{if(alive)setPointProducts(j.items||[]);}).catch(e=>{if(alive)setPointMenuError(e instanceof Error?e.message:'Falha ao carregar produtos');}).finally(()=>{if(alive)setPointMenuLoading(false);});
