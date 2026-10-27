@@ -2,6 +2,7 @@ import MeapleTickets from './meaple-tickets';
 import ProfilePermissions from './profile-permissions';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
+import {createPortal} from 'react-dom';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import { UserRound, Pencil, Mail, LockKeyhole, LogOut, ShieldCheck, ArrowLeft, KeyRound, Ticket, QrCode, Copy, Share2, CheckCircle2, Link2, Camera, Settings2, X } from 'lucide-react';
@@ -90,7 +91,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
         <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/10 pt-4 text-xs text-white/55"><span>ID: {user.id.slice(0,8).toUpperCase()}</span><span className="text-right">Perfil pessoal</span></div>
       </div>
     </section>
-    {profileEditing&&<div role="presentation" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-3" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setProfileEditing(false);}}>
+    {profileEditing&&createPortal(<div role="presentation" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-3" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setProfileEditing(false);}}>
       <section role="dialog" aria-modal="true" aria-label="Editar perfil" className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[#c4ff40]/30 bg-[#1a1421]">
       <header className="flex items-center justify-between border-b border-white/10 p-4"><h3 className="text-lg font-black">Editar meu perfil</h3><button aria-label="Fechar edição" onClick={()=>setProfileEditing(false)}><X size={20}/></button></header>
       <form className="space-y-4 overflow-y-auto p-5" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await request('profile',{name:profileName,phone:mobileDigits(profilePhone),instagram:profileInstagram,avatar:profileAvatar});const j=await request('me');setUser(j.user);onUser?.(j.user);setProfileEditing(false);setSuccess('Perfil atualizado.');}catch(e){setError(e instanceof Error?e.message:'Erro ao salvar perfil');}finally{setBusy(false);}}}>
@@ -100,8 +101,8 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
        <label className="block text-xs">Instagram (opcional)<input value={profileInstagram} onChange={e=>setProfileInstagram(e.target.value)} placeholder="@usuario" className={field+' mt-1'}/></label>
        {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
        <div className="flex gap-3 border-t border-white/10 pt-4"><button type="button" onClick={()=>setProfileEditing(false)} className="flex-1 rounded-xl border border-white/20 p-3 text-sm">Fechar</button><button type="submit" disabled={busy} className="flex-1 rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black disabled:opacity-40">{busy?'Salvando...':'Salvar perfil'}</button></div>
-      </form></section></div>}
-    {permissionOpen&&<div role="presentation" className="fixed inset-0 z-[105] flex items-center justify-center bg-black/85 p-3"><section role="dialog" aria-modal="true" aria-label="Permissões" className="max-h-[90dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-[#c4ff40]/30 bg-[#1a1421] p-5"><div className="flex items-center justify-between"><h3 className="text-lg font-black">Permissões do aplicativo</h3><button aria-label="Fechar permissões" onClick={()=>setPermissionOpen(false)}><X size={20}/></button></div><ProfilePermissions onClose={()=>setPermissionOpen(false)}/></section></div>}
+      </form></section></div>,document.body)}
+    {permissionOpen&&createPortal(<div role="presentation" className="fixed inset-0 z-[105] flex items-center justify-center bg-black/85 p-3"><section role="dialog" aria-modal="true" aria-label="Permissões" className="max-h-[90dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-[#c4ff40]/30 bg-[#1a1421] p-5"><div className="flex items-center justify-between"><h3 className="text-lg font-black">Permissões do aplicativo</h3><button aria-label="Fechar permissões" onClick={()=>setPermissionOpen(false)}><X size={20}/></button></div><ProfilePermissions onClose={()=>setPermissionOpen(false)}/></section></div>,document.body)}
     {success&&<p role="status" className="mb-4 text-xs text-[#c4ff40]">{success}</p>}
     <section className="mb-4 space-y-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><h3 className="text-sm font-bold">Contas conectadas</h3><p className="text-xs text-white/55">Vincule o Google ou a Meaple à sua conta Submundo. Seus dados de login permanecem com cada provedor.</p>{providers.google&&<ProviderCard kind="google" connected={connections.includes('google')}/>}{providers.meaple&&<ProviderCard kind="meaple" connected={connections.includes('meaple')}/>}</section>
     <MeapleTickets connected={connections.includes('meaple')}/>
