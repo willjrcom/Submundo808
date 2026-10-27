@@ -6,6 +6,7 @@ import {ensureDemoData} from './demo-seed.mjs';
 import {ensureDemoShowcase} from './demo-showcase.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import http from 'node:http';
+import webpush from 'web-push';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -29,6 +30,7 @@ CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash 
 CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
 for(const [column,def] of [['phone',"TEXT NOT NULL DEFAULT ''"],['instagram',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===column))db.exec('ALTER TABLE users ADD COLUMN '+column+' '+def);}
 db.exec('CREATE TABLE IF NOT EXISTS admin_users(user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
+db.exec("CREATE TABLE IF NOT EXISTS push_subscriptions(user_id TEXT NOT NULL,endpoint TEXT NOT NULL PRIMARY KEY,subscription_json TEXT NOT NULL,created_at INTEGER NOT NULL)");
 db.exec(`CREATE TABLE IF NOT EXISTS event_participants (
  event_id TEXT NOT NULL,
  user_id TEXT NOT NULL,
@@ -161,6 +163,21 @@ if(process.env.AUTO_SEED_DEMO!=='false'){
   console.error('Could not initialize sample data:',error);
  }
 }
+const VAPID_PUBLIC=process.env.VAPID_PUBLIC_KEY||'';
+const VAPID_PRIVATE=process.env.VAPID_PRIVATE_KEY||'';
+if(VAPID_PUBLIC&&VAPID_PRIVATE)webpush.setVapidDetails(process.env.VAPID_SUBJECT||'mailto:admin@submundo808.com',VAPID_PUBLIC,VAPID_PRIVATE);
+async function pushToUser(userId,notification){
+ if(!VAPID_PUBLIC||!VAPID_PRIVATE)return;
+ const subs=db.prepare('SELECT endpoint,subscription_json FROM push_subscriptions WHERE user_id=?').all(userId);
+ for(const item of subs){
+  try{
+   await webpush.sendNotification(JSON.parse(item.subscription_json),JSON.stringify({title:notification.title,body:notification.body,tag:notification.id,url:notification.target_kind==='survey'?'/schedule/'+encodeURIComponent(notification.event_id||'')+'?review=1':notification.target_kind==='point'?'/map?point='+encodeURIComponent(notification.target_id)+'&event='+encodeURIComponent(notification.event_id||''):'/schedule/'+encodeURIComponent(notification.event_id||'')}),{TTL:3600});
+  }catch(error){
+   if(error.statusCode===404||error.statusCode===410)db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(item.endpoint);
+   else console.error('push delivery:',error.statusCode||error.message);
+  }
+ }
+}
 function dispatchDueNotifications(){
  const now=Date.now();
  // Uma notificação gerada por evento tem chave determinística para evitar duplicações.
@@ -177,7 +194,8 @@ function dispatchDueNotifications(){
   const insert=db.prepare('INSERT OR IGNORE INTO notification_receipts(notification_id,user_id) VALUES(?,?)');
   for(const r of recipients){
    if(n.kind==='survey'&&db.prepare('SELECT 1 FROM event_reviews WHERE event_id=? AND user_id=?').get(n.event_id,r.user_id))continue;
-   insert.run(n.id,r.user_id);
+   const added=insert.run(n.id,r.user_id);
+   if(added.changes)void pushToUser(r.user_id,n);
   }
   db.prepare("UPDATE notifications SET status='sent',sent_at=? WHERE id=? AND status IN ('pending','scheduled')").run(now,n.id);
  }
@@ -357,6 +375,20 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/events/participation'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,200,{items:[]});
         return json(res,200,{items:db.prepare('SELECT ep.event_id AS eventId,e.name AS eventName,ep.first_selected_at AS firstSelectedAt,ep.last_selected_at AS lastSelectedAt FROM event_participants ep JOIN events e ON e.id=ep.event_id WHERE ep.user_id=? ORDER BY ep.last_selected_at DESC').all(user.id)});
+      }
+      if(url.pathname==='/api/push/config'&&req.method==='GET')return json(res,200,{enabled:!!(VAPID_PUBLIC&&VAPID_PRIVATE),publicKey:VAPID_PUBLIC});
+      if(url.pathname==='/api/push/subscribe'&&req.method==='POST'){
+       const user=getUser(req);if(!user)return json(res,401,{error:'Faça login para receber notificações.'});
+       if(!VAPID_PUBLIC||!VAPID_PRIVATE)return json(res,503,{error:'Push ainda não foi configurado no servidor.'});
+       const b=await body(req),sub=b.subscription;
+       if(!sub||typeof sub.endpoint!=='string'||!sub.endpoint.startsWith('https://')||!sub.keys?.p256dh||!sub.keys?.auth)return json(res,400,{error:'Assinatura inválida.'});
+       if(JSON.stringify(sub).length>6000)return json(res,400,{error:'Assinatura inválida.'});
+       db.prepare('INSERT INTO push_subscriptions(user_id,endpoint,subscription_json,created_at) VALUES(?,?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,subscription_json=excluded.subscription_json').run(user.id,sub.endpoint,JSON.stringify(sub),Date.now());
+       return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/push/unsubscribe'&&req.method==='POST'){
+       const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
+       const b=await body(req);db.prepare('DELETE FROM push_subscriptions WHERE endpoint=? AND user_id=?').run(String(b.endpoint||''),user.id);return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/notifications'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,200,{items:[],unread:0});
