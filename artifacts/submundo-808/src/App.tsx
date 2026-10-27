@@ -55,6 +55,8 @@ export default function App() {
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [inboxOpen,setInboxOpen]=useState(false);
+  const [unreadCount,setUnreadCount]=useState(0);
+  useEffect(()=>{const poll=()=>{void fetch('/api/notifications',{credentials:'same-origin'}).then(r=>r.json()).then(j=>setUnreadCount(Number(j.unread)||0)).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>window.clearInterval(timer);},[inboxOpen]);
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const linkEvent=params.get('event');
@@ -137,7 +139,7 @@ function ParticipantApp() {
     <div className="relative mx-auto max-w-xl pb-28">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#0b090f]/90 px-5 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-2">{brandLogo&&<img src={brandLogo} alt="Logo Submundo 808" className="h-9 w-9 rounded-lg object-cover"/>}<p className="font-display text-[16px] font-black uppercase tracking-[-.06em] text-white">SUBMUNDO<span className="text-[#c4ff40]">808</span></p></div>
-        <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/></button>
+        <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="relative rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/>{unreadCount>0&&<span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#c4ff40] px-1 text-center text-[10px] font-bold text-black">{unreadCount>99?"99+":unreadCount}</span>}</button>
       </header>
       <main className="px-5 pt-7">
        {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
