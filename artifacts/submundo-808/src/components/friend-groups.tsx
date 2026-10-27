@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Megaphone,Bell,AlertTriangle} from 'lucide-react';
+import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,Check,Megaphone,Bell,AlertTriangle} from 'lucide-react';
 import SocialAvatar from './social-avatar';
 
 type Person={id:string;name:string;avatar?:string};
@@ -17,6 +17,7 @@ export default function FriendGroups(){
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
  const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
  const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
+ const [copied,setCopied]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
@@ -49,7 +50,7 @@ export default function FriendGroups(){
   catch(e){showError(e);}finally{setBusy(false);}
  }
  async function copy(){
-  try{await navigator.clipboard.writeText(inviteLink);setStatus('Link de convite copiado.');}
+  try{await navigator.clipboard.writeText(inviteLink);setCopied(true);setStatus('Link de convite copiado.');window.setTimeout(()=>setCopied(false),2200);}
   catch{setStatus('Selecione e copie o link exibido abaixo.');}
  }
  async function share(){
@@ -91,7 +92,7 @@ export default function FriendGroups(){
   <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
    <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-bold">Convide sua galera</h4><p className="mt-1 text-xs text-white/50">Link ou QR Code do grupo</p></div><button disabled={busy} onClick={()=>void invite()} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-black text-black"><UserPlus className="mr-1 inline" size={16}/> Convidar</button></div>
    {inviteLink&&<div className="space-y-3 border-t border-white/10 pt-3">
-    <div className="flex items-center gap-2"><input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#100b16] px-3 py-2.5 text-xs text-white"/><button aria-label="Copiar link" title="Copiar link" onClick={()=>void copy()} className="rounded-lg border border-white/20 p-2.5"><Copy size={18}/></button><button aria-label="Compartilhar convite" title="Compartilhar" onClick={()=>void share()} className="rounded-lg border border-white/20 p-2.5"><Share2 size={18}/></button><button aria-label="Mostrar QR Code" aria-expanded={qrOpen} title="QR Code" onClick={()=>setQrOpen(v=>!v)} className={'rounded-lg border p-2.5 '+(qrOpen?'border-[#c4ff40] text-[#c4ff40]':'border-white/20')}><QrCode size={18}/></button></div>
+    <div className="flex items-center gap-2"><input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#100b16] px-3 py-2.5 text-xs text-white"/><button aria-label={copied?'Link copiado':'Copiar link'} title={copied?'Copiado!':'Copiar link'} onClick={()=>void copy()} className={'flex min-w-[44px] items-center justify-center gap-1 rounded-lg border p-2.5 transition-all duration-200 '+(copied?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40] scale-105':'border-white/20')} >{copied?<><Check size={18}/><span className="text-xs font-bold">Copiado!</span></>:<Copy size={18}/>}</button><button aria-label="Compartilhar convite" title="Compartilhar" onClick={()=>void share()} className="rounded-lg border border-white/20 p-2.5"><Share2 size={18}/></button><button aria-label="Mostrar QR Code" aria-expanded={qrOpen} title="QR Code" onClick={()=>setQrOpen(v=>!v)} className={'rounded-lg border p-2.5 '+(qrOpen?'border-[#c4ff40] text-[#c4ff40]':'border-white/20')}><QrCode size={18}/></button></div>
     {qrOpen&&<div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code para entrar no grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div>}
     <p className="text-[11px] text-white/45">Entrar no grupo não ativa o compartilhamento de localização.</p>
    </div>}
