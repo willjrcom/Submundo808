@@ -35,13 +35,34 @@ export function allowPostOrigin(req){
  return req.headers?.['sec-fetch-site']!=='cross-site';
 }
 
-export function securityHeaders(req){
+// CSP em Report-Only por padrão: ativação bloqueante só depois de verificar
+// os relatórios no PWA, login OAuth e navegadores móveis.
+export function contentSecurityPolicy(){
+ return [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://api.meaple.com.br https://whitelabel.meaple.app",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "frame-src 'self' https://accounts.google.com https://whitelabel.meaple.app",
+  "report-uri /api/csp-report"
+ ].join('; ');
+}
+export function securityHeaders(req,{enforceCsp=process.env.CSP_ENFORCE==='true'}={}){
  const headers={
   'X-Content-Type-Options':'nosniff',
   'X-Frame-Options':'DENY',
   'Referrer-Policy':'strict-origin-when-cross-origin',
   'Permissions-Policy':'geolocation=(self), camera=(self), microphone=()'
  };
+ headers[enforceCsp?'Content-Security-Policy':'Content-Security-Policy-Report-Only']=contentSecurityPolicy();
  if(req.socket?.encrypted||req.headers?.['x-forwarded-proto']==='https'){
   headers['Strict-Transport-Security']='max-age=31536000';
  }

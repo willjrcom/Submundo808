@@ -370,7 +370,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     trackingRef.current=false;setTracking(false);
     setLocation(null);locationRef.current=null;setGeoError('');
     await requestLocation('stop',{});
-   }catch{}
+    setGeoError('Compartilhamento encerrado e posição removida do servidor.');
+   }catch(error){
+    setGeoError('Não foi possível confirmar a desativação no servidor. Verifique a conexão e toque novamente em Desativar compartilhamento.');
+    setFriendError(error instanceof Error?error.message:'Falha ao interromper o compartilhamento.');
+   }
   };
   // IMPORTANTE: NÃO tornar este handler async. O primeiro acesso ao GPS é
   // disparado sincronamente no clique, antes de qualquer fetch ou await.

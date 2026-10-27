@@ -48,3 +48,10 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - Navegação de notificações para um ponto não depende mais de timeout fixo; o mapa aguarda carregar o evento/pontos e pode trocar para outro mapa vinculado ao mesmo evento.
 - Posição GPS com mais de 90 s sem leitura deixa de ser exibida como atual e volta a aparecer com uma nova leitura. Não substitui teste presencial.
 - Os novos testes de saúde, contraste e navegação por notificação são bloqueantes no GitHub Actions; mantenha a validação real nos aparelhos.
+
+## Ajustes sem alteração de banco (segurança e privacidade)
+- `CSP_ENFORCE` fica desativado por padrão: navegador recebe `Content-Security-Policy-Report-Only`. A API recebe relatórios em `POST /api/csp-report`, mas **não registra** endereços, scripts, cookies ou parâmetros — apenas a categoria da diretiva. Verifique navegação, fonts, OAuth Google/Meaple, mapas, PWA e push nos navegadores reais antes de optar por `CSP_ENFORCE=true`.
+- `X-Request-ID` é gerado em cada requisição pelo servidor. Para 5xx e 429, os logs incluem ID, grupo da rota, método, status e duração (sem IP, query string ou dados pessoais).
+- Limites extras em memória aplicam-se a cadastro, login, recuperação/reset de senha, alterações de perfil, convites, inscrição push, telemetria e rotas administrativas. Cada instância mantém seus contadores; no futuro, infraestrutura multi-réplica exige limitador compartilhado ou regras no proxy.
+- Os avisos de privacidade no Perfil distinguem concessão da permissão de GPS do compartilhamento com amigos, que depende de ativação voluntária no Mapa e prazo escolhido. Uma falha no encerramento remoto deixa alerta visível para o participante.
+- **Nenhuma migração de banco, rotina de backup ou integração PostgreSQL faz parte deste lote.** A estratégia de armazenamento, retenção e políticas de privacidade devem ser aprovadas separadamente.

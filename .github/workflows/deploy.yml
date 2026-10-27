@@ -44,7 +44,7 @@ jobs:
         run: pnpm --filter @workspace/submundo-808 typecheck
 
       - name: Run critical regression tests
-        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs tests/notification-delivery.test.mjs tests/health.test.mjs tests/accent-contrast.test.mjs tests/notification-map-focus.test.mjs
+        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs tests/notification-delivery.test.mjs tests/health.test.mjs tests/accent-contrast.test.mjs tests/notification-map-focus.test.mjs tests/security-ops.test.mjs tests/privacy-notices.test.mjs
 
       - name: Audit full test suite (baseline)
         continue-on-error: true
@@ -57,6 +57,8 @@ jobs:
           node --check server/request-security.mjs
           node --check server/oauth.mjs
           node --check server/health.mjs
+          node --check server/route-limits.mjs
+          node --check server/observability.mjs
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

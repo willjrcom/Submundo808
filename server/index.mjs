@@ -1,6 +1,8 @@
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
+import {createSensitiveRouteLimiter} from './route-limits.mjs';
+import {requestAudit,logServerFault,cspReportSummary} from './observability.mjs';
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
@@ -150,6 +152,7 @@ const oauthHandler=createOauth({db,getUser,createSession,passwordHash,secret:JWT
 // O limite geral evita abuso sem punir todos os participantes de um mesmo evento.
 const generalPostLimit=createWindowLimiter({limit:1200,windowMs:60_000});
 const loginLimit=createWindowLimiter({limit:10,windowMs:10*60_000});
+const sensitiveRouteLimit=createSensitiveRouteLimiter();
 const trustedProxy=process.env.TRUST_PROXY==='true';
 const requestIp=req=>clientIp(req,{trustProxy:trustedProxy});
 const loginKey=(req,email)=>requestIp(req)+':'+email;
@@ -220,6 +223,7 @@ notificationInterval.unref?.();
 http.createServer(async (req,res)=>{
   for(const [name,value] of Object.entries(securityHeaders(req)))res.setHeader(name,value);
   const url = new URL(req.url || '/', 'http://localhost');
+  const requestId=requestAudit(req,res,url.pathname);
   try {
     if(url.pathname==='/api/health'){
       if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Método não permitido.'});
@@ -231,6 +235,13 @@ http.createServer(async (req,res)=>{
       if (req.method === 'POST') {
         if(!allowPostOrigin(req))return json(res,403,{error:'Origem inválida'});
         if (limited(req)) return json(res,429,{error:'Muitas tentativas. Aguarde um minuto.'});
+        const limit=sensitiveRouteLimit.check(url.pathname,req.method,requestIp(req));
+        if(limit.blocked){res.setHeader('Retry-After',String(limit.retryAfter));return json(res,429,{error:'Muitas solicitações nesta operação. Aguarde e tente novamente.'});}
+      }
+      if(url.pathname==='/api/csp-report'&&req.method==='POST'){
+        const report=await body(req);
+        console.warn(JSON.stringify({level:'warn',event:'csp_violation',requestId,...cspReportSummary(report)}));
+        return json(res,204,{});
       }
       // Client error telemetry: avoid personal data, URLs with query strings, and raw stack traces.
       if(url.pathname==='/api/client-errors'&&req.method==='POST'){
@@ -239,8 +250,7 @@ http.createServer(async (req,res)=>{
         const component=String(payload.component||'').replace(/[^a-zA-Z0-9 _.-]/g,'').slice(0,100);
         const code=String(payload.code||'client_exception').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,60);
         const errorType=String(payload.errorType||'Error').replace(/[^a-zA-Z]/g,'').slice(0,40);
-        const diagnostic=String(payload.diagnostic||'').replace(/https?:\/\/\S+/gi,'[url]').replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi,'[email]').replace(/\b\d{10,}\b/g,'[number]').replace(/[\r\n\t]/g,' ').slice(0,220);
-        console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),page,component,code,errorType,diagnostic}));
+        console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),requestId,page,component,code,errorType}));
         return json(res,202,{ok:true});
       }
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
@@ -811,7 +821,7 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const email=String(b.email||'').trim().toLowerCase();const user=db.prepare('SELECT id,email FROM users WHERE email=?').get(email);
         if(user) {const token=randomBytes(32).toString('hex');const tokenHash=hashToken(token);db.prepare('INSERT INTO resets VALUES(?,?,?)').run(tokenHash,user.id,Date.now()+1800000);
           const link=`${PUBLIC_APP_ORIGIN}/reset-password?reset=${encodeURIComponent(token)}`;
-          try { await sendReset(user.email,link); } catch(e) {db.prepare('DELETE FROM resets WHERE token_hash=?').run(tokenHash);console.error('Reset email delivery failed',e);return json(res,502,{error:'Não foi possível enviar o e-mail agora.'});}
+          try { await sendReset(user.email,link); } catch(e) {db.prepare('DELETE FROM resets WHERE token_hash=?').run(tokenHash);logServerFault(requestId,e);return json(res,502,{error:'Não foi possível enviar o e-mail agora.'});}
         }
         return json(res,200,{ok:true,message:'Se o e-mail estiver cadastrado, você receberá um link de recuperação.'});
       }
@@ -833,5 +843,11 @@ http.createServer(async (req,res)=>{
     if(!fs.existsSync(file)||!fs.statSync(file).isFile())file=path.join(PUBLIC,'index.html');
     res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Cache-Control':file.endsWith('index.html')?'no-cache':'public, max-age=3600'});
     if(req.method==='HEAD')return res.end();fs.createReadStream(file).pipe(res);
-  } catch(e) {console.error('Request failed:',e);json(res,400,{error:'Não foi possível concluir a operação.'});}
+  } catch(e) {
+    if(res.headersSent){res.destroy();return;}
+    if(e instanceof SyntaxError)return json(res,400,{error:'JSON inválido.'});
+    if(e?.message==='Payload muito grande')return json(res,413,{error:'Payload muito grande.'});
+    logServerFault(requestId,e);
+    return json(res,500,{error:'Não foi possível concluir a operação.'});
+  }
 }).listen(PORT,'0.0.0.0',()=>console.log('Submundo808 listening on',PORT));

@@ -146,3 +146,10 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - Responsividade: diálogos de notificações devem respeitar altura visível e permitir rolagem em telas pequenas.
 - Notificação para marcador: fluxo por estado `focusRequest` entre App e VenueMap, **sem tempos de espera artificiais**; só selecionar depois do mapa/evento correto estar carregado; procurar o ponto também em mapas alternativos vinculados.
 - GPS sem leitura recente não deve continuar exibindo a posição antiga; atualizações posteriores do watcher devem restaurá-la.
+
+## Auditoria — segurança, observabilidade e privacidade sem migração de banco
+- Não mexer no SQLite nem em migrações, tabelas, backups ou Postgres: infraestrutura e próxima implementação da persistência estão fora do escopo atual, conforme decisão do responsável.
+- `server/route-limits.mjs` acrescenta limites por IP/rota ao limite geral; rotas de localização frequente não recebem limites agressivos. São controles em memória (um processo); em deploys multi-instância, exigir limitador compartilhado no futuro.
+- A CSP de `server/request-security.mjs` funciona em modo `Content-Security-Policy-Report-Only` por padrão. O endpoint `POST /api/csp-report` registra **somente a diretiva**, sem URL bloqueada, headers ou código-fonte. **Não habilitar `CSP_ENFORCE=true` sem validar relatórios reais e login OAuth/PWA.**
+- Logs HTTP operacionais fornecem um `X-Request-ID` gerado pelo servidor e agregam rota/latência/status em falhas 5xx e limites 429; não registrar IP, query string, tokens, dados de localização ou corpos.
+- Textos do Perfil explicam a diferença entre permissão de localização e compartilhamento voluntário. Falha ao desativar GPS no servidor deve ter feedback, jamais ser ocultada. Isso não substitui política de privacidade, base legal, retenção e processos LGPD validados pela empresa.
