@@ -10,7 +10,9 @@ type SearchPerson=Friend&{relation:'friends'|'sent'|'received'|'none'};
 async function api(route:string, payload?:object){const res=await fetch('/api/friends'+route,{method:payload?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:payload?JSON.stringify(payload):undefined});const data=await res.json();if(!res.ok)throw Object.assign(new Error(data.error||'Falha na operação.'),{status:res.status});return data;}
 function parseToken(raw:string){try{const url=new URL(raw);return url.searchParams.get('invite')||'';}catch{return raw.trim();}}
 export default function Friends(){
-  const [tab,setTab]=useState<'people'|'groups'>(new URLSearchParams(window.location.search).has('group_invite')?'groups':'people');
+  const [tab,setTab]=useState<'people'|'groups'>((window.location.pathname==='/groups'||new URLSearchParams(window.location.search).has('group_invite'))?'groups':'people');
+  const switchTab=(next:'people'|'groups')=>{setTab(next);window.history.pushState({social:next},'',next==='groups'?'/groups':'/friends');};
+  useEffect(()=>{const sync=()=>setTab(window.location.pathname==='/groups'||new URLSearchParams(window.location.search).has('group_invite')?'groups':'people');window.addEventListener('popstate',sync);window.addEventListener('submundo-navigation',sync);return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('submundo-navigation',sync);};},[]);
   const [query,setQuery]=useState(''),[results,setResults]=useState<SearchPerson[]>([]),[searching,setSearching]=useState(false);
   const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [showMyQR,setShowMyQR]=useState(false);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
@@ -141,8 +143,8 @@ export default function Friends(){
   return <div>
     <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">Sua galera</p><h2 className="font-display text-2xl font-black uppercase">Amigos</h2></div>
     <div role="tablist" aria-label="Amigos" className="mb-5 grid grid-cols-2 rounded-xl border border-white/10 bg-white/[.04] p-1">
-     <button type="button" role="tab" aria-selected={tab==='people'} onClick={()=>{setTab('people');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='people'?'bg-[#c4ff40] text-black':'text-white/65')}>Pessoas</button>
-     <button type="button" role="tab" aria-selected={tab==='groups'} onClick={()=>{stop();setTab('groups');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='groups'?'bg-[#c4ff40] text-black':'text-white/65')}>Grupos</button>
+     <button type="button" role="tab" aria-selected={tab==='people'} onClick={()=>{switchTab('people');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='people'?'bg-[#c4ff40] text-black':'text-white/65')}>Pessoas</button>
+     <button type="button" role="tab" aria-selected={tab==='groups'} onClick={()=>{stop();switchTab('groups');setError('');}} className={'rounded-lg p-3 text-sm font-bold '+(tab==='groups'?'bg-[#c4ff40] text-black':'text-white/65')}>Grupos</button>
     </div>
     {access==='guest'?<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<FriendGroups/>:<>
       <div className="mb-5 space-y-3">
