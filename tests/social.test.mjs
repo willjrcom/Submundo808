@@ -148,3 +148,42 @@ test('amigos podem ser convidados por nome ao grupo, mas entrada depende de acei
   assert.equal((await call(db,'bruno','/api/groups/invite-friends','POST',{id:group.id,friendIds:['ana']})).status,403);
  }finally{db.close();}
 });
+
+
+test('proprietário promove e rebaixa administradores, e admins gerenciam somente integrantes comuns',async()=>{
+ const db=fixture();try{
+  const g=(await call(db,'ana','/api/groups/create','POST',{name:'Galera especial'})).data.group;
+  const token=(await call(db,'ana','/api/groups/invite','POST',{id:g.id})).data.token;
+  await call(db,'bruno','/api/groups/join','POST',{token});
+  await call(db,'carla','/api/groups/join','POST',{token});
+  assert.equal((await call(db,'bruno','/api/groups/role','POST',{id:g.id,userId:'carla',role:'admin'})).status,403);
+  assert.equal((await call(db,'ana','/api/groups/role','POST',{id:g.id,userId:'ana',role:'member'})).status,400);
+  assert.equal((await call(db,'ana','/api/groups/role','POST',{id:g.id,userId:'bruno',role:'admin'})).status,200);
+  const detail=(await call(db,'bruno','/api/groups/detail?id='+g.id)).data.group;
+  assert.equal(detail.role,'admin');
+  assert.equal(detail.members.find(p=>p.id==='bruno').role,'admin');
+  assert.equal((await call(db,'bruno','/api/groups/edit','POST',{id:g.id,name:'Galera nova',description:'Atualizada',color:'#14b87a',icon:'fire',editPolicy:'everyone'})).status,200);
+  assert.equal((await call(db,'ana','/api/groups/detail?id='+g.id)).data.group.editPolicy,'admin');
+  assert.equal((await call(db,'bruno','/api/groups/delete','POST',{id:g.id,confirmation:'EXCLUIR'})).status,403);
+  assert.equal((await call(db,'bruno','/api/groups/remove','POST',{id:g.id,userId:'ana'})).status,403);
+  assert.equal((await call(db,'bruno','/api/groups/remove','POST',{id:g.id,userId:'carla'})).status,200);
+  assert.equal((await call(db,'ana','/api/groups/role','POST',{id:g.id,userId:'bruno',role:'member'})).status,200);
+  assert.equal((await call(db,'bruno','/api/groups/edit','POST',{id:g.id,name:'Sem acesso',description:'',color:'#14b87a',icon:'users'})).status,403);
+ }finally{db.close();}
+});
+
+test('grupo guarda foto otimizada e rejeita arquivos enormes ou de formato incorreto',async()=>{
+ const db=fixture();try{
+  const g=(await call(db,'ana','/api/groups/create','POST',{name:'Com foto'})).data.group;
+  const data=Buffer.alloc(24);data.write('RIFF',0);data.write('WEBP',8);data.write('VP8 ',12);
+  const photo='data:image/webp;base64,'+data.toString('base64');
+  const saved=await call(db,'ana','/api/groups/edit','POST',{id:g.id,name:'Com foto',description:'',color:'#8957e5',icon:'users',photo});
+  assert.equal(saved.status,200);assert.equal(saved.data.group.photo,photo);
+  assert.equal((await call(db,'ana','/api/groups')).data.groups[0].photo,photo);
+  assert.equal((await call(db,'ana','/api/groups/edit','POST',{id:g.id,name:'Com foto',description:'',color:'#8957e5',icon:'users',photo:'data:image/svg+xml;base64,AAA'})).status,400);
+  assert.equal((await call(db,'ana','/api/groups/edit','POST',{id:g.id,name:'Com foto',description:'',color:'#8957e5',icon:'users',photo:'data:image/webp;base64,'+'A'.repeat(170000)})).status,400);
+  const cleared=await call(db,'ana','/api/groups/edit','POST',{id:g.id,name:'Sem foto',description:'',color:'#8957e5',icon:'heart',photo:''});
+  assert.equal(cleared.status,200);assert.equal(cleared.data.group.photo,'');assert.equal(cleared.data.group.icon,'heart');
+  assert.equal((await call(db,'ana','/api/groups/create','POST',{name:'Foto nova',photo})).status,201);
+ }finally{db.close();}
+});
