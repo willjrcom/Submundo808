@@ -21,7 +21,7 @@ export default function NotificationCenter({onClose,onNavigate}:{onClose:()=>voi
    setPushStatus('Notificações ativadas neste dispositivo.');
   }catch(e){setPushStatus(e instanceof Error?e.message:String(e));}
  }
- const [items,setItems]=useState<Item[]>([]),[error,setError]=useState(''),[reviewEvent,setReviewEvent]=useState(''),[rating,setRating]=useState(0),[tags,setTags]=useState<string[]>([]),[comment,setComment]=useState(''),[busy,setBusy]=useState(false),[submitted,setSubmitted]=useState(false);
+ const [items,setItems]=useState<Item[]>([]),[error,setError]=useState(''),[reviewEvent,setReviewEvent]=useState(()=>{const params=new URLSearchParams(window.location.search);const m=window.location.pathname.match(/^\/(?:schedule|programacao)\/([^/]+)$/);return params.get('review')==='1'&&m?decodeURIComponent(m[1]):'';}),[rating,setRating]=useState(0),[tags,setTags]=useState<string[]>([]),[comment,setComment]=useState(''),[busy,setBusy]=useState(false),[submitted,setSubmitted]=useState(false);
  async function load(){try{const r=await fetch('/api/notifications',{credentials:'same-origin'}),j=await r.json();if(!r.ok)throw Error(j.error);setItems(j.items||[]);}catch(e){setError(String(e));}}
  useEffect(()=>{void load();},[]);
  async function open(n:Item){await fetch('/api/notifications/read',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:n.id})}).catch(()=>{});if(n.targetKind==='survey'){setReviewEvent(n.eventId);setSubmitted(false);return;}onNavigate(n.targetKind,n.eventId,n.targetId);}
