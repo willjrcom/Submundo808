@@ -1,5 +1,5 @@
 import MeapleTickets from './meaple-tickets';
-import ProfilePermissions from './profile-permissions';
+import ProfilePermissions, {hasPendingAppPermissions} from './profile-permissions';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
 import {createPortal} from 'react-dom';
@@ -56,7 +56,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(resetToken)setMode('reset');
     request('me').then(data=>{
       if(!active)return;
-      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(formatMobile(data.user.phone||''));setProfileInstagram(data.user.instagram||'');setProfileAvatar(data.user.avatar||'');const key='submundo-permissions-intro-'+data.user.id;if(!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');setPermissionOpen(true);}}
+      setUser(data.user||null);onUser?.(data.user||null);if(data.user){setProfileName(data.user.name);setProfilePhone(formatMobile(data.user.phone||''));setProfileInstagram(data.user.instagram||'');setProfileAvatar(data.user.avatar||'');const key='submundo-permissions-intro-'+data.user.id;if(!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});}}
     }).catch(()=>{if(active)setInitialError(true);})
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
@@ -67,14 +67,14 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);setPermissionOpen(true);window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
-  async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setPermissionOpen(true);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
-  async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);setPermissionOpen(true);setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
+  async function generateDemo(){setBusy(true);setError('');try{const data=await request('demo',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar conta de teste.');}finally{setBusy(false);}}
+  async function generateDemoAdmin(){setBusy(true);setError('');try{const data=await request('demo-admin',{});const me=await request('me');if(!me.user)throw new Error('Conta criada. '+authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});setDemoCredentials({email:data.user.email,password:data.password});setSavedDemoEmail(data.user.email);localStorage.setItem('submundo-demo-email',data.user.email);}catch(e){setError(e instanceof Error?e.message:'Não foi possível gerar administrador de teste.');}finally{setBusy(false);}}
   const showLoading=useMinimumLoading(loading);
   if(showLoading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu perfil."/>;
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;

@@ -1,6 +1,19 @@
 import {useEffect,useState} from 'react';
 import {Bell,MapPin,Camera,CheckCircle2} from 'lucide-react';
 type State='granted'|'denied'|'prompt'|'unsupported';
+/** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
+export async function hasPendingAppPermissions():Promise<boolean>{
+ if(typeof navigator==='undefined'||typeof window==='undefined')return false;
+ const queries:[string,string][]=[['location','geolocation'],['camera','camera']];
+ for(const [key,name] of queries){
+  if(key==='location'&&!navigator.geolocation)continue;
+  if(key==='camera'&&!navigator.mediaDevices?.getUserMedia)continue;
+  if(!navigator.permissions?.query)continue;
+  try{const state=(await navigator.permissions.query({name:name as PermissionName})).state;if(state==='prompt')return true;}catch{}
+ }
+ if('Notification'in window&&Notification.permission==='default')return true;
+ return false;
+}
 export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [statuses,setStatuses]=useState<Record<string,State>>({location:'prompt',notifications:'prompt',camera:'prompt'});
  const [message,setMessage]=useState(''),[busy,setBusy]=useState('');
@@ -23,7 +36,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   try{if(!navigator.geolocation)throw Error('Localização indisponível neste navegador.');
    await new Promise<void>((resolve,reject)=>navigator.geolocation.getCurrentPosition(()=>resolve(),reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
    update('location','granted');setMessage('Localização autorizada. O compartilhamento com amigos permanece desativado até você escolher ativá-lo.');
-  }catch(e){setMessage('Localização: '+(e instanceof Error?e.message:'Permissão não concedida.'));}finally{setBusy('');}
+  }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setMessage(denied?'O navegador bloqueou o acesso à localização. Se não aparecer a solicitação, abra as configurações deste site no navegador, permita Localização e volte ao aplicativo.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
  }
  async function askNotification(){
   setBusy('notifications');setMessage('');
@@ -56,12 +69,12 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   const status=statuses[key]||'prompt';
   const ready=status==='granted'&&(key!=='notifications'||pushRegistered);
   const permissionGranted=status==='granted';
-  const blocked=status==='denied'||status==='unsupported';
+  const unsupported=status==='unsupported';
   return <div key={key} className="flex min-h-[92px] flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
    <Icon className="shrink-0 text-[#c4ff40]" size={22}/>
    <div className="min-w-0 flex-1"><p className="font-semibold">{title}</p><p className="text-xs text-white/55">{description}</p><p className="mt-1 text-[11px] text-white/45">{permissionGranted&&key==='notifications'&&!pushRegistered?'Autorizada no navegador · ativar push neste dispositivo':label[status]}</p></div>
    <div className="flex min-w-[98px] justify-end">
-    {ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:blocked?<span className="text-right text-xs text-white/45">{status==='denied'?'Altere nas configurações':'Indisponível'}</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40] disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':'Ativar'}</button>}
+    {ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:unsupported?<span className="text-right text-xs text-white/45">Indisponível</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40] disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':status==='denied'?'Ativar permissão':'Ativar'}</button>}
    </div>
   </div>;
  })}
