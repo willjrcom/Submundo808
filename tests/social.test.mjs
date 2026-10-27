@@ -69,6 +69,12 @@ test('criar, convidar e entrar em grupo exige link; membros permanecem independe
   const preview=await call(db,'bruno','/api/groups/preview?token='+invited.data.token);
   assert.equal(preview.data.group.name,'Galera do Rolê');
   assert.equal(preview.data.group.avatars,undefined);
+  assert.equal(preview.data.members,undefined);
+  const participants=await call(db,'bruno','/api/groups/preview?token='+invited.data.token+'&members=1');
+  assert.equal(participants.status,200);
+  assert.deepEqual(participants.data.members,[{name:'Ana Souza'}]);
+  const wrongToken=await call(db,'bruno','/api/groups/preview?token='+'a'.repeat(64)+'&members=1');
+  assert.equal(wrongToken.status,404);
   const joined=await call(db,'bruno','/api/groups/join','POST',{token:invited.data.token});
   assert.equal(joined.status,200);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM friendships').get().n,0);
