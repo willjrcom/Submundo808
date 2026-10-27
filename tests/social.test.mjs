@@ -121,3 +121,30 @@ test('edição de grupo respeita permissão definida exclusivamente pelo adminis
   assert.equal((await call(db,'bruno','/api/groups/delete','POST',{id,confirmation:'EXCLUIR'})).status,403);
  }finally{db.close();}
 });
+
+
+test('amigos podem ser convidados por nome ao grupo, mas entrada depende de aceite',async()=>{
+ const db=fixture();try{
+  const group=(await call(db,'ana','/api/groups/create','POST',{name:'Nova galera'})).data.group;
+  const searched=await call(db,'ana','/api/groups/friends?q=bruno');
+  assert.equal(searched.status,200);assert.equal(searched.data.friends.length,0);
+  await call(db,'ana','/api/friends/request','POST',{userId:'bruno'});
+  const friendRequest=(await call(db,'bruno','/api/friends/requests')).data.received[0];
+  await call(db,'bruno','/api/friends/respond','POST',{id:friendRequest.id,action:'accept'});
+  const found=await call(db,'ana','/api/groups/friends?q=bru');
+  assert.equal(found.status,200);assert.equal(found.data.friends[0].name,'Bruno Lima');
+  const disallowed=await call(db,'carla','/api/groups/invite-friends','POST',{id:group.id,friendIds:['bruno']});
+  assert.equal(disallowed.status,404);
+  const sent=await call(db,'ana','/api/groups/invite-friends','POST',{id:group.id,friendIds:['bruno','carla']});
+  assert.equal(sent.status,200);assert.deepEqual(sent.data.invited,['bruno']);assert.deepEqual(sent.data.skipped,['carla']);
+  assert.equal((await call(db,'ana','/api/groups/detail?id='+group.id)).data.group.memberCount,1);
+  const invitation=db.prepare('SELECT * FROM friend_group_invitations WHERE recipient_id=?').get('bruno');
+  assert.equal((await call(db,'carla','/api/groups/invitation/respond','POST',{id:invitation.id,action:'accept'})).status,404);
+  assert.equal((await call(db,'bruno','/api/groups/invitation/respond','POST',{id:invitation.id,action:'accept'})).status,200);
+  assert.equal((await call(db,'bruno','/api/groups/invitation/respond','POST',{id:invitation.id,action:'accept'})).status,409);
+  const detail=(await call(db,'ana','/api/groups/detail?id='+group.id)).data.group;
+  assert.equal(detail.memberCount,2);
+  assert.equal(detail.members.find(m=>m.id==='bruno').relation,'friends');
+  assert.equal((await call(db,'bruno','/api/groups/invite-friends','POST',{id:group.id,friendIds:['ana']})).status,403);
+ }finally{db.close();}
+});
