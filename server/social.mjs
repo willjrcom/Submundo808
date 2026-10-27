@@ -136,7 +136,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
   if(pathname==='/api/groups/alerts'&&method==='GET'){
    const id=String(url.searchParams.get('id')||'');
    if(!groupRow(id)||!member(id))return reject(404,'Grupo não encontrado.');
-   const alerts=db.prepare('SELECT a.id,a.code,a.created_at AS createdAt,a.event_id AS eventId,u.id AS senderId,u.name AS senderName,u.avatar_data AS avatar FROM group_alerts a JOIN users u ON u.id=a.sender_id WHERE a.group_id=? ORDER BY a.created_at DESC LIMIT 100').all(id).map(a=>({...a,message:groupAlerts[a.code]||'Aviso'}));
+   const alerts=db.prepare('SELECT a.id,a.code,a.created_at AS "createdAt",a.event_id AS "eventId",u.id AS "senderId",u.name AS "senderName",u.avatar_data AS avatar FROM group_alerts a JOIN users u ON u.id=a.sender_id WHERE a.group_id=? ORDER BY a.created_at DESC LIMIT 100').all(id).map(a=>({...a,message:groupAlerts[a.code]||'Aviso'}));
    json(res,200,{alerts});return true;
   }
   if(pathname==='/api/groups/alert'&&method==='POST'){
