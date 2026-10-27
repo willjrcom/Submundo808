@@ -279,7 +279,11 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    const g=db.prepare('SELECT * FROM friend_groups WHERE invite_hash=?').get(sha256(token));
    if(!g)return reject(404,'Convite expirado ou grupo removido.');
    const {id,name,description,color,icon,photo,memberCount}=groupSummary(g);
-   json(res,200,{group:{id,name,description,color,icon,photo,memberCount,joined:!!member(g.id)}});return true;
+   const includeMembers=url.searchParams.get('members')==='1';
+   // Only a signed-in bearer of this group's invitation can request the names.
+   // Avoid exposing member IDs or profile photos before accepting the invitation.
+   const members=includeMembers?db.prepare('SELECT u.name FROM friend_group_members gm JOIN users u ON u.id=gm.user_id WHERE gm.group_id=? ORDER BY gm.joined_at LIMIT 50').all(g.id).map(p=>({name:p.name})):[];
+   json(res,200,{group:{id,name,description,color,icon,photo,memberCount,joined:!!member(g.id)},...(includeMembers?{members}:{})});return true;
   }
   if(pathname==='/api/groups/join'&&method==='POST'){
    const p=await readBody(req);let token=String(p.token||'');
