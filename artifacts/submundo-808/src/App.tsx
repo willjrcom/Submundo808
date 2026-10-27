@@ -136,7 +136,7 @@ function ParticipantApp() {
   const allowed=parts.length===0||(parts.length===1&&['map','menu','friends','groups','profile','login','register','recovery','reset-password','change-password','mapa','cardapio','amigos','perfil','cadastrar'].includes(parts[0]))||(parts.length===2&&['schedule','programacao'].includes(parts[0])&&!!parts[1]);
   return <div className="min-h-dvh bg-[#0b090f] text-[#f5f2fa] selection:bg-[#c4ff40] selection:text-black">
     <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_at_50%_-10%,rgba(164,49,207,.2),transparent_50%)]" />
-    <div className="relative mx-auto max-w-xl pb-28">
+    <div className="pb-nav relative mx-auto max-w-xl">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/10 bg-[#0b090f]/90 px-5 py-4 backdrop-blur-xl">
         <div className="flex items-center gap-2">{brandLogo&&<img src={brandLogo} alt="Logo Submundo 808" className="h-9 w-9 rounded-lg object-cover"/>}<p className="font-display text-[16px] font-black uppercase tracking-[-.06em] text-white">SUBMUNDO<span className="text-[#c4ff40]">808</span></p></div>
         <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="relative rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/>{unreadCount>0&&<span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#c4ff40] px-1 text-center text-[10px] font-bold text-black">{unreadCount>99?"99+":unreadCount}</span>}</button>
