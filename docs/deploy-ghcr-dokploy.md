@@ -38,3 +38,13 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 - O pipeline executa como bloqueantes testes críticos (segurança, sessão, localização e seed) e checagem de sintaxe. Typecheck e suíte completa rodam inicialmente como diagnóstico (`continue-on-error`) até a adequação dos testes legados; **não** interpretar sucesso do build como aprovação integral da auditoria.
 
 **Observação sobre alta concorrência:** o limitador geral permite até 1200 POST/min por IP da conexão, para evitar bloquear várias pessoas sob o mesmo proxy na fase de testes. Recomenda-se aplicar limites específicos por rota e identidade na etapa seguinte, após teste de carga.
+
+## Verificações para a versão 1.0
+
+- O monitor de disponibilidade pode consultar `GET /api/health` (200 `{"status":"ok"}` quando o SQLite responde, 503 caso contrário). O endpoint não revela configuração interna; configure a consulta HTTP no Dokploy/monitor externo.
+- Em produção, `APP_ENV=production` e `AUTO_SEED_DEMO` desativado também bloqueiam o botão administrativo de geração de exemplos. Não afeta registros já existentes.
+- Login OAuth: inícios passam por limitador por IP com teto compatível com convidados sob um mesmo proxy; estados expirados são descartados e há limite de estados pendentes. Não substitui teste de login real no Google/Meaple.
+- Interface: a cor escolhida permanece como fundo do destaque; o texto do botão e os realces sobre fundo escuro são ajustados automaticamente para razão de contraste de pelo menos 4,5:1.
+- Navegação de notificações para um ponto não depende mais de timeout fixo; o mapa aguarda carregar o evento/pontos e pode trocar para outro mapa vinculado ao mesmo evento.
+- Posição GPS com mais de 90 s sem leitura deixa de ser exibida como atual e volta a aparecer com uma nova leitura. Não substitui teste presencial.
+- Os novos testes de saúde, contraste e navegação por notificação são bloqueantes no GitHub Actions; mantenha a validação real nos aparelhos.

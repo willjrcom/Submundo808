@@ -135,3 +135,14 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - A fila recupera tentativas com lease expirado; erros transitórios recebem backoff, limitados a cinco tentativas e uma hora de validade. HTTP 404/410 remove assinaturas vencidas. Não registrar tokens nem endpoints completos nos logs.
 - Modelos continuam reutilizáveis; agendamentos cancelados não são processados. O painel distingue estados de push; novos testes são bloqueantes no GitHub Actions.
 - Atenção: existe possibilidade residual de duplicação se o serviço aceitar o push e a aplicação encerrar antes de gravar a confirmação. O `tag` estável ajuda a substituir notificações repetidas no sistema; não prometer entrega exatamente uma vez.
+
+## Auditoria pré-produção — backend final
+- `GET /api/health` fornece somente `{status:'ok'}` (HTTP 200) ou `{status:'unavailable'}` (HTTP 503), sem dados internos; use no monitor do Dokploy.
+- Estados OAuth expirados são removidos no início de novos logins, com limite máximo de estados e limitação de inícios por IP; login Google e Meaple preservados.
+- No ambiente `APP_ENV=production`, o endpoint administrativo de seed demo também fica bloqueado, exceto opt-in explícito com `AUTO_SEED_DEMO=true`.
+
+## Auditoria pré-produção — entregas 2 e 3
+- Contraste: `src/accent-contrast.ts` calcula cor de primeiro plano para botões e versão legível do destaque sobre fundo escuro, preservando a cor definida no painel.
+- Responsividade: diálogos de notificações devem respeitar altura visível e permitir rolagem em telas pequenas.
+- Notificação para marcador: fluxo por estado `focusRequest` entre App e VenueMap, **sem tempos de espera artificiais**; só selecionar depois do mapa/evento correto estar carregado; procurar o ponto também em mapas alternativos vinculados.
+- GPS sem leitura recente não deve continuar exibindo a posição antiga; atualizações posteriores do watcher devem restaurá-la.

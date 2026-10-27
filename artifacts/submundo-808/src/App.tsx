@@ -55,6 +55,11 @@ export default function App() {
 function ParticipantApp() {
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [inboxOpen,setInboxOpen]=useState(false);
+  // O destino fica em estado React até o mapa e seus pontos estarem carregados.
+  const [focusRequest,setFocusRequest]=useState<{eventId:string;pointId:string;requestId:number}|null>(()=>{
+    const qs=new URLSearchParams(window.location.search),pointId=qs.get('point');
+    return pointId?{pointId,eventId:qs.get('event')||getActiveEventId(),requestId:1}:null;
+  });
   const [unreadCount,setUnreadCount]=useState(0);
   useEffect(()=>{const poll=()=>{void fetch('/api/notifications',{credentials:'same-origin'}).then(r=>r.json()).then(j=>setUnreadCount(Number(j.unread)||0)).catch(()=>{});};poll();const timer=window.setInterval(poll,30000);return()=>window.clearInterval(timer);},[inboxOpen]);
   useEffect(()=>{
@@ -62,12 +67,7 @@ function ParticipantApp() {
     const linkEvent=params.get('event');
     if(linkEvent){saveActiveEventId(linkEvent);setActiveEventId(linkEvent);}
     if(params.get('review')==='1')setInboxOpen(true);
-    const focusPoint=params.get('point');
-    if(focusPoint){
-      const selected=linkEvent||getActiveEventId();
-      const dispatch=()=>window.dispatchEvent(new CustomEvent('submundo-map-focus',{detail:{pointId:focusPoint,eventId:selected}}));
-      window.setTimeout(dispatch,600);
-    }
+
   },[]);
 
   const [brandLogo,setBrandLogo]=useState('');
@@ -109,7 +109,7 @@ function ParticipantApp() {
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  const navigate=(next:Tab)=>{setRoutePath(next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next]);const url=new URL(window.location.href);url.pathname=next==='inicio'?(activeEventId?eventProgramPath(activeEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
+  const navigate=(next:Tab,targetEventId=activeEventId)=>{setRoutePath(next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next]);const url=new URL(window.location.href);url.pathname=next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{
     setRoutePath(window.location.pathname);
     const next=tabFromUrl();
@@ -143,14 +143,14 @@ function ParticipantApp() {
       </header>
       <main className="px-5 pt-7">
        {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
-        {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} onChooseEvent={()=>navigate('inicio')}/></div>}
+        {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} focusRequest={focusRequest} onChooseEvent={()=>navigate('inicio')}/></div>}
         {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={chooseAnotherEvent}/>}
         {tab === 'amigos' && <Friends/>}
         {tab === 'perfil' && <Account/>}
        </ErrorBoundary>}
       </main>
     </div>
-    {inboxOpen&&<NotificationCenter onClose={()=>setInboxOpen(false)} onNavigate={(kind,eventId,pointId)=>{setInboxOpen(false);if(eventId)selectEvent(eventId);const next:Tab=kind==='menu'?'cardapio':kind==='map'||kind==='point'?'mapa':'inicio';navigate(next);if(kind==='point'&&pointId){window.setTimeout(()=>window.dispatchEvent(new CustomEvent('submundo-map-focus',{detail:{pointId,eventId}})),200);}}}/>}
+    {inboxOpen&&<NotificationCenter onClose={()=>setInboxOpen(false)} onNavigate={(kind,eventId,pointId)=>{setInboxOpen(false);if(eventId)selectEvent(eventId);const next:Tab=kind==='menu'?'cardapio':kind==='map'||kind==='point'?'mapa':'inicio';if(kind==='point'&&pointId){setFocusRequest(previous=>({pointId,eventId:eventId||getActiveEventId(),requestId:(previous?.requestId||0)+1}));}else setFocusRequest(null);navigate(next,eventId||activeEventId);}}/>}
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
     <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;

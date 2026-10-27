@@ -1,4 +1,5 @@
 import {createOauth} from './oauth.mjs';
+import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
@@ -220,6 +221,11 @@ http.createServer(async (req,res)=>{
   for(const [name,value] of Object.entries(securityHeaders(req)))res.setHeader(name,value);
   const url = new URL(req.url || '/', 'http://localhost');
   try {
+    if(url.pathname==='/api/health'){
+      if(req.method!=='GET'&&req.method!=='HEAD')return json(res,405,{error:'Método não permitido.'});
+      const status=readHealth(db);
+      return json(res,status.ok?200:503,{status:status.ok?'ok':'unavailable'});
+    }
     if (url.pathname.startsWith('/api/')) {
       if(await oauthHandler(req,res,url)!==false)return;
       if (req.method === 'POST') {
@@ -686,6 +692,7 @@ http.createServer(async (req,res)=>{
           return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='seed-demo'){
+          if(process.env.APP_ENV==='production'&&process.env.AUTO_SEED_DEMO!=='true')return json(res,403,{error:'Dados demonstrativos desativados neste ambiente.'});
           const request=await body(req);
           let location;
           try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}

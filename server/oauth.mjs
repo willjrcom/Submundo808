@@ -1,5 +1,8 @@
 import {randomBytes,randomUUID,createHash,createCipheriv,createDecipheriv} from 'node:crypto';
+import {createWindowLimiter,clientIp} from './request-security.mjs';
 const states=new Map();
+const oauthStartLimiter=createWindowLimiter({limit:1200,windowMs:10*60_000});
+const MAX_PENDING_OAUTH_STATES=4000;
 const oauthBase=()=>{const raw=process.env.MEAPLE_OAUTH_BASE_URL||'https://whitelabel.meaple.app';const url=new URL(raw);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/')throw Error('MEAPLE_OAUTH_BASE_URL precisa ser uma origem HTTPS válida.');return url.origin;};
 const asUrl=bytes=>Buffer.from(bytes).toString('base64url');
 export function createOauth({db,getUser,createSession,passwordHash,secret}){
@@ -53,8 +56,12 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
   const redirectUri=process.env[provider==='google'?'GOOGLE_REDIRECT_URI':'MEAPLE_REDIRECT_URI'];
   if(!clientId||!redirectUri)return reply(res,{error:'Provedor não configurado.'},503);
   if(action==='start'){
+   if(oauthStartLimiter.hit(clientIp(req)))return reply(res,{error:'Muitas tentativas de autenticação. Aguarde alguns minutos.'},429);
+   const now=Date.now();
+   for(const [token,entry] of states)if(entry.exp<=now)states.delete(token);
+   if(states.size>=MAX_PENDING_OAUTH_STATES)return reply(res,{error:'Muitas autenticações em andamento. Tente novamente em instantes.'},429);
    const state=asUrl(randomBytes(24)),verifier=asUrl(randomBytes(32));
-   states.set(state,{provider,verifier,uid:getUser(req)?.id,exp:Date.now()+300000});
+   states.set(state,{provider,verifier,uid:getUser(req)?.id,exp:now+300000});
    const target=new URL(provider==='google'?'https://accounts.google.com/o/oauth2/v2/auth':oauthBase()+'/api/oauth/authorize');
    for(const [key,value] of Object.entries({client_id:clientId,redirect_uri:redirectUri,response_type:'code',state,scope:provider==='google'?'openid email profile':'profile email'}))target.searchParams.set(key,value);
    if(provider==='meaple'){target.searchParams.set('code_challenge',asUrl(createHash('sha256').update(verifier).digest()));target.searchParams.set('code_challenge_method','S256');target.searchParams.set('theme','dark');target.searchParams.set('primary_color','c4ff40');}

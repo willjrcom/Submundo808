@@ -30,7 +30,7 @@ const mapIcon=(type:string)=>{
  return icons[type]||MapPin;
 };
 const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.test(color)?color:fallback;
-export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:string;onChooseEvent:()=>void}){
+export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{activeEventId:string;onChooseEvent:()=>void;focusRequest?:{eventId:string;pointId:string;requestId:number}|null}){
  const [maps,setMaps]=useState<{id:string;name:string}[]>([]);
  const [selectedMap,setSelectedMap]=useState('');
  const [activeEvent,setActiveEvent]=useState<EventChoice|null>(null);
@@ -41,12 +41,7 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
  const [selectedMarkerId,setSelectedMarkerId]=useState<string|null>(null);
  const [pointMenuOpen,setPointMenuOpen]=useState(false),[pointProducts,setPointProducts]=useState<PointProduct[]>([]),[pointCategory,setPointCategory]=useState(''),[pointMenuError,setPointMenuError]=useState(''),[pointMenuLoading,setPointMenuLoading]=useState(false);
  useEffect(()=>{setSelectedMarkerId(null);setPointMenuOpen(false);},[activeEventId,selectedMap]);
- const pendingFocus=useRef<{eventId:string;pointId:string}|null>(null);
- useEffect(()=>{
-  const receive=(event:Event)=>{const detail=(event as CustomEvent<{eventId:string;pointId:string}>).detail;if(!detail?.pointId)return;pendingFocus.current=detail;if(detail.eventId===activeEventId&&data?.markers.some(m=>m.id===detail.pointId)){setSelectedMarkerId(detail.pointId);setPointCategory('');setPointMenuOpen(true);pendingFocus.current=null;}};
-  window.addEventListener('submundo-map-focus',receive);
-  return()=>window.removeEventListener('submundo-map-focus',receive);
- },[data,activeEventId]);
+ const lastHandledFocus=useRef<number|null>(null);
 
  useEffect(()=>{if(!pointMenuOpen||!activeEventId)return;let alive=true;setPointMenuLoading(true);setPointMenuError('');
  fetch('/api/public/menu?event_id='+encodeURIComponent(activeEventId)).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha ao carregar produtos');return j;}).then(j=>{if(alive)setPointProducts(j.items||[]);}).catch(e=>{if(alive)setPointMenuError(e instanceof Error?e.message:'Falha ao carregar produtos');}).finally(()=>{if(alive)setPointMenuLoading(false);});
@@ -86,11 +81,35 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
   return()=>{active=false;};
  },[selectedMap]);
  useEffect(()=>{
-  const focus=pendingFocus.current;
-  if(focus&&data?.markers.some(m=>m.id===focus.pointId)&&focus.eventId===activeEventId){
-   setSelectedMarkerId(focus.pointId);setPointCategory('');setPointMenuOpen(true);pendingFocus.current=null;
+  if(!focusRequest||focusRequest.eventId!==activeEventId||lastHandledFocus.current===focusRequest.requestId||
+     !mapsReady||!mapDataReady||!selectedMap||!data||data.map.id!==selectedMap)return;
+  if(data.markers.some(marker=>marker.id===focusRequest.pointId)){
+   lastHandledFocus.current=focusRequest.requestId;
+   setSelectedMarkerId(focusRequest.pointId);setPointCategory('');setPointMenuOpen(true);
+   return;
   }
- },[data,activeEventId]);
+  // Um ponto pode pertencer ao segundo ou terceiro mapa do evento.
+  let active=true;
+  const findMap=async()=>{
+   for(const candidate of maps){
+    if(!active)return;
+    if(candidate.id===selectedMap)continue;
+    try{
+     const response=await fetch('/api/public/map-detail?map_id='+encodeURIComponent(candidate.id));
+     if(!response.ok)continue;
+     const result=await response.json();
+     if(!active)return;
+     if((result.markers||[]).some((m:Marker)=>m.id===focusRequest.pointId)){
+      setSelectedMap(candidate.id);
+      return;
+     }
+    }catch{/* Um mapa indisponível não impede tentar os demais. */}
+   }
+   if(active){lastHandledFocus.current=focusRequest.requestId;setMapError('O ponto indicado na notificação não está disponível neste evento.');}
+  };
+  void findMap();
+  return()=>{active=false;};
+ },[focusRequest,activeEventId,data,mapDataReady,mapsReady,maps,selectedMap]);
  const calibrated=data?.areas.find(a=>['tl','tr','br','bl'].every(k=>a.gps?.[k as keyof Bounds]));
  const bounds=calibrated?.gps as Bounds|undefined;
   const [location,setLocation]=useState<GpsFix|null>(null);
@@ -213,7 +232,11 @@ export default function VenueMap({activeEventId,onChooseEvent}:{activeEventId:st
     // ou a primeira localização ainda está sendo solicitada.
     if(!sharingRef.current||watch.current===null||gpsActivatingRef.current||!trackingRef.current||!locationRef.current)return;
     if(Date.now()-lastGpsFixAt.current<=90000)sendLatestLocation(true);
-    else setGeoError('O GPS parou de atualizar. Confira a localização do aparelho.');
+    else {
+     // Nunca manter uma posição antiga como se fosse uma leitura atual.
+     locationRef.current=null;setLocation(null);trackingRef.current=false;setTracking(false);
+     setGeoError('O GPS parou de atualizar. A posição antiga foi ocultada; aguardando novo sinal.');
+    }
    },20000);
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);

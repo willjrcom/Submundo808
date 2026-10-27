@@ -19,7 +19,7 @@ test('Início, Mapa e Cardápio recebem exatamente o mesmo evento ativo',()=>{
  assert.match(app,/<PublicEvents activeEventId=\{activeEventId\}/);
  assert.match(app,/<VenueMap activeEventId=\{activeEventId\}/);
  assert.match(app,/<EventMenu activeEventId=\{activeEventId\}/);
- assert.match(map,/function VenueMap\(\{activeEventId,onChooseEvent\}/);
+ assert.match(map,/function VenueMap\(\{activeEventId,onChooseEvent,focusRequest\}/);
  assert.match(menu,/function EventMenu\(\{activeEventId,onChooseEvent\}/);
  assert.doesNotMatch(menu,/aria-label="Evento do cardápio"/);
  assert.doesNotMatch(map,/aria-label="Escolher evento do mapa"/);
