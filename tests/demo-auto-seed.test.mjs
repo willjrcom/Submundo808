@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {ensureDemoData} from '../server/demo-seed.mjs';
+import {DEMO_PRODUCTS} from '../server/demo-products.mjs';
 
 function fixture(){
  const db=new DatabaseSync(':memory:');
@@ -19,13 +20,13 @@ function fixture(){
 }
 const count=(db,table)=>db.prepare('SELECT COUNT(*) count FROM '+table).get().count;
 
-test('na primeira inicialização cria evento, 6 DJs, mapa, ambiente, pontos e 14 produtos',()=>{
+test('na primeira inicialização cria evento, 6 DJs, mapa, ambiente, pontos e todos os produtos demonstrativos',()=>{
  const db=fixture();
  try{
   const result=ensureDemoData(db,{now:1792944000000});
   assert.equal(result.created,true);
-  assert.equal(result.productsCreated,14);
-  for(const [table,n] of [['venues',1],['venue_maps',1],['map_areas',2],['map_markers',1],['events',1],['event_maps',1],['products',14],['event_products',14]]){
+  assert.equal(result.productsCreated,DEMO_PRODUCTS.length);
+  for(const [table,n] of [['venues',1],['venue_maps',1],['map_areas',2],['map_markers',1],['events',1],['event_maps',1],['products',DEMO_PRODUCTS.length],['event_products',DEMO_PRODUCTS.length]]){
    assert.equal(count(db,table),n,table);
   }
   const event=db.prepare('SELECT lineup_json FROM events WHERE id=?').get(result.id);
@@ -52,8 +53,8 @@ test('reiniciar o servidor ou repetir o botão não duplica registros',()=>{
   assert.equal(second.productsCreated,0);
   assert.equal(second.productsLinked,0);
   assert.equal(count(db,'events'),1);
-  assert.equal(count(db,'products'),14);
-  assert.equal(count(db,'event_products'),14);
+  assert.equal(count(db,'products'),DEMO_PRODUCTS.length);
+  assert.equal(count(db,'event_products'),DEMO_PRODUCTS.length);
  }finally{db.close();}
 });
 test('renomear evento e personalizar produtos não é desfeito pelo seed automático',()=>{
@@ -78,7 +79,7 @@ test('complementa apenas produtos ausentes sem restaurar os valores personalizad
   db.prepare('DELETE FROM event_products WHERE product_id=?').run('demo-product-suco');
   const second=ensureDemoData(db);
   assert.equal(second.productsLinked,1);
-  assert.equal(count(db,'event_products'),14);
+  assert.equal(count(db,'event_products'),DEMO_PRODUCTS.length);
   assert.equal(second.id,first.id);
  }finally{db.close();}
 });

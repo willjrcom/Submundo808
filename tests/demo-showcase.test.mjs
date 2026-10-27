@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {ensureDemoData} from '../server/demo-seed.mjs';
+import {DEMO_PRODUCTS} from '../server/demo-products.mjs';
 import {ensureDemoShowcase,SHOWCASE_EVENTS} from '../server/demo-showcase.mjs';
 
 const NOW=Date.parse('2026-10-26T12:00:00Z');
@@ -12,7 +13,7 @@ function fixture(){
  CREATE TABLE venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}',description TEXT DEFAULT '',color TEXT DEFAULT '#9747FF',icon TEXT DEFAULT '');
  CREATE TABLE map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]');
- CREATE TABLE events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL);
+ CREATE TABLE events(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,description TEXT DEFAULT '',starts_at TEXT DEFAULT '',ends_at TEXT DEFAULT '',site_url TEXT DEFAULT '',tickets_url TEXT DEFAULT '',instagram_url TEXT DEFAULT '',lineup_json TEXT DEFAULT '[]',created_at INTEGER NOT NULL,is_published INTEGER NOT NULL DEFAULT 1);
  CREATE TABLE event_maps(event_id TEXT NOT NULL,map_id TEXT NOT NULL,PRIMARY KEY(event_id,map_id));
  CREATE TABLE products(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',category TEXT NOT NULL,default_price_cents INTEGER NOT NULL,created_at INTEGER NOT NULL);
  CREATE TABLE event_products(event_id TEXT NOT NULL,product_id TEXT NOT NULL,price_cents INTEGER,PRIMARY KEY(event_id,product_id));
@@ -45,12 +46,12 @@ test('all event cards have map, schedule, establishment and complete product men
  try{
   const first=ensureDemoData(db,{now:NOW});
   ensureDemoShowcase(db,{baseEventId:first.id,now:NOW});
-  assert.equal(count(db,'products'),14);
-  assert.equal(count(db,'event_products'),84);
+  assert.equal(count(db,'products'),DEMO_PRODUCTS.length);
+  assert.equal(count(db,'event_products'),6*DEMO_PRODUCTS.length);
   const records=db.prepare('SELECT e.id,e.venue_id,e.lineup_json,e.starts_at,e.ends_at,(SELECT COUNT(*) FROM event_maps WHERE event_id=e.id) map_count,(SELECT COUNT(*) FROM event_products WHERE event_id=e.id) menu_count FROM events e').all();
   for(const event of records){
    assert.equal(event.map_count,1,event.id);
-   assert.equal(event.menu_count,14,event.id);
+   assert.equal(event.menu_count,DEMO_PRODUCTS.length,event.id);
    assert.equal(JSON.parse(event.lineup_json).length,6,event.id);
    assert.ok(event.starts_at<event.ends_at,event.id);
    assert.ok(db.prepare('SELECT 1 FROM venues WHERE id=?').get(event.venue_id));
@@ -101,7 +102,7 @@ test('repeated startup never duplicates items or overwrites personalized price a
   assert.equal(again.created,false);
   assert.equal(again.eventsAdded,0);
   assert.equal(count(db,'events'),6);
-  assert.equal(count(db,'event_products'),84);
+  assert.equal(count(db,'event_products'),6*DEMO_PRODUCTS.length);
   assert.equal(db.prepare('SELECT name FROM events WHERE id=?').get(eventId).name,'Evento personalizado');
   assert.equal(db.prepare('SELECT price_cents FROM event_products WHERE event_id=? AND product_id=?').get(eventId,'demo-product-agua-500').price_cents,9999);
  }finally{db.close();}
