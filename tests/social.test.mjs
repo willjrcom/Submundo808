@@ -103,3 +103,21 @@ test('fotos ou iniciais e visualização por grupos exigem consentimento explíc
  assert.match(notifications,/Aceitar amizade/);
  assert.match(notifications,/Recusar/);
 });
+
+
+test('edição de grupo respeita permissão definida exclusivamente pelo administrador',async()=>{
+ const db=fixture();try{
+  const created=await call(db,'ana','/api/groups/create','POST',{name:'Galera'});
+  const id=created.data.group.id;
+  const token=(await call(db,'ana','/api/groups/invite','POST',{id})).data.token;
+  await call(db,'bruno','/api/groups/join','POST',{token});
+  const request={id,name:'Novo nome',description:'Nova descrição',color:'#8957e5',icon:'music',editPolicy:'everyone'};
+  assert.equal((await call(db,'bruno','/api/groups/edit','POST',request)).status,403);
+  assert.equal((await call(db,'ana','/api/groups/edit','POST',request)).status,200);
+  const updated=await call(db,'bruno','/api/groups/edit','POST',{...request,name:'Editado por Bruno',editPolicy:'admin'});
+  assert.equal(updated.status,200);
+  assert.equal(updated.data.group.name,'Editado por Bruno');
+  assert.equal(updated.data.group.editPolicy,'everyone');
+  assert.equal((await call(db,'bruno','/api/groups/delete','POST',{id,confirmation:'EXCLUIR'})).status,403);
+ }finally{db.close();}
+});
