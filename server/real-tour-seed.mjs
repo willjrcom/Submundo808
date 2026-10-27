@@ -260,7 +260,7 @@ export function ensureRealTourDemo(db){
   const eventId='meaple-808-event-'+e.id;
   const existing=db.prepare('SELECT id FROM events WHERE id=? OR tickets_url=? LIMIT 1').get(eventId,e.url);
   if(existing){eventsExisting++;continue;}
-  let venue=db.prepare('SELECT id FROM venues WHERE id=? OR (lower(name)=lower(?) AND lower(city)=lower(?)) LIMIT 1').get(venueId,e.venue,e.city);
+  let venue=db.prepare('SELECT id FROM venues WHERE id=? OR (lower(name)=lower(?) AND lower(city)=lower(?) AND lower(address)=lower(?)) LIMIT 1').get(venueId,e.venue,e.city,e.address);
   if(!venue){
    db.prepare('INSERT INTO venues(id,name,address,city,created_at) VALUES(?,?,?,?,?)').run(venueId,e.venue,e.address,e.city,Date.now());
    venue={id:venueId};venuesAdded++;
