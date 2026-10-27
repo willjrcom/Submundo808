@@ -1,5 +1,5 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,X,QrCode,Share2} from 'lucide-react';
+import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2} from 'lucide-react';
 import SocialAvatar from './social-avatar';
 
 type Person={id:string;name:string;avatar?:string};
@@ -15,6 +15,7 @@ export default function FriendGroups(){
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]);
  const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
+ const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
@@ -43,7 +44,7 @@ export default function FriendGroups(){
  async function invite(){
   if(!selected)return;
   setBusy(true);setError('');
-  try{const j=await groupApi('/invite',{id:selected.id});setInviteLink(window.location.origin+'/friends?group_invite='+j.token);setQrOpen(false);}
+  try{const j=await groupApi('/invite',{id:selected.id});setInviteLink(window.location.origin+'/groups?group_invite='+j.token);setQrOpen(false);}
   catch(e){showError(e);}finally{setBusy(false);}
  }
  async function copy(){
@@ -55,12 +56,17 @@ export default function FriendGroups(){
   if(navigator.share){try{await navigator.share({title:'Entre no meu grupo Submundo808',url:inviteLink});}catch{}}
   else await copy();
  }
- async function leave(){
-  if(!selected)return;
-  if(!window.confirm('Sair de '+selected.name+'? Se você é o administrador, outro integrante assumirá o grupo.'))return;
+ function openDialog(kind:'leave'|'delete'){setError('');setConfirmation('');setSuccessorId('');setDialog(kind);}
+ async function confirmDialog(){
+  if(!selected||!dialog)return;
+  const last=selected.memberCount===1;
+  if(dialog==='leave'&&selected.role==='owner'&&!last&&!successorId){setError('Selecione o próximo administrador.');return;}
+  if((dialog==='delete'||last)&&confirmation!=='EXCLUIR'){setError('Digite EXCLUIR para confirmar.');return;}
   setBusy(true);setError('');
-  try{await groupApi('/leave',{id:selected.id});setSelected(null);await load();setStatus('Você saiu do grupo.');}
-  catch(e){showError(e);}finally{setBusy(false);}
+  try{
+   const result=await groupApi(dialog==='delete'?'/delete':'/leave',{id:selected.id,successorId,confirmation});
+   setDialog(null);setSelected(null);setInviteLink('');await load();setStatus(result.deleted?'Grupo excluído.':'Você saiu do grupo.');
+  }catch(e){showError(e);}finally{setBusy(false);}
  }
  async function remove(id:string,name:string){
   if(!selected||!window.confirm('Remover '+name+' do grupo?'))return;
@@ -70,25 +76,41 @@ export default function FriendGroups(){
  }
  const button='w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40';
  if(selected)return <div className="space-y-5">
-  <div className="flex items-center justify-between"><button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button><button disabled={busy} onClick={()=>void leave()} className="inline-flex items-center gap-1 text-xs text-white/50"><LogOut size={15}/> Sair</button></div>
+  <button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>
   <div className="space-y-3 text-center">
    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl" style={{backgroundColor:selected.color}}><Users size={31} className="text-white"/></div>
    <h3 className="text-xl font-black">{selected.name}</h3>
    <p className="text-sm text-white/55">{selected.description||'Seu grupo de amigos'} · {selected.memberCount} {selected.memberCount===1?'integrante':'integrantes'}</p>
    <div className="flex justify-center -space-x-2">{selected.avatars.map(p=><SocialAvatar key={p.id} name={p.name} avatar={p.avatar} size="sm" className="ring-2 ring-[#0e0b14]"/>)}</div>
   </div>
-  <button disabled={busy} onClick={()=>void invite()} className={button}><UserPlus className="mr-2 inline" size={18}/> Convidar pessoas</button>
-  {inviteLink&&<div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
-   <p className="text-xs text-white/65">Qualquer pessoa com este convite pode solicitar entrada no grupo. Ao entrar, ela não começa a compartilhar localização automaticamente.</p>
-   <label className="block text-xs font-bold text-white/65">Link do grupo<input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="mt-2 w-full rounded-xl border border-white/20 bg-[#100b16] p-3 text-xs text-white"/></label>
-   <div className="grid grid-cols-3 gap-2"><button onClick={()=>void copy()} className="rounded-xl border border-white/20 p-3 text-xs"><Copy size={16} className="mx-auto mb-1"/>Copiar</button><button onClick={()=>void share()} className="rounded-xl border border-white/20 p-3 text-xs"><Share2 size={16} className="mx-auto mb-1"/>Enviar</button><button onClick={()=>setQrOpen(v=>!v)} className="rounded-xl border border-white/20 p-3 text-xs"><QrCode size={16} className="mx-auto mb-1"/>QR Code</button></div>
-   {qrOpen&&<div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code de convite para o grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div>}
-  </div>}
+  <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
+   <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-bold">Convide sua galera</h4><p className="mt-1 text-xs text-white/50">Link ou QR Code do grupo</p></div><button disabled={busy} onClick={()=>void invite()} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-black text-black"><UserPlus className="mr-1 inline" size={16}/> Convidar</button></div>
+   {inviteLink&&<div className="space-y-3 border-t border-white/10 pt-3">
+    <div className="flex items-center gap-2"><input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#100b16] px-3 py-2.5 text-xs text-white"/><button aria-label="Copiar link" title="Copiar link" onClick={()=>void copy()} className="rounded-lg border border-white/20 p-2.5"><Copy size={18}/></button><button aria-label="Compartilhar convite" title="Compartilhar" onClick={()=>void share()} className="rounded-lg border border-white/20 p-2.5"><Share2 size={18}/></button><button aria-label="Mostrar QR Code" aria-expanded={qrOpen} title="QR Code" onClick={()=>setQrOpen(v=>!v)} className={'rounded-lg border p-2.5 '+(qrOpen?'border-[#c4ff40] text-[#c4ff40]':'border-white/20')}><QrCode size={18}/></button></div>
+    {qrOpen&&<div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code para entrar no grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div>}
+    <p className="text-[11px] text-white/45">Entrar no grupo não ativa o compartilhamento de localização.</p>
+   </div>}
+  </div>
   <div><h4 className="mb-3 text-sm font-black uppercase">Membros</h4><div className="space-y-2">{selected.members.map(p=><div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
    <SocialAvatar name={p.name} avatar={p.avatar}/>
    <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{p.name}</p><p className="text-xs text-white/45">{p.role==='owner'?'Administrador':'Integrante'}</p></div>
    {selected.role==='owner'&&p.role!=='owner'&&<button aria-label={'Remover '+p.name} disabled={busy} onClick={()=>void remove(p.id,p.name)} className="p-2 text-white/50"><X size={16}/></button>}
   </div>)}</div></div>
+  <div className="space-y-3 border-t border-white/10 pt-5">
+   <h4 className="text-xs font-black uppercase tracking-widest text-white/45">Gerenciar participação</h4>
+   <button disabled={busy} onClick={()=>openDialog('leave')} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold"><LogOut size={17}/> Sair do grupo</button>
+   {selected.role==='owner'&&<button disabled={busy} onClick={()=>openDialog('delete')} className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 px-4 py-3 text-sm font-semibold text-red-300"><Trash2 size={17}/> Excluir grupo</button>}
+  </div>
+  {dialog&&<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={dialog==='delete'?'Excluir grupo':'Sair do grupo'}>
+   <div className="w-full max-w-md space-y-4 rounded-2xl border border-white/20 bg-[#211729] p-5 shadow-2xl">
+    <h3 className="text-lg font-black">{dialog==='delete'?'Excluir grupo?':'Sair de '+selected.name+'?'}</h3>
+    <p className="text-sm text-white/65">{dialog==='delete'?'Todos os integrantes perderão acesso ao grupo. Esta ação não pode ser desfeita.':selected.memberCount===1?'Você é o último integrante. Ao sair, o grupo será excluído.':'Sua participação será encerrada.'}</p>
+    {dialog==='leave'&&selected.role==='owner'&&selected.memberCount>1&&<label className="block text-sm font-semibold">Escolha o próximo administrador<select value={successorId} onChange={e=>setSuccessorId(e.target.value)} className="mt-2 w-full rounded-xl border border-white/20 bg-[#302238] p-3 text-white"><option value="">Selecione um integrante</option>{selected.members.filter(p=>p.role!=='owner').map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {(dialog==='delete'||selected.memberCount===1)&&<label className="block text-sm font-semibold">Digite <strong>EXCLUIR</strong> para confirmar<input autoComplete="off" value={confirmation} onChange={e=>setConfirmation(e.target.value)} placeholder="EXCLUIR" className="mt-2 w-full rounded-xl border border-white/20 bg-[#302238] p-3 text-base text-white"/></label>}
+    {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
+    <div className="flex gap-3"><button disabled={busy} onClick={()=>{setDialog(null);setError('');}} className="flex-1 rounded-xl border border-white/20 p-3 text-sm font-semibold">Cancelar</button><button disabled={busy||(dialog==='leave'&&selected.role==='owner'&&selected.memberCount>1&&!successorId)||((dialog==='delete'||selected.memberCount===1)&&confirmation!=='EXCLUIR')} onClick={()=>void confirmDialog()} className="flex-1 rounded-xl bg-red-500 p-3 text-sm font-black text-white disabled:opacity-40">{busy?'Aguarde...':dialog==='delete'||selected.memberCount===1?'Excluir':'Confirmar saída'}</button></div>
+   </div>
+  </div>}
   <p className="text-xs text-white/45">Os grupos são permanentes. A localização depende da autorização de cada integrante e da habilitação do evento.</p>
   {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}{status&&<p role="status" className="text-xs text-[#c4ff40]">{status}</p>}
  </div>;
