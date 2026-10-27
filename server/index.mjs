@@ -29,6 +29,33 @@ CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash 
 CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
 for(const [column,def] of [['phone',"TEXT NOT NULL DEFAULT ''"],['instagram',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===column))db.exec('ALTER TABLE users ADD COLUMN '+column+' '+def);}
 db.exec('CREATE TABLE IF NOT EXISTS admin_users(user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
+db.exec(`CREATE TABLE IF NOT EXISTS event_participants (
+ event_id TEXT NOT NULL,
+ user_id TEXT NOT NULL,
+ first_selected_at INTEGER NOT NULL,
+ last_selected_at INTEGER NOT NULL,
+ PRIMARY KEY(event_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_participants_event ON event_participants(event_id,last_selected_at);
+CREATE TABLE IF NOT EXISTS event_reviews (
+ event_id TEXT NOT NULL,user_id TEXT NOT NULL,rating INTEGER NOT NULL,
+ tags_json TEXT NOT NULL DEFAULT '[]',comment TEXT NOT NULL DEFAULT '',
+ created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,
+ PRIMARY KEY(event_id,user_id)
+);
+CREATE TABLE IF NOT EXISTS notifications (
+ id TEXT PRIMARY KEY,event_id TEXT,title TEXT NOT NULL,body TEXT NOT NULL,
+ kind TEXT NOT NULL DEFAULT 'info',target_kind TEXT NOT NULL DEFAULT 'event',
+ target_id TEXT NOT NULL DEFAULT '',audience TEXT NOT NULL DEFAULT 'event',
+ status TEXT NOT NULL DEFAULT 'draft',scheduled_at INTEGER,
+ created_by TEXT NOT NULL,created_at INTEGER NOT NULL,sent_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS notification_receipts (
+ notification_id TEXT NOT NULL,user_id TEXT NOT NULL,read_at INTEGER,
+ PRIMARY KEY(notification_id,user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_receipts_user ON notification_receipts(user_id,read_at);`);
+
 db.exec(`CREATE TABLE IF NOT EXISTS venues(id TEXT PRIMARY KEY,name TEXT NOT NULL,address TEXT DEFAULT '',city TEXT DEFAULT '',created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS venue_maps(id TEXT PRIMARY KEY,venue_id TEXT NOT NULL,name TEXT NOT NULL,created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS map_areas(id TEXT PRIMARY KEY,map_id TEXT NOT NULL,name TEXT NOT NULL,kind TEXT NOT NULL,x REAL NOT NULL,y REAL NOT NULL,width REAL NOT NULL,height REAL NOT NULL,gps_json TEXT DEFAULT '{}');
@@ -255,6 +282,50 @@ http.createServer(async (req,res)=>{
         const now=Date.now();expireLocationShares(db,now);
         const rows=db.prepare('SELECT u.id,u.name,l.lat,l.lng,l.accuracy,l.updated_at AS updatedAt FROM friendships f JOIN users u ON u.id=CASE WHEN f.user_a=? THEN f.user_b ELSE f.user_a END JOIN live_locations l ON l.user_id=u.id JOIN location_preferences p ON p.user_id=u.id WHERE (f.user_a=? OR f.user_b=?) AND l.updated_at>? AND p.share_enabled=1 AND p.share_expires_at>? AND p.share_event_id=? ORDER BY u.name').all(user.id,user.id,user.id,now-LOCATION_FRESH_MS,now,eventId);
         return json(res,200,{friends:rows});
+      }
+      // O evento selecionado pelo usuário autenticado fica registrado no servidor.
+      // Esse registro não comprova presença física, compra de ingresso ou autorização push.
+      if(url.pathname==='/api/events/participation'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Faça login para vincular este evento.'});
+        const b=await body(req),id=String(b.eventId||'');
+        if(!id||!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento indisponível.'});
+        const now=Date.now();
+        db.prepare('INSERT INTO event_participants(event_id,user_id,first_selected_at,last_selected_at) VALUES(?,?,?,?) ON CONFLICT(event_id,user_id) DO UPDATE SET last_selected_at=excluded.last_selected_at').run(id,user.id,now,now);
+        return json(res,200,{ok:true,eventId:id});
+      }
+      if(url.pathname==='/api/events/participation'&&req.method==='GET'){
+        const user=getUser(req);if(!user)return json(res,200,{items:[]});
+        return json(res,200,{items:db.prepare('SELECT ep.event_id AS eventId,e.name AS eventName,ep.first_selected_at AS firstSelectedAt,ep.last_selected_at AS lastSelectedAt FROM event_participants ep JOIN events e ON e.id=ep.event_id WHERE ep.user_id=? ORDER BY ep.last_selected_at DESC').all(user.id)});
+      }
+      if(url.pathname==='/api/notifications'&&req.method==='GET'){
+        const user=getUser(req);if(!user)return json(res,200,{items:[],unread:0});
+        const items=db.prepare(`SELECT n.id,n.event_id AS eventId,n.title,n.body,n.kind,n.target_kind AS targetKind,n.target_id AS targetId,n.sent_at AS sentAt,r.read_at AS readAt FROM notification_receipts r JOIN notifications n ON n.id=r.notification_id WHERE r.user_id=? AND n.status='sent' ORDER BY n.sent_at DESC LIMIT 100`).all(user.id);
+        return json(res,200,{items,unread:items.filter(x=>!x.readAt).length});
+      }
+      if(url.pathname==='/api/notifications/read'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
+        const b=await body(req);
+        db.prepare('UPDATE notification_receipts SET read_at=? WHERE notification_id=? AND user_id=? AND read_at IS NULL').run(Date.now(),String(b.id||''),user.id);
+        return json(res,200,{ok:true});
+      }
+      if(url.pathname==='/api/reviews'&&req.method==='GET'){
+        const user=getUser(req);if(!user)return json(res,200,{items:[]});
+        const items=db.prepare('SELECT r.event_id AS eventId,e.name AS eventName,r.rating,r.tags_json AS tagsJson,r.comment,r.updated_at AS updatedAt FROM event_reviews r JOIN events e ON e.id=r.event_id WHERE r.user_id=? ORDER BY r.updated_at DESC').all(user.id);
+        return json(res,200,{items:items.map(x=>({...x,tags:JSON.parse(x.tagsJson),tagsJson:undefined}))});
+      }
+      if(url.pathname==='/api/reviews'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
+        const b=await body(req),eventId=String(b.eventId||'');
+        const event=db.prepare('SELECT ends_at FROM events WHERE id=? AND is_published=1').get(eventId);
+        if(!event)return json(res,404,{error:'Evento não encontrado.'});
+        const ends=Date.parse(event.ends_at);
+        if(!Number.isFinite(ends)||Date.now()<ends||Date.now()>ends+7*86400000)return json(res,409,{error:'Avaliação disponível somente durante os sete dias após o término do evento.'});
+        if(!db.prepare('SELECT 1 FROM event_participants WHERE event_id=? AND user_id=?').get(eventId,user.id))return json(res,403,{error:'Selecione o evento para poder avaliá-lo.'});
+        const rating=Number(b.rating),tags=b.tags,comment=String(b.comment||'').trim();
+        if(!Number.isInteger(rating)||rating<1||rating>5||!Array.isArray(tags)||tags.length>15||tags.some(x=>typeof x!=='string'||x.length>60)||comment.length>2000)return json(res,400,{error:'Avaliação inválida.'});
+        const now=Date.now();
+        db.prepare('INSERT INTO event_reviews(event_id,user_id,rating,tags_json,comment,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(event_id,user_id) DO UPDATE SET rating=excluded.rating,tags_json=excluded.tags_json,comment=excluded.comment,updated_at=excluded.updated_at').run(eventId,user.id,rating,JSON.stringify(tags),comment,now,now);
+        return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
       if(url.pathname==='/api/public/branding'&&req.method==='GET')return json(res,200,{logo:db.prepare('SELECT logo_data,accent_color FROM app_branding WHERE id=1').get()?.logo_data||'',color:db.prepare('SELECT accent_color FROM app_branding WHERE id=1').get()?.accent_color||'#c4ff40'});
