@@ -42,7 +42,7 @@ function Tag({ children }: { children: React.ReactNode }) { return <span classNa
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
 function tabFromUrl():Tab {
   const params=new URLSearchParams(window.location.search);
-  if(params.has('invite'))return 'amigos';
+  if(params.has('invite')||params.has('group_invite'))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
   if(segment==='programacao'||segment==='schedule')return 'inicio';
   const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
@@ -109,7 +109,7 @@ function ParticipantApp() {
   // O componente só é montado depois de o usuário abrir o Mapa pela primeira vez.
   const [mapMounted,setMapMounted]=useState(()=>tabFromUrl()==='mapa');
   useEffect(()=>{if(tab==='mapa')setMapMounted(true);},[tab]);
-  const navigate=(next:Tab,targetEventId=activeEventId)=>{setRoutePath(next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next]);const url=new URL(window.location.href);url.pathname=next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
+  const navigate=(next:Tab,targetEventId=activeEventId)=>{setRoutePath(next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next]);const url=new URL(window.location.href);url.pathname=next==='inicio'?(targetEventId?eventProgramPath(targetEventId):'/'):'/'+({mapa:'map',cardapio:'menu',amigos:'friends',perfil:'profile'} as Record<string,string>)[next];url.searchParams.delete('invite');url.searchParams.delete('group_invite');window.history.pushState({tab:next},'',url.pathname+url.search+url.hash);if(next==='mapa')setMapMounted(true);setTab(next);window.dispatchEvent(new Event('submundo-navigation'));setNotice('');window.scrollTo(0,0);};
   useEffect(()=>{const onPop=()=>{
     setRoutePath(window.location.pathname);
     const next=tabFromUrl();
@@ -150,7 +150,7 @@ function ParticipantApp() {
        </ErrorBoundary>}
       </main>
     </div>
-    {inboxOpen&&<NotificationCenter onClose={()=>setInboxOpen(false)} onNavigate={(kind,eventId,pointId)=>{setInboxOpen(false);if(eventId)selectEvent(eventId);const next:Tab=kind==='menu'?'cardapio':kind==='map'||kind==='point'?'mapa':'inicio';if(kind==='point'&&pointId){setFocusRequest(previous=>({pointId,eventId:eventId||getActiveEventId(),requestId:(previous?.requestId||0)+1}));}else setFocusRequest(null);navigate(next,eventId||activeEventId);}}/>}
+    {inboxOpen&&<NotificationCenter onClose={()=>setInboxOpen(false)} onNavigate={(kind,eventId,pointId)=>{setInboxOpen(false);if(eventId)selectEvent(eventId);const next:Tab=kind==='friends'||kind==='friend_request'?'amigos':kind==='menu'?'cardapio':kind==='map'||kind==='point'?'mapa':'inicio';if(kind==='point'&&pointId){setFocusRequest(previous=>({pointId,eventId:eventId||getActiveEventId(),requestId:(previous?.requestId||0)+1}));}else setFocusRequest(null);navigate(next,eventId||activeEventId);}}/>}
     {notice && <div role="status" className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 rounded-xl border border-[#c4ff40]/40 bg-[#211a29] px-4 py-3 text-sm shadow-xl"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={18}/></button></div></div>}
     <nav aria-label="Navegação principal" className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#100c15]/95 backdrop-blur-xl"><div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr">{tabs.map(({id,title,Icon}) => <button key={id} onClick={() => navigate(id)} aria-current={tab === id ? 'page' : undefined} className={`flex min-h-[69px] flex-col items-center justify-center gap-1 text-[10px] font-bold ${tab === id ? 'text-[#c4ff40]' : 'text-white/45'}`}><Icon size={21} strokeWidth={tab === id ? 2.6 : 1.8}/>{title}</button>)}</div></nav>
   </div>;
