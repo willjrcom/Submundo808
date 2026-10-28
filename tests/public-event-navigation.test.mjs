@@ -153,3 +153,20 @@ test('remover e alterar administrador exigem confirmação visual no app, sem al
  assert.match(groups,/await remove\(member\.id,member\.name\)/);
  assert.match(groups,/await changeRole\(member\.id,member\.name,pendingMemberOperation\)/);
 });
+
+
+test('remoção de amizade usa modal interno com confirmação explícita, sem window.confirm',()=>{
+ const friends=readFileSync(new URL('components/friends.tsx',root),'utf8');
+ assert.doesNotMatch(friends,/window\.confirm\(/);
+ assert.match(friends,/const \[friendToRemove,setFriendToRemove\]=useState/);
+ assert.match(friends,/setFriendToRemove\(f\)/);
+ assert.match(friends,/friendToRemove&&<div role="presentation"/);
+ assert.match(friends,/role="dialog" aria-modal="true" aria-label=\{'Confirmar remoção de '\+friendToRemove\.name\}/);
+ assert.match(friends,/Remover amigo\?/);
+ assert.match(friends,/onClick=\{\(\)=>void confirmRemoveFriend\(\)\}/);
+ assert.match(friends,/onClick=\{\(\)=>\{setFriendToRemove\(null\);setRemoveError\(''\);\}\}/);
+ assert.match(friends,/await api\('\/remove',\{id:person\.id\}\)/);
+ assert.match(friends,/setFriendToRemove\(null\)/);
+ assert.match(friends,/removeError&&<p role="alert"/);
+ assert.match(friends,/disabled=\{busy\}/);
+});
