@@ -1,5 +1,3 @@
-import {DEMO_EVENT_NAME} from './demo-seed.mjs';
-import {SHOWCASE_EVENTS} from './demo-showcase.mjs';
 import {ensureRealTourDemoAssets} from './real-tour-assets.mjs';
 // Agenda oficial consultada em 27/10/2026: https://meaple.com.br/808
 // Snapshot intencional: sem scraping em runtime nem horários de DJs inventados.
@@ -232,30 +230,9 @@ function followingDay(date){
  d.setUTCDate(d.getUTCDate()+1);
  return d.toISOString().slice(0,10);
 }
-// Remove da agenda pública somente registros fictícios intactos da antiga POC.
-// Não exclui eventos, locais, mapas nem registros personalizados e não repete
-// a arquivação caso o administrador republique algo posteriormente.
-function archiveUnmodifiedLegacyEvents(db){
- db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
- const key='real_tour_v1_archived_legacy_examples';
- if(db.prepare('SELECT 1 FROM app_settings WHERE key=?').get(key))return 0;
- let archived=0;
- const legacyId=db.prepare('SELECT value FROM app_settings WHERE key=?').get('default_demo_event_id')?.value;
- if(legacyId){
-  const r=db.prepare("UPDATE events SET is_published=0 WHERE id=? AND name=? AND tickets_url='' AND is_published=1").run(legacyId,DEMO_EVENT_NAME);
-  archived+=r.changes||0;
- }
- for(const example of SHOWCASE_EVENTS){
-  const r=db.prepare("UPDATE events SET is_published=0 WHERE id=? AND name=? AND tickets_url='' AND is_published=1").run('poc-v2-event-'+example.slug,example.name);
-  archived+=r.changes||0;
- }
- db.prepare('INSERT OR IGNORE INTO app_settings(key,value) VALUES(?,?)').run(key,'1');
- return archived;
-}
-export function ensureRealTourDemo(db){
- const legacyArchived=archiveUnmodifiedLegacyEvents(db);
+export function ensureRealTourDemo(db,{inTransaction=false}={}){
  let venuesAdded=0,eventsAdded=0,eventsExisting=0,mapsAdded=0,productsLinked=0,assetsSkipped=0;
- db.exec('BEGIN');
+ if(!inTransaction)db.exec('BEGIN');
  try{
  for(const e of REAL_808_TOUR){
   const venueId='meaple-808-venue-'+e.id;
@@ -296,7 +273,7 @@ export function ensureRealTourDemo(db){
   mapsAdded+=assets.mapsAdded;productsLinked+=assets.productsLinked;
   eventsAdded++;
  }
- db.exec('COMMIT');
- }catch(error){db.exec('ROLLBACK');throw error;}
- return {eventsAdded,eventsExisting,venuesAdded,mapsAdded,productsLinked,assetsSkipped,legacyArchived,total:REAL_808_TOUR.length};
+ if(!inTransaction)db.exec('COMMIT');
+ }catch(error){if(!inTransaction)db.exec('ROLLBACK');throw error;}
+ return {eventsAdded,eventsExisting,venuesAdded,mapsAdded,productsLinked,assetsSkipped,total:REAL_808_TOUR.length};
 }
