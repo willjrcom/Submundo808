@@ -124,11 +124,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
  useEffect(()=>{
   const onKeyboard=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'&&pendingDiscardAction){event.preventDefault();event.stopPropagation();if(!loading&&!saving)setPendingDiscardAction(null);return;}
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
     event.preventDefault();event.stopPropagation();setCalibrationOpen(false);return;
    }
-   if(pendingDelete)return;
+   if(pendingDelete||pendingDiscardAction)return;
    if(!(event.ctrlKey||event.metaKey)||event.altKey||drag.current)return;
    const target=event.target as HTMLElement|null;
    if(target?.closest('input,textarea,select,[contenteditable="true"]'))return;
@@ -140,7 +141,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[calibrationOpen,pendingDelete,history,future,areas,markers,frame]);
+ },[calibrationOpen,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
