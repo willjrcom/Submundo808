@@ -74,13 +74,20 @@ test('convite abre direto o CTA de entrada e lista de participantes sob demanda'
  assert.match(groups,/Ver participantes/);
  assert.match(social,/includeMembers=url\.searchParams\.get\('members'\)==='1'/);
 });
-test('barra inferior compensa espaço nativo do navegador iOS sem subir os ícones do PWA',()=>{
+test('barra inferior usa a viewport visível do iOS sem compensação fixa de 28px',()=>{
  const css=readFileSync(new URL('index.css',root),'utf8');
+ const position=readFileSync(new URL('components/visual-viewport-nav.ts',root),'utf8');
  assert.match(app,/submundo-bottom-nav fixed/);
- assert.match(css,/@media \(display-mode: browser\)/);
- assert.match(css,/--submundo-browser-bleed:/);
- assert.match(css,/bottom: calc\(0px - var\(--submundo-browser-bleed\)\)/);
- assert.match(css,/padding-bottom: calc\(var\(--submundo-bottom-inset\) \+ var\(--submundo-browser-bleed\)\)/);
+ assert.match(app,/attachVisualViewportNavigation\(window,document\.documentElement\)/);
+ assert.match(css,/bottom: var\(--submundo-visual-bottom-gap\)/);
+ assert.match(css,/padding-bottom: calc\(6\.5rem \+ var\(--submundo-bottom-inset\) \+ var\(--submundo-visual-bottom-gap\)\)/);
+ assert.doesNotMatch(css,/submundo-browser-bleed/);
+ assert.match(position,/visualViewport/);
+ assert.match(position,/getVisualBottomGap\(win\.innerHeight,viewport\.offsetTop,viewport\.height\)/);
+ assert.match(position,/viewport\.addEventListener\('resize',schedule/);
+ assert.match(position,/viewport\.addEventListener\('scroll',schedule/);
+ assert.match(position,/win\.requestAnimationFrame\(measure\)/);
+ assert.match(position,/root\.style\.removeProperty\('--submundo-visual-bottom-gap'\)/);
 });
 
 
@@ -113,4 +120,18 @@ test('evento sem atrações exibe Line-up em breve e não exibe horas inventadas
 test('mapa e cardápio demonstrativos são sinalizados para o público',()=>{
  assert.match(map,/Mapa demonstrativo — não representa a planta real/);
  assert.match(menu,/Cardápio demonstrativo: itens, preços e disponibilidade são fictícios/);
+});
+
+test('cards de membros mostram só a relação de amizade e delegam ações ao modal',()=>{
+ const groups=readFileSync(new URL('components/friend-groups.tsx',root),'utf8');
+ const section=groups.split('aria-label={"').length;
+ assert.match(groups,/aria-label=\{'Ver detalhes de '\+p\.name\}/);
+ assert.match(groups,/setMemberActionsId\(p\.id\)/);
+ assert.match(groups,/memberActions&&<div className="fixed inset-0/);
+ assert.match(groups,/aria-label=\{'Detalhes de '\+memberActions\.name\}/);
+ assert.match(groups,/memberActions\.role==='member'&&<button/);
+ assert.match(groups,/onClick=\{\(\)=>void changeRole\(memberActions\.id,memberActions\.name,'admin'\)\}/);
+ assert.match(groups,/onClick=\{\(\)=>void remove\(memberActions\.id,memberActions\.name\)\}/);
+ assert.doesNotMatch(groups,/onClick=\{\(\)=>void changeRole\(p\.id,p\.name/);
+ assert.doesNotMatch(groups,/onClick=\{\(\)=>void remove\(p\.id,p\.name\)\}/);
 });
