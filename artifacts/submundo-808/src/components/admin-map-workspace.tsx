@@ -60,6 +60,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
  const gpsWatch=useRef<number|null>(null),walkActive=useRef(false);
  const [pendingDelete,setPendingDelete]=useState<{id:string;name:string;kind:'area'|'marker'}|null>(null);
+ const [pendingDiscardAction,setPendingDiscardAction]=useState<'discard'|'leave'|null>(null);
  const calibrationArea=areas.find(a=>(['tl','tr','br','bl'] as const).some(k=>a.gps?.[k]))||areas[0];
  const calibrationKeys=['tl','tr','bl','br'] as const;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
@@ -277,16 +278,26 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   },e=>{setError('Não foi possível calibrar: '+e.message);setCalibrationBusy(false);},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
  }
  async function discard(){
-  if(!window.confirm('Descartar alterações não salvas?'))return;
   setLoading(true);setError('');
   try{
    const [a,m,maps]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]);
    setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));setFrameEditing(false);
    setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
-  }catch(e){setError(String(e));}finally{setLoading(false);}
+   setPendingDiscardAction(null);
+  }catch(e){setError(e instanceof Error?e.message:'Não foi possível recuperar a última versão salva do mapa.');}finally{setLoading(false);}
  }
- function back(){if(dirty&&!window.confirm('Há alterações não salvas. Sair e descartar essas alterações?'))return;onBack();}
+ function requestDiscard(){if(dirty&&!saving)setPendingDiscardAction('discard');}
+ function back(){
+  if(saving)return;
+  if(dirty){setPendingDiscardAction('leave');return;}
+  onBack();
+ }
+ async function confirmDiscardAction(){
+  if(!pendingDiscardAction||saving||loading)return;
+  if(pendingDiscardAction==='leave'){setPendingDiscardAction(null);onBack();return;}
+  await discard();
+ }
  function activateResize(){
   if(!active)return;setFrameEditing(false);if(editing&&resizeId===active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(active.id);}
  }
@@ -299,7 +310,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <button onClick={back} className="flex items-center gap-2 text-sm text-white/60 hover:text-white"><ArrowLeft size={16}/> Voltar aos mapas</button>
   <div className="flex flex-wrap items-center justify-between gap-3">
    <div><p className="text-xs uppercase tracking-widest text-[#c4ff40]">Editor do mapa</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">{displayLabel(mapName)}</h2><p className="mt-1 text-xs text-white/50">{dirty?'● Alterações não salvas':'Mapa salvo'} · {editing?'Modo edição ativo':'Modo de visualização'} · Área externa disponível para organizar</p></div>
-   <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={()=>void discard()} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
+   <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={requestDiscard} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
   </div>
   <div className="rounded-xl border border-white/10 bg-white/[.035]">
   <div className="flex flex-wrap items-center gap-2 p-2">
@@ -442,6 +453,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
    </aside>
   </div>
+  {pendingDiscardAction&&<div role="presentation" onMouseDown={event=>{if(!loading&&!saving&&event.target===event.currentTarget)setPendingDiscardAction(null);}} className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 p-4">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-discard-title" aria-describedby="confirm-discard-description" className="w-full max-w-md rounded-2xl border border-white/20 bg-[#211729] p-5 shadow-2xl sm:p-6">
+     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-amber-400/35 bg-amber-400/10 text-amber-200"><Undo2 size={23}/></div>
+     <h3 id="confirm-discard-title" className="text-xl font-black">{pendingDiscardAction==='leave'?'Sair sem salvar o mapa?':'Descartar alterações do mapa?'}</h3>
+     <p id="confirm-discard-description" className="mt-3 text-sm leading-relaxed text-white/70">{pendingDiscardAction==='leave'?'Você fez alterações no mapa que ainda não foram salvas. Ao sair, elas serão perdidas.':'O mapa voltará à última versão salva. Ambientes, pontos e posições ainda não salvos serão perdidos.'}</p>
+     {error&&<p role="alert" className="mt-3 rounded-xl border border-red-400/35 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}
+     <div className="mt-6 grid grid-cols-2 gap-3">
+      <button type="button" autoFocus disabled={saving||loading} onClick={()=>{setPendingDiscardAction(null);setError('');}} className="rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold disabled:opacity-40">Continuar editando</button>
+      <button type="button" disabled={saving||loading} onClick={()=>void confirmDiscardAction()} className="rounded-xl bg-amber-500 px-3 py-3 text-sm font-black text-black disabled:opacity-40">{loading?'Aguarde...':pendingDiscardAction==='leave'?'Sair sem salvar':'Descartar alterações'}</button>
+     </div>
+    </div>
+   </div>}
   {pendingDelete&&<div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPendingDelete(null);}} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4">
     <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-remove-title" aria-describedby="confirm-remove-description" className="w-full max-w-md rounded-2xl border border-white/15 bg-[#191320] p-5 shadow-2xl sm:p-6">
      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-red-400/30 bg-red-400/10 text-red-300"><Trash2 size={22}/></div>
