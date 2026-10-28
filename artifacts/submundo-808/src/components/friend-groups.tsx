@@ -196,7 +196,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
      {memberActions.relation==='self'&&selected.role!=='owner'&&<p className="text-xs text-white/45">Para gerenciar sua participação, use a opção Sair do grupo.</p>}
     </div>
    </div>
-  </div>
+  </div>}
   {friendPickerOpen&&<div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Convidar amigos para o grupo"><div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl border border-white/20 bg-[#211729]"><div className="flex items-center justify-between border-b border-white/10 p-4"><h3 className="font-black">Adicionar amigos ao grupo</h3><button type="button" aria-label="Fechar" onClick={()=>setFriendPickerOpen(false)}><X/></button></div><div className="min-h-0 flex-1 overflow-y-auto p-4">{friendSelect(true)}</div><div className="border-t border-white/10 p-4"><button type="button" disabled={busy||!pickedFriends.length} onClick={()=>void sendFriendInvites()} className={button}>{busy?'Enviando...':'Enviar '+pickedFriends.length+' convite(s)'}</button></div></div></div>}
   <div className="space-y-3 border-t border-white/10 pt-5">
    <h4 className="text-xs font-black uppercase tracking-widest text-white/45">Gerenciar participação</h4>
