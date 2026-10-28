@@ -122,16 +122,34 @@ test('mapa e cardápio demonstrativos são sinalizados para o público',()=>{
  assert.match(menu,/Cardápio demonstrativo: itens, preços e disponibilidade são fictícios/);
 });
 
-test('cards de membros mostram só a relação de amizade e delegam ações ao modal',()=>{
+test('cards de membros exibem apenas amizade e abrem ações secundárias',()=>{
  const groups=readFileSync(new URL('components/friend-groups.tsx',root),'utf8');
- const section=groups.split('aria-label={"').length;
  assert.match(groups,/aria-label=\{'Ver detalhes de '\+p\.name\}/);
  assert.match(groups,/setMemberActionsId\(p\.id\)/);
  assert.match(groups,/memberActions&&<div className="fixed inset-0/);
- assert.match(groups,/aria-label=\{'Detalhes de '\+memberActions\.name\}/);
+ assert.match(groups,/Detalhes de '\+memberActions\.name/);
  assert.match(groups,/memberActions\.role==='member'&&<button/);
- assert.match(groups,/onClick=\{\(\)=>void changeRole\(memberActions\.id,memberActions\.name,'admin'\)\}/);
- assert.match(groups,/onClick=\{\(\)=>void remove\(memberActions\.id,memberActions\.name\)\}/);
+ assert.match(groups,/onClick=\{\(\)=>requestMemberOperation\('admin'\)\}/);
+ assert.match(groups,/onClick=\{\(\)=>requestMemberOperation\('member'\)\}/);
+ assert.match(groups,/onClick=\{\(\)=>requestMemberOperation\('remove'\)\}/);
  assert.doesNotMatch(groups,/onClick=\{\(\)=>void changeRole\(p\.id,p\.name/);
  assert.doesNotMatch(groups,/onClick=\{\(\)=>void remove\(p\.id,p\.name\)\}/);
+});
+test('remover e alterar administrador exigem confirmação visual no app, sem alerta nativo do iPhone',()=>{
+ const groups=readFileSync(new URL('components/friend-groups.tsx',root),'utf8');
+ assert.doesNotMatch(groups,/window\.confirm\(/);
+ assert.match(groups,/const \[pendingMemberOperation,setPendingMemberOperation\]=useState/);
+ assert.match(groups,/function requestMemberOperation\(operation:/);
+ assert.match(groups,/setPendingMemberOperation\(operation\)/);
+ assert.match(groups,/async function confirmMemberOperation\(\)/);
+ assert.match(groups,/role="dialog" aria-modal="true" aria-label=\{pendingMemberOperation/);
+ assert.match(groups,/Remover integrante\?/);
+ assert.match(groups,/Tornar administrador\?/);
+ assert.match(groups,/Remover função de administrador\?/);
+ assert.match(groups,/pendingMemberOperation==='remove'\?'Remover integrante'/);
+ assert.match(groups,/onClick=\{\(\)=>void confirmMemberOperation\(\)\}/);
+ assert.match(groups,/onClick=\{\(\)=>\{setPendingMemberOperation\(null\);setError\(''\);\}\}/);
+ assert.match(groups,/selected\.role!=='owner'/);
+ assert.match(groups,/await remove\(member\.id,member\.name\)/);
+ assert.match(groups,/await changeRole\(member\.id,member\.name,pendingMemberOperation\)/);
 });
