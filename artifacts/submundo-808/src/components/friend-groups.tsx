@@ -3,6 +3,7 @@ import {ArrowLeft,Copy,Link2,Plus,Users,UserPlus,LogOut,Trash2,X,QrCode,Share2,C
 import SocialAvatar from './social-avatar';
 import GroupAvatar from './group-avatar';
 import {optimizeAvatar} from './optimized-avatar';
+import GroupQrScanner from './group-qr-scanner';
 
 type Person={id:string;name:string;avatar?:string};
 type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string;photo?:string};
@@ -217,7 +218,12 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
     </form>:
     <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
      <h3 className="text-lg font-bold">Entrar em grupo</h3>
-     {!linkedInvite&&<><p className="text-xs text-white/55">Cole um link ou código de convite recebido.</p><input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);setPreview(null);setParticipantsOpen(false);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/></>}
+     {!linkedInvite&&<div className="space-y-3">
+      {!preview&&<GroupQrScanner onDetected={token=>{setError('');setJoinLink(token);setPreview(null);setParticipantsOpen(false);}} onError={setError}/>}
+      <div className="flex items-center gap-3 text-xs text-white/40"><span className="h-px flex-1 bg-white/15"/><span>OU COLE O LINK</span><span className="h-px flex-1 bg-white/15"/></div>
+      <p className="text-xs text-white/55">Use o QR Code ou cole um link ou código de convite recebido.</p>
+      <input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);setPreview(null);setParticipantsOpen(false);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/>
+     </div>}
      {previewLoading&&<p role="status" className="text-sm text-white/65">Carregando convite...</p>}
      {preview&&<div className="space-y-3 rounded-xl border border-white/15 p-4">
       <div className="flex items-center gap-3"><GroupAvatar name={preview.name} color={preview.color} icon={preview.icon} photo={preview.photo} size="sm"/><div className="min-w-0"><p className="font-bold">{preview.name}</p><p className="text-xs text-white/55">{preview.memberCount} {preview.memberCount===1?'integrante':'integrantes'}</p></div></div>
