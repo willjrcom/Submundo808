@@ -56,6 +56,21 @@ test('bloqueio é destacado em vermelho e não se confunde com autorização ver
  assert.match(permissions,/denied\?<button type="button" disabled=\{!!busy\} onClick=\{\(\)=>explainBlockedPermission\(key\)\}/);
  assert.match(permissions,/Como liberar/);
  assert.match(permissions,/ready\?<span aria-label=\{title\+' autorizada'\}/);
- assert.match(permissions,/warningMessage\?'border-rose-400\/40 bg-rose-400/);
+ assert.match(permissions,/denied\|\|warningMessage\?'border-rose-400\/55 bg-rose-500\/15/);
  assert.doesNotMatch(permissions,/status==='denied'\?'Ativar permissão'/);
+});
+
+test('mensagens de permissão ficam no próprio card, não no rodapé do modal',()=>{
+ assert.match(permissions,/const \[message,setMessage\]=useState\(''\),\[messageKey,setMessageKey\]/);
+ assert.match(permissions,/const setNotice=\(key:/);
+ assert.match(permissions,/setNotice\('location',denied\?/);
+ assert.match(permissions,/setNotice\('notifications','Notificações: '/);
+ assert.match(permissions,/setNotice\('camera','Câmera: '/);
+ assert.match(permissions,/setNotice\(key as 'location'\|'notifications'\|'camera'/);
+ assert.match(permissions,/messageKey===key&&message/);
+ assert.match(permissions,/\(denied\|\|\(messageKey===key&&message\)\)&&<div role=/);
+ assert.match(permissions,/text-rose-100/);
+ assert.match(permissions,/Acesso bloqueado\. Para liberar, toque em Como liberar/);
+ assert.match(permissions,/messageKey==='installation'&&message/);
+ assert.doesNotMatch(permissions,/\{message&&<p role=\{warningMessage/);
 });
