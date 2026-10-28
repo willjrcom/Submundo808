@@ -1,7 +1,9 @@
 import {DEMO_EVENT_NAME} from './demo-seed.mjs';
 import {SHOWCASE_EVENTS} from './demo-showcase.mjs';
+import {ensureRealTourDemoAssets} from './real-tour-assets.mjs';
 // Agenda oficial consultada em 27/10/2026: https://meaple.com.br/808
-// Snapshot intencional: sem scraping em runtime, sem inventar horários de DJs ou mapas.
+// Snapshot intencional: sem scraping em runtime nem horários de DJs inventados.
+// Os mapas e cardápios associados são DEMONSTRATIVOS, nunca plantas/preços oficiais.
 // AUTO_SEED_DEMO=true cria apenas os registros ausentes, preservando edições existentes.
 export const REAL_808_TOUR=[
   {
@@ -252,14 +254,29 @@ function archiveUnmodifiedLegacyEvents(db){
 }
 export function ensureRealTourDemo(db){
  const legacyArchived=archiveUnmodifiedLegacyEvents(db);
- let venuesAdded=0,eventsAdded=0,eventsExisting=0;
+ let venuesAdded=0,eventsAdded=0,eventsExisting=0,mapsAdded=0,productsLinked=0,assetsSkipped=0;
  db.exec('BEGIN');
  try{
  for(const e of REAL_808_TOUR){
   const venueId='meaple-808-venue-'+e.id;
   const eventId='meaple-808-event-'+e.id;
-  const existing=db.prepare('SELECT id FROM events WHERE id=? OR tickets_url=? LIMIT 1').get(eventId,e.url);
-  if(existing){eventsExisting++;continue;}
+  const existing=db.prepare('SELECT id,venue_id,lineup_json FROM events WHERE id=? OR tickets_url=? LIMIT 1').get(eventId,e.url);
+  if(existing){
+   eventsExisting++;
+   // Only provision our own seeded records. Do not alter manually entered
+   // events which happen to share the official Meaple URL.
+   if(existing.id===eventId){
+    const added=ensureRealTourDemoAssets(db,eventId,existing.venue_id);
+    mapsAdded+=added.mapsAdded;productsLinked+=added.productsLinked;if(!added.created)assetsSkipped++;
+    // Old snapshot without line-up can be completed if the real listing
+    // provided names, but never replace subsequent admin changes.
+    const oldLineup=JSON.parse(existing.lineup_json||'[]');
+    if(!oldLineup.length&&e.djs.length){
+     db.prepare('UPDATE events SET lineup_json=? WHERE id=? AND lineup_json IN (?,?)').run(JSON.stringify(e.djs.map(nome=>({nome}))),eventId,'[]','');
+    }
+   }
+   continue;
+  }
   let venue=db.prepare('SELECT id FROM venues WHERE id=? OR (lower(name)=lower(?) AND lower(city)=lower(?) AND lower(address)=lower(?)) LIMIT 1').get(venueId,e.venue,e.city,e.address);
   if(!venue){
    db.prepare('INSERT INTO venues(id,name,address,city,created_at) VALUES(?,?,?,?,?)').run(venueId,e.venue,e.address,e.city,Date.now());
@@ -275,9 +292,11 @@ export function ensureRealTourDemo(db){
   );
   // A URL pública não é o identificador interno da integração Meaple.
   db.prepare('UPDATE events SET doors_at=?,is_published=1,location_sharing_enabled=0 WHERE id=?').run(doors,eventId);
+  const assets=ensureRealTourDemoAssets(db,eventId,venue.id);
+  mapsAdded+=assets.mapsAdded;productsLinked+=assets.productsLinked;
   eventsAdded++;
  }
  db.exec('COMMIT');
  }catch(error){db.exec('ROLLBACK');throw error;}
- return {eventsAdded,eventsExisting,venuesAdded,legacyArchived,total:REAL_808_TOUR.length};
+ return {eventsAdded,eventsExisting,venuesAdded,mapsAdded,productsLinked,assetsSkipped,legacyArchived,total:REAL_808_TOUR.length};
 }
