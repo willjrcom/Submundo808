@@ -8,6 +8,7 @@ import NotFound from './pages/not-found';
 import {ErrorBoundary} from './components/error-boundary';
 import Friends from './components/friends';
 import NotificationCenter from './components/notification-center';
+import {attachVisualViewportNavigation} from './components/visual-viewport-nav';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
@@ -53,6 +54,7 @@ export default function App() {
   return <ParticipantApp/>;
 }
 function ParticipantApp() {
+  useEffect(()=>attachVisualViewportNavigation(window,document.documentElement),[]);
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [inboxOpen,setInboxOpen]=useState(false);
   // O destino fica em estado React até o mapa e seus pontos estarem carregados.
