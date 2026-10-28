@@ -47,3 +47,15 @@ test('central de notificações também bloqueia push fora do PWA iOS',()=>{
  assert.match(center,/pushState==='disabled'&&<button onClick=\{\(\)=>void enablePush\(\)\}/);
  assert.match(center,/Perfil → Permissões/);
 });
+
+test('bloqueio é destacado em vermelho e não se confunde com autorização verde',()=>{
+ assert.match(permissions,/const denied=status==='denied'&&!locked/);
+ assert.match(permissions,/denied\?'border-rose-400\/55 bg-rose-500\/\[\.09\]'/);
+ assert.match(permissions,/denied\?<AlertTriangle aria-label="Permissão bloqueada"/);
+ assert.match(permissions,/Acesso negado\. Libere nas configurações/);
+ assert.match(permissions,/denied\?<button type="button" disabled=\{!!busy\} onClick=\{\(\)=>explainBlockedPermission\(key\)\}/);
+ assert.match(permissions,/Como liberar/);
+ assert.match(permissions,/ready\?<span aria-label=\{title\+' autorizada'\}/);
+ assert.match(permissions,/warningMessage\?'border-rose-400\/40 bg-rose-400/);
+ assert.doesNotMatch(permissions,/status==='denied'\?'Ativar permissão'/);
+});
