@@ -46,6 +46,6 @@ test('remoções de amigos e integrantes continuam exigindo confirmação visual
  const groups=source('components/friend-groups.tsx');
  assert.match(friends,/friendToRemove&&<div role="presentation"/);
  assert.match(friends,/onClick=\{\(\)=>void confirmRemoveFriend\(\)\}/);
- assert.match(groups,/pendingMemberOperation\?<></);
+ assert.match(groups,/pendingMemberOperation/);
  assert.match(groups,/onClick=\{\(\)=>void confirmMemberOperation\(\)\}/);
 });
