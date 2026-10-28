@@ -80,3 +80,24 @@ test('barra inferior compensa espaço nativo do navegador iOS sem subir os ícon
  assert.match(css,/bottom: calc\(0px - var\(--submundo-browser-bleed\)\)/);
  assert.match(css,/padding-bottom: calc\(var\(--submundo-bottom-inset\) \+ var\(--submundo-browser-bleed\)\)/);
 });
+
+
+test('entrada em grupo permite escanear QR Code pela câmera e mantém link manual',()=>{
+ const groups=readFileSync(new URL('components/friend-groups.tsx',root),'utf8');
+ const scanner=readFileSync(new URL('components/group-qr-scanner.tsx',root),'utf8');
+ assert.match(groups,/import GroupQrScanner from '\.\/group-qr-scanner'/);
+ assert.match(groups,/<GroupQrScanner onDetected=\{token=>/);
+ assert.match(groups,/setJoinLink\(token\)/);
+ assert.match(groups,/OU COLE O LINK/);
+ assert.match(groups,/placeholder="Link do grupo"/);
+ assert.match(groups,/groupApi\('\/preview\?token='/);
+ assert.match(groups,/groupApi\('\/join',\{token:inviteToken\(joinLink\)\}\)/);
+ assert.match(scanner,/getUserMedia\(\{video:/);
+ assert.match(scanner,/BarcodeDetector/);
+ assert.match(scanner,/jsqr@1\.4\.0/);
+ assert.match(scanner,/get\('group_invite'\)/);
+ assert.match(scanner,/\^\[a-f0-9\]\{64\}\$/);
+ assert.match(scanner,/getTracks\(\)\.forEach\(track=>track\.stop\(\)\)/);
+ assert.match(scanner,/Escanear QR Code/);
+ assert.match(scanner,/Fechar câmera/);
+});
