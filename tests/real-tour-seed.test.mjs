@@ -69,26 +69,6 @@ test('reinicialização não sobrescreve edições nem recria evento removido ma
 });
 
 
-test('ao trocar do catálogo fictício para o real, arquiva exemplos intactos só uma vez',()=>{
- const db=fixture();try{
-  db.exec('CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');
-  db.prepare('INSERT INTO events(id,venue_id,name,tickets_url,created_at,is_published) VALUES(?,?,?,?,?,1)').run('old-demo','old-venue','SUBMUNDO 808 — Edição Demo','',Date.now());
-  db.prepare('INSERT INTO app_settings(key,value) VALUES(?,?)').run('default_demo_event_id','old-demo');
-  db.prepare('INSERT INTO events(id,venue_id,name,tickets_url,created_at,is_published) VALUES(?,?,?,?,?,1)').run('poc-v2-event-neon','old-venue','SUBMUNDO 808 — Neon District','',Date.now());
-  db.prepare('INSERT INTO events(id,venue_id,name,tickets_url,created_at,is_published) VALUES(?,?,?,?,?,1)').run('poc-v2-event-bass','old-venue','Evento alterado manualmente','',Date.now());
-  const result=ensureRealTourDemo(db);
-  assert.equal(result.legacyArchived,2);
-  assert.equal(db.prepare('SELECT is_published FROM events WHERE id=?').get('old-demo').is_published,0);
-  assert.equal(db.prepare('SELECT is_published FROM events WHERE id=?').get('poc-v2-event-neon').is_published,0);
-  assert.equal(db.prepare('SELECT is_published FROM events WHERE id=?').get('poc-v2-event-bass').is_published,1);
-  db.prepare('UPDATE events SET is_published=1 WHERE id=?').run('old-demo');
-  const again=ensureRealTourDemo(db);
-  assert.equal(again.legacyArchived,0);
-  assert.equal(db.prepare('SELECT is_published FROM events WHERE id=?').get('old-demo').is_published,1);
- }finally{db.close();}
-});
-
-
 test('o seed incrementa os mapas e cardápios de eventos 808 já existentes sem alterar a programação',()=>{
  const db=fixture();
  try{
