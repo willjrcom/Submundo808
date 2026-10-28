@@ -20,6 +20,7 @@ function inviteToken(value:string){
 export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boolean)=>void}){
  const [groups,setGroups]=useState<Group[]>([]),[selected,setSelected]=useState<GroupDetail|null>(null);
  const [memberActionsId,setMemberActionsId]=useState<string|null>(null);
+ const [pendingMemberOperation,setPendingMemberOperation]=useState<'remove'|'admin'|'member'|null>(null);
  useEffect(()=>{onDetailChange?.(selected!==null);},[selected,onDetailChange]);
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]),[photo,setPhoto]=useState('');
  const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
@@ -36,7 +37,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
  useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite')){setLinkedInvite(true);setMode('join');}return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
  useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
- const open=async(id:string)=>{setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
+ const open=async(id:string)=>{setMemberActionsId(null);setPendingMemberOperation(null);setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');setStatus('');
   try{const j=await groupApi('/create',{name:name.trim(),description:description.trim(),color,photo});setName('');setPhoto('');setDescription('');await load();await open(j.group.id);if(pickedFriends.length){try{const invites=await groupApi('/invite-friends',{id:j.group.id,friendIds:pickedFriends});setStatus(invites.invited.length+' convite(s) enviado(s) aos amigos.');}catch(e){setError('Grupo criado, mas não foi possível enviar os convites: '+(e instanceof Error?e.message:'Erro desconhecido'));}}setPickedFriends([]);setFriendQuery('');}
@@ -105,10 +106,13 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   }catch(e){showError(e);}finally{setBusy(false);}
  }
  async function remove(id:string,name:string){
-  if(!selected||!window.confirm('Remover '+name+' do grupo?'))return;
+  if(!selected)return;
   setBusy(true);setError('');
-  try{await groupApi('/remove',{id:selected.id,userId:id});setMemberActionsId(null);await open(selected.id);}
-  catch(e){showError(e);}finally{setBusy(false);}
+  try{
+   await groupApi('/remove',{id:selected.id,userId:id});
+   await open(selected.id);
+   setStatus(name+' foi removido do grupo.');
+  }catch(e){showError(e);}finally{setBusy(false);}
  }
  function startEdit(){if(!selected)return;setEditPhoto(selected.photo||'');setEditName(selected.name);setEditDescription(selected.description);setEditColor(selected.color);setEditIcon(selected.icon||'users');setEditPolicy(selected.editPolicy||'admin');setJoinPolicy(selected.joinPolicy||'direct');setError('');setEditOpen(true);}
  async function changePhoto(file:File|undefined,update:(value:string)=>void){
@@ -116,10 +120,39 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   try{update(await optimizeAvatar(file,{size:320,maxChars:145000}));}catch(e){showError(e);}finally{setPhotoBusy(false);}
  }
  async function changeRole(id:string,personName:string,role:'admin'|'member'){
-  if(!selected||!window.confirm((role==='admin'?'Promover ':'Rebaixar ')+personName+(role==='admin'?' a administrador?':' a integrante?')))return;
+  if(!selected)return;
   setBusy(true);setError('');
-  try{await groupApi('/role',{id:selected.id,userId:id,role});const fresh=await groupApi('/detail?id='+encodeURIComponent(selected.id));setSelected(fresh.group);setMemberActionsId(null);setStatus(role==='admin'?personName+' agora é administrador.':personName+' agora é integrante.');}
-  catch(e){showError(e);}finally{setBusy(false);}
+  try{
+   await groupApi('/role',{id:selected.id,userId:id,role});
+   const fresh=await groupApi('/detail?id='+encodeURIComponent(selected.id));
+   setSelected(fresh.group);
+   setMemberActionsId(null);
+   setPendingMemberOperation(null);
+   setStatus(role==='admin'?personName+' agora é administrador.':personName+' agora é integrante.');
+  }catch(e){showError(e);}finally{setBusy(false);}
+ }
+ // Every destructive/privileged action must be explicitly confirmed in-app.
+ // The details card opens this second step without calling the API.
+ function requestMemberOperation(operation:'remove'|'admin'|'member'){
+  if(busy)return;
+  setError('');
+  setPendingMemberOperation(operation);
+ }
+ async function confirmMemberOperation(){
+  if(busy||!selected||!memberActions||!pendingMemberOperation)return;
+  const member=selected.members.find(p=>p.id===memberActions.id);
+  if(!member||member.role==='owner'){setError('Este integrante não pode ser alterado.');return;}
+  if(pendingMemberOperation==='remove'){
+   if(selected.role!=='owner'&&!(selected.role==='admin'&&member.role==='member')){
+    setError('Você não tem permissão para remover este integrante.');return;
+   }
+   await remove(member.id,member.name);
+  }else{
+   if(selected.role!=='owner'||(pendingMemberOperation==='admin'&&member.role!=='member')||(pendingMemberOperation==='member'&&member.role!=='admin')){
+    setError('Você não tem permissão para alterar esta função.');return;
+   }
+   await changeRole(member.id,member.name,pendingMemberOperation);
+  }
  }
  async function saveEdit(e:React.FormEvent){e.preventDefault();if(!selected)return;setBusy(true);setError('');try{await groupApi('/edit',{id:selected.id,name:editName.trim(),description:editDescription.trim(),color:editColor,icon:editIcon,photo:editPhoto,editPolicy,joinPolicy});await open(selected.id);await load();setEditOpen(false);setStatus('Grupo atualizado.');}catch(e){showError(e);}finally{setBusy(false);}}
  const quickAlerts=[['palco','🎵','Bora pro palco!'],['bar','🥤','Bora pro bar!'],['encontro','📍','Me encontrem aqui!'],['agua','💧','Vou pegar água'],['banheiro','🚻','Estou no banheiro'],['onde','👥','Onde vocês estão?'],['entrada','🚶','Estou indo pra entrada'],['bem','💚','Está tudo bem comigo'],['embora','👋','Estou indo embora'],['mal','🚨','Estou passando mal, preciso de ajuda!'],['roubo','⚠️','Fui roubado, preciso de ajuda!']] as const;
@@ -174,27 +207,45 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   </div>}
   <div><div className="mb-3 flex items-center justify-between gap-2"><h4 className="text-sm font-black uppercase">Membros</h4>{(selected.role==='owner'||selected.role==='admin')&&<button type="button" onClick={()=>{setFriendPickerOpen(true);setPickedFriends([]);setFriendQuery('');setError('');}} className="inline-flex items-center gap-2 rounded-lg border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><UserPlus size={15}/> Adicionar amigos</button>}</div>
    <div className="space-y-2">{selected.members.map(p=><div key={p.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[.035] p-2">
-    <button type="button" onClick={()=>{setMemberActionsId(p.id);setError('');}} aria-label={'Ver detalhes de '+p.name} aria-haspopup="dialog" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#c4ff40]">
+    <button type="button" onClick={()=>{setMemberActionsId(p.id);setPendingMemberOperation(null);setError('');}} aria-label={'Ver detalhes de '+p.name} aria-haspopup="dialog" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#c4ff40]">
      <SocialAvatar name={p.name} avatar={p.avatar}/>
      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{p.name}</span><span className="block text-xs text-white/45">{p.role==='owner'?'Proprietário':p.role==='admin'?'Administrador':'Integrante'}</span></span>
     </button>
     {p.relation==='friends'?<span title="Já é seu amigo" aria-label="Amigo" className="inline-flex shrink-0 items-center gap-1 px-2 text-xs font-bold text-[#c4ff40]"><UserCheck size={16}/><span className="hidden sm:inline">Amigo</span></span>:p.relation==='sent'?<span title="Solicitação de amizade enviada" aria-label="Solicitação enviada" className="shrink-0 px-2 text-amber-200"><Clock3 size={18}/></span>:p.relation==='received'?<span title="Solicitação recebida. Responda nas notificações." aria-label="Solicitação recebida" className="shrink-0 px-2 text-white/60"><Bell size={18}/></span>:p.relation==='none'?<button type="button" disabled={busy} onClick={()=>void addGroupFriend(p.id)} title={'Adicionar '+p.name+' como amigo'} aria-label={'Adicionar '+p.name+' como amigo'} className="shrink-0 rounded-lg border border-[#c4ff40]/40 p-2 text-[#c4ff40] disabled:opacity-40"><UserPlus size={17}/></button>:null}
    </div>)}</div>
   </div>
-  {memberActions&&<div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={'Detalhes de '+memberActions.name} onClick={e=>{if(e.target===e.currentTarget){setMemberActionsId(null);setError('');}}}>
+  {memberActions&&<div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label={pendingMemberOperation?'Confirmar ação sobre '+memberActions.name:'Detalhes de '+memberActions.name} onClick={e=>{if(!busy&&e.target===e.currentTarget){setPendingMemberOperation(null);setMemberActionsId(null);setError('');}}}>
    <div className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#211729] p-5 shadow-2xl">
-    <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><SocialAvatar name={memberActions.name} avatar={memberActions.avatar}/><div className="min-w-0"><h3 className="truncate font-black">{memberActions.name}</h3><p className="text-xs text-white/55">{memberActions.role==='owner'?'Proprietário':memberActions.role==='admin'?'Administrador':'Integrante'}</p></div></div><button type="button" aria-label="Fechar detalhes" onClick={()=>{setMemberActionsId(null);setError('');}} className="rounded-lg p-2 text-white/70"><X size={20}/></button></div>
-    <div className="space-y-2 border-t border-white/10 pt-3">
-     {memberActions.relation==='friends'&&<p className="flex items-center gap-2 text-sm text-[#c4ff40]"><UserCheck size={17}/> Vocês já são amigos.</p>}
-     {memberActions.relation==='sent'&&<p className="flex items-center gap-2 text-sm text-amber-200"><Clock3 size={17}/> Solicitação de amizade enviada.</p>}
-     {memberActions.relation==='received'&&<p className="text-sm text-white/65">Solicitação de amizade recebida. Responda nas notificações.</p>}
-     {memberActions.relation==='none'&&<button type="button" disabled={busy} onClick={()=>void addGroupFriend(memberActions.id)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-4 py-3 text-sm font-semibold text-[#c4ff40] disabled:opacity-40"><UserPlus size={17}/> Adicionar amigo</button>}
-     {selected.role==='owner'&&memberActions.role==='member'&&<button type="button" disabled={busy} onClick={()=>void changeRole(memberActions.id,memberActions.name,'admin')} className="w-full rounded-xl border border-white/20 px-4 py-3 text-left text-sm font-semibold disabled:opacity-40">Tornar administrador</button>}
-     {selected.role==='owner'&&memberActions.role==='admin'&&<button type="button" disabled={busy} onClick={()=>void changeRole(memberActions.id,memberActions.name,'member')} className="w-full rounded-xl border border-white/20 px-4 py-3 text-left text-sm font-semibold disabled:opacity-40">Remover função de administrador</button>}
-     {(selected.role==='owner'||(selected.role==='admin'&&memberActions.role==='member'))&&memberActions.role!=='owner'&&<button type="button" disabled={busy} onClick={()=>void remove(memberActions.id,memberActions.name)} className="w-full rounded-xl border border-red-400/30 px-4 py-3 text-left text-sm font-semibold text-red-300 disabled:opacity-40">Remover do grupo</button>}
-     {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
-     {memberActions.relation==='self'&&selected.role!=='owner'&&<p className="text-xs text-white/45">Para gerenciar sua participação, use a opção Sair do grupo.</p>}
-    </div>
+    {pendingMemberOperation?<>
+     <div className="flex items-start justify-between gap-3">
+      <h3 className="text-lg font-black">{pendingMemberOperation==='remove'?'Remover integrante?':pendingMemberOperation==='admin'?'Tornar administrador?':'Remover função de administrador?'}</h3>
+      <button type="button" disabled={busy} aria-label="Fechar confirmação" onClick={()=>{setPendingMemberOperation(null);setError('');}} className="shrink-0 rounded-lg p-2 text-white/70 disabled:opacity-40"><X size={20}/></button>
+     </div>
+     <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3"><SocialAvatar name={memberActions.name} avatar={memberActions.avatar}/><div className="min-w-0"><p className="truncate text-sm font-semibold">{memberActions.name}</p><p className="text-xs text-white/55">{memberActions.role==='admin'?'Administrador':'Integrante'}</p></div></div>
+     <p className="text-sm leading-relaxed text-white/70">{pendingMemberOperation==='remove'
+      ?'Essa pessoa perderá o acesso ao grupo e poderá ser convidada novamente depois.'
+      :pendingMemberOperation==='admin'
+       ?'Essa pessoa poderá gerenciar os integrantes e administrar o grupo. Você poderá reverter essa permissão depois.'
+       :'Essa pessoa deixará de administrar o grupo, mas continuará como integrante.'}</p>
+     {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
+     <div className="grid grid-cols-2 gap-3">
+      <button type="button" disabled={busy} onClick={()=>{setPendingMemberOperation(null);setError('');}} className="rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold disabled:opacity-40">Cancelar</button>
+      <button type="button" disabled={busy} onClick={()=>void confirmMemberOperation()} className={'rounded-xl px-3 py-3 text-sm font-black disabled:opacity-40 '+(pendingMemberOperation==='remove'?'bg-red-500 text-white':'bg-[#c4ff40] text-black')}>{busy?'Aguarde...':pendingMemberOperation==='remove'?'Remover integrante':pendingMemberOperation==='admin'?'Tornar administrador':'Remover permissão'}</button>
+     </div>
+    </>:<>
+     <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><SocialAvatar name={memberActions.name} avatar={memberActions.avatar}/><div className="min-w-0"><h3 className="truncate font-black">{memberActions.name}</h3><p className="text-xs text-white/55">{memberActions.role==='owner'?'Proprietário':memberActions.role==='admin'?'Administrador':'Integrante'}</p></div></div><button type="button" aria-label="Fechar detalhes" onClick={()=>{setMemberActionsId(null);setError('');}} className="rounded-lg p-2 text-white/70"><X size={20}/></button></div>
+     <div className="space-y-2 border-t border-white/10 pt-3">
+      {memberActions.relation==='friends'&&<p className="flex items-center gap-2 text-sm text-[#c4ff40]"><UserCheck size={17}/> Vocês já são amigos.</p>}
+      {memberActions.relation==='sent'&&<p className="flex items-center gap-2 text-sm text-amber-200"><Clock3 size={17}/> Solicitação de amizade enviada.</p>}
+      {memberActions.relation==='received'&&<p className="text-sm text-white/65">Solicitação de amizade recebida. Responda nas notificações.</p>}
+      {memberActions.relation==='none'&&<button type="button" disabled={busy} onClick={()=>void addGroupFriend(memberActions.id)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-4 py-3 text-sm font-semibold text-[#c4ff40] disabled:opacity-40"><UserPlus size={17}/> Adicionar amigo</button>}
+      {selected.role==='owner'&&memberActions.role==='member'&&<button type="button" disabled={busy} onClick={()=>requestMemberOperation('admin')} className="w-full rounded-xl border border-white/20 px-4 py-3 text-left text-sm font-semibold disabled:opacity-40">Tornar administrador</button>}
+      {selected.role==='owner'&&memberActions.role==='admin'&&<button type="button" disabled={busy} onClick={()=>requestMemberOperation('member')} className="w-full rounded-xl border border-white/20 px-4 py-3 text-left text-sm font-semibold disabled:opacity-40">Remover função de administrador</button>}
+      {(selected.role==='owner'||(selected.role==='admin'&&memberActions.role==='member'))&&memberActions.role!=='owner'&&<button type="button" disabled={busy} onClick={()=>requestMemberOperation('remove')} className="w-full rounded-xl border border-red-400/30 px-4 py-3 text-left text-sm font-semibold text-red-300 disabled:opacity-40">Remover do grupo</button>}
+      {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
+      {memberActions.relation==='self'&&selected.role!=='owner'&&<p className="text-xs text-white/45">Para gerenciar sua participação, use a opção Sair do grupo.</p>}
+     </div>
+    </>}
    </div>
   </div>}
   {friendPickerOpen&&<div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Convidar amigos para o grupo"><div className="flex max-h-[90dvh] w-full max-w-md flex-col rounded-2xl border border-white/20 bg-[#211729]"><div className="flex items-center justify-between border-b border-white/10 p-4"><h3 className="font-black">Adicionar amigos ao grupo</h3><button type="button" aria-label="Fechar" onClick={()=>setFriendPickerOpen(false)}><X/></button></div><div className="min-h-0 flex-1 overflow-y-auto p-4">{friendSelect(true)}</div><div className="border-t border-white/10 p-4"><button type="button" disabled={busy||!pickedFriends.length} onClick={()=>void sendFriendInvites()} className={button}>{busy?'Enviando...':'Enviar '+pickedFriends.length+' convite(s)'}</button></div></div></div>}
