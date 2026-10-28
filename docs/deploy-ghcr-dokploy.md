@@ -66,11 +66,13 @@ O catálogo acionado por `AUTO_SEED_DEMO=true` agora é uma fotografia dos **oit
 
 - Para cadastrar os eventos ao iniciar o container: `APP_ENV=production`, `AUTO_SEED_DEMO=true` e `DATABASE_URL=...` no Dokploy; recrie/reinicie o container após alterar a variável.
 - **Idempotente**: não duplica os registros ao reiniciar e não sobrescreve datas, line-ups ou descrições editadas posteriormente no admin.
-- Os eventos ficam **publicados** na agenda e têm localização compartilhada **desabilitada**. Não são criadas plantas fictícias do estabelecimento.
+- Os eventos ficam **publicados** na agenda e têm localização compartilhada **desabilitada**. Para cada evento, o seed cria um **mapa interno esquemático fictício** e um **cardápio fictício** com preços ilustrativos, ambos rotulados como demonstração e **não** como informações oficiais ou instruções de segurança.
 - Registros antigos da POC, enquanto ainda intactos e sem link de ingressos, são **despublicados uma única vez**; não são apagados nem se desfazem edições manuais.
 - `AUTO_SEED_DEMO=false` desliga a geração automática em inicializações futuras, mas não apaga o que já foi cadastrado.
 - `AUTO_SEED_LEGACY=true` junto com `AUTO_SEED_DEMO=true` permite executar explicitamente o modelo fictício anterior em um ambiente separado.
 - O botão administrativo `seed-demo` também gera a agenda real, exceto quando `AUTO_SEED_LEGACY=true`.
-- O catálogo **não é uma integração em tempo real**. Se a Meaple alterar datas/endereço/line-up, atualize o cadastro no admin ou o snapshot em `server/real-tour-seed.mjs`. Os horários individuais de DJs não estão disponíveis nos anúncios verificados e ficam em branco.
+- O catálogo **não é uma integração em tempo real**. Se a Meaple alterar datas/endereço/line-up, atualize o cadastro no admin ou o snapshot em `server/real-tour-seed.mjs`. Os horários individuais dos DJs permanecem em branco. Quando nenhum DJ foi divulgado, o frontend mostra **Line-up em breve**, sem cadastrar um artista fictício.
+- Os ativos de demonstração são idempotentes: vinculados uma única vez a cada evento do seed oficial e só criados quando o evento não possui mapa ou produtos próprios. Atualizações do administrador nunca são sobrescritas.
+- Os pontos ilustrativos do mapa não têm coordenadas geográficas calibradas nem correspondem à orientação física do estabelecimento. **Não habilitar o compartilhamento de localização com esses mapas.**
 
 Para validar: consulte `GET /api/public/events` (deve listar oito eventos novos, se não houver outros registros publicados), revise a agenda em Início, abra os links de ingressos e confirme o endereço antes da festa.
