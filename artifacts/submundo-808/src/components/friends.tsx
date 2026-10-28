@@ -18,6 +18,8 @@ export default function Friends(){
   const [query,setQuery]=useState(''),[results,setResults]=useState<SearchPerson[]>([]),[searching,setSearching]=useState(false);
   const [friends,setFriends]=useState<Friend[]>([]);const [access,setAccess]=useState<'loading'|'guest'|'authenticated'|'error'>('loading');const [showMyQR,setShowMyQR]=useState(false);const [scan,setScan]=useState(false);const [link,setLink]=useState(new URLSearchParams(window.location.search).get('invite')||'');
   const [busy,setBusy]=useState(false);const [error,setError]=useState('');const [status,setStatus]=useState('');
+  const [friendToRemove,setFriendToRemove]=useState<Friend|null>(null);
+  const [removeError,setRemoveError]=useState('');
   const video=useRef<HTMLVideoElement>(null);const stream=useRef<MediaStream|null>(null);const scanning=useRef(false);const locked=useRef(false);
   async function load(){
     try{
@@ -43,6 +45,19 @@ export default function Friends(){
    setBusy(true);setError('');setStatus('');
    try{const r=await api('/request',{userId:personId});setStatus(r.status==='friends'?'Vocês já são amigos.':'Solicitação de amizade enviada para '+r.person.name+'.');setResults(v=>v.map(p=>p.id===personId?{...p,relation:r.status==='friends'?'friends':'sent'}:p));await load();}
    catch(e){setError(e instanceof Error?e.message:'Falha ao enviar solicitação.');}finally{setBusy(false);}
+  }
+  async function confirmRemoveFriend(){
+    if(!friendToRemove||busy)return;
+    const person=friendToRemove;
+    setBusy(true);setRemoveError('');
+    try{
+      await api('/remove',{id:person.id});
+      await load();
+      setFriendToRemove(null);
+      setStatus(person.name+' foi removido dos seus amigos.');
+      window.dispatchEvent(new Event('submundo-social-updated'));
+    }catch(e){setRemoveError(e instanceof Error?e.message:'Não foi possível remover este amigo.');}
+    finally{setBusy(false);}
   }
   function stop(){scanning.current=false;locked.current=false;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;setScan(false);}
   async function add(value:string){const token=parseToken(value);if(!/^[a-f0-9]{64}$/.test(token)){setError('QR Code ou link inválido.');return;}setBusy(true);setError('');try{const data=await api('/add',{token});stop();setLink('');window.history.replaceState({},'',window.location.pathname);setStatus(data.status==='friends'?'Vocês já são amigos.':'Solicitação enviada para '+data.person.name+'. A pessoa poderá aceitar nas notificações.');await load();}catch(e){setError(e instanceof Error?e.message:'Erro ao adicionar amigo.');}finally{setBusy(false);locked.current=false;}}
@@ -161,7 +176,25 @@ export default function Friends(){
         {error&&<p role="alert" className="mt-3 text-xs text-red-300">{error}</p>}{status&&<p role="status" className="mt-3 text-xs text-[#c4ff40]">{status}</p>}
       </div>
       <div className="mb-3 flex items-center justify-between"><h3 className="font-display text-sm font-bold uppercase">Minha lista</h3><button onClick={()=>void load()} aria-label="Atualizar lista" className="flex items-center gap-1 text-xs text-white/55"><RefreshCw size={14}/> {friends.length} amigos</button></div>
-      {friends.length===0?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]" size={34}/><p className="font-bold">Nenhum amigo ainda</p><p className="mt-2 text-sm text-white/50">Escaneie um QR Code para começar.</p></div>:<div className="space-y-3">{friends.map(f=><div key={f.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4"><SocialAvatar name={f.name} avatar={f.avatar}/><div className="min-w-0 flex-1"><p className="truncate font-bold">{f.name}</p><p className="text-xs text-white/45">Amigo</p></div><button aria-label={'Remover '+f.name} onClick={async()=>{if(!window.confirm('Remover '+f.name+' dos amigos?'))return;try{await api('/remove',{id:f.id});await load();}catch(e){setError(String(e));}}} className="p-2 text-white/45"><X size={18}/></button></div>)}</div>}
+      {friends.length===0?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]" size={34}/><p className="font-bold">Nenhum amigo ainda</p><p className="mt-2 text-sm text-white/50">Escaneie um QR Code para começar.</p></div>:<div className="space-y-3">{friends.map(f=><div key={f.id} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4"><SocialAvatar name={f.name} avatar={f.avatar}/><div className="min-w-0 flex-1"><p className="truncate font-bold">{f.name}</p><p className="text-xs text-white/45">Amigo</p></div><button type="button" aria-label={'Remover '+f.name} disabled={busy} onClick={()=>{setRemoveError('');setFriendToRemove(f);}} className="rounded-lg p-2 text-white/45 transition-colors hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40"><X size={18}/></button></div>)}</div>}
     </>}
+    {friendToRemove&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-4" onClick={e=>{if(!busy&&e.target===e.currentTarget){setFriendToRemove(null);setRemoveError('');}}}>
+      <section role="dialog" aria-modal="true" aria-label={'Confirmar remoção de '+friendToRemove.name} className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#211729] p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-lg font-black">Remover amigo?</h3>
+          <button type="button" aria-label="Fechar confirmação" disabled={busy} onClick={()=>{setFriendToRemove(null);setRemoveError('');}} className="shrink-0 rounded-lg p-2 text-white/70 disabled:opacity-40"><X size={20}/></button>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
+          <SocialAvatar name={friendToRemove.name} avatar={friendToRemove.avatar}/>
+          <div className="min-w-0"><p className="truncate text-sm font-semibold">{friendToRemove.name}</p><p className="text-xs text-white/55">Amigo</p></div>
+        </div>
+        <p className="text-sm leading-relaxed text-white/70">Essa pessoa será removida da sua lista de amigos. Vocês poderão se adicionar novamente depois.</p>
+        {removeError&&<p role="alert" className="rounded-xl border border-red-400/35 bg-red-400/10 p-3 text-sm text-red-200">{removeError}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" disabled={busy} onClick={()=>{setFriendToRemove(null);setRemoveError('');}} className="rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold disabled:opacity-40">Cancelar</button>
+          <button type="button" disabled={busy} onClick={()=>void confirmRemoveFriend()} className="rounded-xl bg-red-500 px-3 py-3 text-sm font-black text-white disabled:opacity-40">{busy?'Removendo...':'Remover amigo'}</button>
+        </div>
+      </section>
+    </div>}
   </div>;
 }
