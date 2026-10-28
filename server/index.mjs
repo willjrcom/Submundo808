@@ -4,12 +4,9 @@ import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHea
 import {createSensitiveRouteLimiter} from './route-limits.mjs';
 import {requestAudit,logServerFault,cspReportSummary} from './observability.mjs';
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
-import {validateDemoLocation,DEMO_MARKERS} from './demo-geolocation.mjs';
+import {DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
-import {ensureDemoData} from './demo-seed.mjs';
-import {ensureRealTourDemo} from './real-tour-seed.mjs';
-import {ensureDemoShowcase} from './demo-showcase.mjs';
-import {ensureDemoNotifications} from './demo-notifications.mjs';
+import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
@@ -176,26 +173,18 @@ async function sendReset(email, link) {
   return true;
 }
 const mime={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.webmanifest':'application/manifest+json','.woff2':'font/woff2'};
-// Durante o desenvolvimento, mantenha os dados de exemplo disponíveis sem
-// precisar clicar no botão do admin. É idempotente, não altera dados editados
-// e pode ser desligado quando a plataforma entrar em produção.
-// O container usa NODE_ENV=production mesmo no piloto. APP_ENV=production
-// ativa o modo comercial e exige opt-in explícito para dados demonstrativos.
-if(process.env.AUTO_SEED_DEMO==='true'||(!process.env.DATABASE_URL&&process.env.APP_ENV!=='production'&&process.env.AUTO_SEED_DEMO!=='false')){
+// AUTO_SEED_DEMO=true makes a single atomic clean start, then keeps the
+// official tour up to date without removing later admin changes on restarts.
+// With false/unset there are NO automatic writes to the event catalog.
+if(process.env.AUTO_SEED_DEMO==='true'){
  try{
-  // AUTO_SEED_DEMO agora significa agenda oficial da Meaple, não festas inventadas.
-  // Os exemplos antigos só são gerados quando solicitados explicitamente pelo modo legado.
-  if(process.env.AUTO_SEED_LEGACY==='true'){
-   const initial=ensureDemoData(db);
-   const showcase=ensureDemoShowcase(db,{baseEventId:initial.id});
-   const templates=ensureDemoNotifications(db,{eventId:initial.id});
-   console.log('Legacy demo catalog:',initial.created?'created':'reused','showcase:',showcase.eventsAdded,'templates:',templates.count);
-  }else{
-   const official=ensureRealTourDemo(db);
-   console.log('Official 808 Meaple catalog:',official.eventsAdded,'events created;',official.eventsExisting,'already present;',official.venuesAdded,'venues created.');
-  }
+  const result=initializeRealTourDemo(db,{defaultEventPreferences:DEFAULT_EVENT_PREFERENCES});
+  console.log('Official 808 tour seeded:',JSON.stringify(result));
  }catch(error){
-  console.error('Could not initialize sample data:',error);
+  // Fail closed: do not serve a mixed or partial event catalog.
+  console.error('Could not initialize official 808 catalog:',error);
+  process.exitCode=1;
+  throw error;
  }
 }
 ensurePushQueueSchema(db);
@@ -730,18 +719,9 @@ http.createServer(async (req,res)=>{
           return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='seed-demo'){
-          if(process.env.APP_ENV==='production'&&process.env.AUTO_SEED_DEMO!=='true')return json(res,403,{error:'Dados demonstrativos desativados neste ambiente.'});
-          if(process.env.AUTO_SEED_LEGACY!=='true'){
-           const result=ensureRealTourDemo(db);
-           return json(res,result.eventsAdded?201:200,{...result,mode:'official-meaple-808'});
-          }
-          const request=await body(req);
-          let location;
-          try{location=validateDemoLocation(request.location);}catch(error){return json(res,400,{error:error.message});}
-          const result=ensureDemoData(db,{location});
-          const showcase=ensureDemoShowcase(db,{baseEventId:result.id});
-          const notifications=ensureDemoNotifications(db,{eventId:result.id});
-          return json(res,result.created||showcase.created||notifications.created?201:200,{...result,showcase,notifications});
+          if(process.env.AUTO_SEED_DEMO!=='true')return json(res,403,{error:'Ative AUTO_SEED_DEMO=true para usar a geração dos eventos oficiais.'});
+          const result=initializeRealTourDemo(db,{defaultEventPreferences:DEFAULT_EVENT_PREFERENCES});
+          return json(res,result.eventsAdded?201:200,{...result,mode:'official-meaple-808'});
         }
         if(req.method==='POST'&&key==='delete'){
           const b=await body(req),id=String(b.id||''),entity=String(b.entity||'');
