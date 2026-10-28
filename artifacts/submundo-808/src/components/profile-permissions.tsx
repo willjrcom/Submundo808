@@ -18,7 +18,9 @@ export async function hasPendingAppPermissions():Promise<boolean>{
 }
 export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [statuses,setStatuses]=useState<Record<string,State>>({location:'prompt',notifications:'prompt',camera:'prompt'});
- const [message,setMessage]=useState(''),[busy,setBusy]=useState('');
+ const [message,setMessage]=useState(''),[messageKey,setMessageKey]=useState<'installation'|'location'|'notifications'|'camera'|null>(null),[busy,setBusy]=useState('');
+ const setNotice=(key:'installation'|'location'|'notifications'|'camera',text:string)=>{setMessageKey(key);setMessage(text);};
+ const clearNotice=()=>{setMessage('');setMessageKey(null);};
  const [pushRegistered,setPushRegistered]=useState(false);
  const [installed,setInstalled]=useState(isPwaInstalled);
  const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
@@ -44,10 +46,10 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   };
  },[]);
  async function installApp(){
-  setMessage('');
+  clearNotice();
   if(ios){setTutorialOpen(true);return;}
-  if(installPrompt){const event=installPrompt as Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>};try{await event.prompt();if(event.userChoice){const result=await event.userChoice;if(result.outcome==='accepted')setMessage('Instalação iniciada. Abra o app instalado para ativar notificações.');else setMessage('Instalação cancelada.');}setInstallPrompt(null);}catch{setMessage('Use a opção Instalar aplicativo no menu do navegador.');}return;}
-  setMessage('No Chrome ou Edge: abra o menu ⋮ e escolha Instalar aplicativo ou Adicionar à tela inicial. Se não aparecer, confira se está em HTTPS.');
+  if(installPrompt){const event=installPrompt as Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>};try{await event.prompt();if(event.userChoice){const result=await event.userChoice;if(result.outcome==='accepted')setNotice('installation','Instalação iniciada. Abra o app instalado para ativar notificações.');else setNotice('installation','Instalação cancelada.');}setInstallPrompt(null);}catch{setNotice('installation','Use a opção Instalar aplicativo no menu do navegador.');}return;}
+  setNotice('installation','No Chrome ou Edge: abra o menu ⋮ e escolha Instalar aplicativo ou Adicionar à tela inicial. Se não aparecer, confira se está em HTTPS.');
  }
 
  const update=(key:string,state:State)=>setStatuses(v=>({...v,[key]:state}));
@@ -64,19 +66,19 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   };void check();return()=>{alive=false;};
  },[]);
  async function askLocation(){
-  setBusy('location');setMessage('');
+  setBusy('location');clearNotice();
   try{if(!navigator.geolocation)throw Error('Localização indisponível neste navegador.');
    await new Promise<void>((resolve,reject)=>navigator.geolocation.getCurrentPosition(()=>resolve(),reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
-   update('location','granted');setMessage('Localização autorizada. O compartilhamento com amigos permanece desativado até você escolher ativá-lo.');
-  }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setMessage(denied?'O navegador bloqueou o acesso à localização. Se não aparecer a solicitação, abra as configurações deste site no navegador, permita Localização e volte ao aplicativo.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
+   update('location','granted');setNotice('location','Localização autorizada. O compartilhamento com amigos permanece desativado até você escolher ativá-lo.');
+  }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setNotice('location',denied?'O acesso à localização está bloqueado. Abra as configurações do aplicativo ou do navegador, autorize a localização e volte ao Submundo808.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
  }
  async function askNotification(){
   if(requiresIosInstallationForPush()){
-   setMessage('Instale o Submundo808 pela opção Compartilhar do Safari e abra o aplicativo pela Tela de Início antes de ativar as notificações.');
+   setNotice('notifications','Instale o Submundo808 pela opção Compartilhar do Safari e abra o aplicativo pela Tela de Início antes de ativar as notificações.');
    setTutorialOpen(true);
    return;
   }
-  setBusy('notifications');setMessage('');
+  setBusy('notifications');clearNotice();
   try{
    if(!('Notification'in window)||!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('Push indisponível neste navegador. No iPhone, instale o aplicativo na Tela de Início.');
    const response=await fetch('/api/push/config',{credentials:'same-origin'}),config=await response.json();
@@ -89,15 +91,15 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
    const res=await fetch('/api/push/subscribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
    const j=await res.json();if(!res.ok)throw Error(j.error||'Não foi possível registrar o dispositivo.');
-   setPushRegistered(true);setMessage('Notificações push ativadas neste dispositivo.');
-  }catch(e){setMessage('Notificações: '+(e instanceof Error?e.message:'Não foi possível ativar.'));}finally{setBusy('');}
+   setPushRegistered(true);setNotice('notifications','Notificações push ativadas neste dispositivo.');
+  }catch(e){setNotice('notifications','Notificações: '+(e instanceof Error?e.message:'Não foi possível ativar.'));}finally{setBusy('');}
  }
  async function askCamera(){
-  setBusy('camera');setMessage('');
+  setBusy('camera');clearNotice();
   try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Câmera indisponível.');
    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
-   stream.getTracks().forEach(t=>t.stop());update('camera','granted');setMessage('Câmera autorizada para ler QR Codes de amigos.');
-  }catch(e){setMessage('Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
+   stream.getTracks().forEach(t=>t.stop());update('camera','granted');setNotice('camera','Câmera autorizada para ler QR Codes de amigos.');
+  }catch(e){setNotice('camera','Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
  }
  const rows=[{key:'location',title:'Localização',description:'Sua posição no mapa. Compartilhar com amigos é uma escolha separada.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
  const label:Record<State,string>={granted:'Permitida',denied:'Bloqueada',prompt:'Não solicitada',unsupported:'Indisponível'};
@@ -106,7 +108,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   const where=installed
    ?'Abra as Configurações do celular, procure o Submundo808 e permita o acesso. Depois, volte ao aplicativo.'
    :'Abra as configurações deste site no navegador e altere a permissão para Permitir. Depois, volte ao Submundo808.';
-  setMessage('A permissão de '+title+' está bloqueada. '+where+' O aplicativo não consegue remover esse bloqueio sozinho.');
+  setNotice(key as 'location'|'notifications'|'camera','A permissão de '+title+' está bloqueada. '+where+' O aplicativo não consegue remover esse bloqueio sozinho.');
  }
  const warningMessage=/(bloquead|negad|indisponível|não foi possível|não foram autorizad|não tem as chaves|falha)/i.test(message);
  return <div className="space-y-4">
@@ -119,6 +121,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
     <p className="mt-1 text-[11px] text-white/45">{installed?'Instalado':needsIosInstall?'Necessário para notificações':'Opcional'}</p>
    </div>
    {installed?<span className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={16}/> Instalado</span>:<button type="button" onClick={()=>void installApp()} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Download size={15} className="mr-1 inline"/>{ios?'Ver tutorial':'Instalar'}</button>}
+   {messageKey==='installation'&&message&&<p role={warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border px-3 py-3 text-xs leading-relaxed '+(warningMessage?'border-rose-400/50 bg-rose-500/15 font-semibold text-rose-100':'border-white/20 bg-white/5 text-white/80')}>{warningMessage&&<AlertTriangle size={17} className="shrink-0 text-rose-300"/>}{message}</p>}
   </div>
   {rows.map(({key,title,description,Icon,run})=>{
    const status=statuses[key]||'prompt';
@@ -136,14 +139,18 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
       {denied&&<AlertTriangle size={13} aria-hidden="true"/>}
       {locked?'Requer instalação no iPhone':permissionGranted&&key==='notifications'&&!pushRegistered?'Permissão concedida · push ainda inativo':label[status]}
      </p>
-     {denied&&<p className="mt-1 text-xs leading-relaxed text-rose-200/80">Acesso negado. Libere nas configurações do aparelho ou navegador.</p>}
+     
     </div>
     <div className="flex min-w-[98px] justify-end">
      {locked?<button type="button" disabled aria-label="Notificações bloqueadas até instalar o aplicativo" className="rounded-xl border border-amber-400/35 bg-amber-400/[.07] px-3 py-2 text-xs font-bold text-amber-200 opacity-80">Instale o app</button>:ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:denied?<button type="button" disabled={!!busy} onClick={()=>explainBlockedPermission(key)} className="rounded-xl border border-rose-400/55 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-200 disabled:opacity-50">Como liberar</button>:unsupported?<span className="text-right text-xs text-white/45">Indisponível</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-white/30 px-3 py-2 text-xs font-bold text-white/85 disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':'Ativar'}</button>}
     </div>
+    {(denied||(messageKey===key&&message))&&<div role={denied||warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed '+(denied||warningMessage?'border-rose-400/55 bg-rose-500/15 font-semibold text-rose-100':'border-white/15 bg-white/5 text-white/75')}>
+     {(denied||warningMessage)&&<AlertTriangle size={18} className="shrink-0 text-rose-300" aria-hidden="true"/>}
+     <span>{messageKey===key&&message?message:denied?'Acesso bloqueado. Para liberar, toque em Como liberar e ajuste a permissão nas configurações do aparelho ou navegador.':''}</span>
+    </div>}
    </div>;
   })}
-  {message&&<p role={warningMessage?'alert':'status'} className={'rounded-xl border p-3 text-sm leading-relaxed '+(warningMessage?'border-rose-400/40 bg-rose-400/[.09] text-rose-100':'border-white/10 bg-white/5 text-white/75')}>{warningMessage&&<AlertTriangle className="mr-2 inline align-text-bottom" size={17}/>}{message}</p>}
+  
   <p className="text-xs text-white/45">Se uma permissão foi bloqueada, ajuste-a nas configurações do navegador ou do dispositivo. O aplicativo não pode autorizar permissões automaticamente.</p>
   {onClose&&<button type="button" onClick={onClose} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">Concluir</button>}
   {tutorialOpen&&<div role="presentation" onClick={e=>{if(e.target===e.currentTarget)setTutorialOpen(false);}} className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 p-3">
