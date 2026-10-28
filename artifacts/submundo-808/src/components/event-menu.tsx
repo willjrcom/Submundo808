@@ -42,6 +42,7 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
   <p className="text-sm text-white/65">Escolha uma festa na aba Início para ver os produtos e preços do evento.</p>
   <button type="button" onClick={onChooseEvent} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black">Escolher evento</button>
  </section>;
+ const hasDemoProducts=items.some(p=>p.id.startsWith('meaple-808-demo-product-'));
  const categories=[...new Set(items.map(p=>p.category))];
  return <section className="space-y-5">
   <div>
@@ -49,6 +50,7 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
    <h1 className="mt-2 text-3xl font-black uppercase">Produtos e preços</h1>
    <p className="mt-2 text-sm font-semibold text-white/70">{displayLabel(eventName)||'Evento selecionado'}</p>
   </div>
+  {hasDemoProducts&&!showLoading&&<div role="note" className="rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-xs font-semibold text-amber-100">Cardápio demonstrativo: itens, preços e disponibilidade são fictícios e não representam as vendas do evento.</div>}
   {showLoading?<PageLoading compact label="Carregando produtos" description="Preparando o cardápio deste evento."/>
    :error?<div className="space-y-4 rounded-2xl border border-white/15 bg-white/5 p-5" role="status"><p className="text-sm text-white/70">Este evento não está disponível. Escolha outro para consultar o cardápio.</p><button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black"><CalendarDays size={17}/> Escolher outro evento</button></div>
    :!items.length?<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/60">Ainda não há produtos cadastrados para este evento.</p>
