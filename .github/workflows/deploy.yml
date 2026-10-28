@@ -76,6 +76,10 @@ jobs:
           node --check server/postgres-sync.mjs
 
       - name: Compile participant frontend (required)
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
         run: pnpm --filter @workspace/submundo-808 build
 
       - name: Build PostgreSQL smoke image
