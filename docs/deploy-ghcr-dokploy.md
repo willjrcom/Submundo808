@@ -60,19 +60,41 @@ Execução: todo push em `main` ou início manual em **Actions > Build and publi
 
 O backend aceita `DATABASE_URL` para operar no PostgreSQL sem importar dados SQLite. A estratégia de implantação, a concessão do primeiro administrador e o rollback estão em [docs/postgresql.md](postgresql.md). **Não exclua `/data`**, pois ainda contém as chaves de autenticação e os dados da versão SQLite anterior.
 
-## Agenda oficial 808 no modo demo
+## Agenda oficial 808 e limpeza única (AUTO_SEED_DEMO)
 
-O catálogo acionado por `AUTO_SEED_DEMO=true` agora é uma fotografia dos **oito eventos reais futuros da Meaple em 27/10/2026** (Brasília, Bauru, Sorocaba, Porto Alegre, Fortaleza, São José dos Campos, Vitória/Vila Velha e Festival São Paulo). Fonte: `https://meaple.com.br/808`. Os URLs dos ingressos individuais são armazenados por evento.
+**ATENÇÃO: exclusão definitiva dos dados antigos de eventos. Faça backup verificável do PostgreSQL antes do primeiro deploy com `AUTO_SEED_DEMO=true`.**
 
-- Para cadastrar os eventos ao iniciar o container: `APP_ENV=production`, `AUTO_SEED_DEMO=true` e `DATABASE_URL=...` no Dokploy; recrie/reinicie o container após alterar a variável.
-- **Idempotente**: não duplica os registros ao reiniciar e não sobrescreve datas, line-ups ou descrições editadas posteriormente no admin.
-- Os eventos ficam **publicados** na agenda e têm localização compartilhada **desabilitada**. Para cada evento, o seed cria um **mapa interno esquemático fictício** e um **cardápio fictício** com preços ilustrativos, ambos rotulados como demonstração e **não** como informações oficiais ou instruções de segurança.
-- Registros antigos da POC, enquanto ainda intactos e sem link de ingressos, são **despublicados uma única vez**; não são apagados nem se desfazem edições manuais.
-- `AUTO_SEED_DEMO=false` desliga a geração automática em inicializações futuras, mas não apaga o que já foi cadastrado.
-- `AUTO_SEED_LEGACY=true` junto com `AUTO_SEED_DEMO=true` permite executar explicitamente o modelo fictício anterior em um ambiente separado.
-- O botão administrativo `seed-demo` também gera a agenda real, exceto quando `AUTO_SEED_LEGACY=true`.
-- O catálogo **não é uma integração em tempo real**. Se a Meaple alterar datas/endereço/line-up, atualize o cadastro no admin ou o snapshot em `server/real-tour-seed.mjs`. Os horários individuais dos DJs permanecem em branco. Quando nenhum DJ foi divulgado, o frontend mostra **Line-up em breve**, sem cadastrar um artista fictício.
-- Os ativos de demonstração são idempotentes: vinculados uma única vez a cada evento do seed oficial e só criados quando o evento não possui mapa ou produtos próprios. Atualizações do administrador nunca são sobrescritas.
-- Os pontos ilustrativos do mapa não têm coordenadas geográficas calibradas nem correspondem à orientação física do estabelecimento. **Não habilitar o compartilhamento de localização com esses mapas.**
+A primeira inicialização com `AUTO_SEED_DEMO=true` executa, **em uma única transação**, uma limpeza completa do catálogo antigo e cria os oito eventos reais divulgados em 27/10/2026 pela Meaple (`https://meaple.com.br/808`).
 
-Para validar: consulte `GET /api/public/events` (deve listar oito eventos novos, se não houver outros registros publicados), revise a agenda em Início, abra os links de ingressos e confirme o endereço antes da festa.
+Configure no Dokploy:
+
+```env
+AUTO_SEED_DEMO=true
+```
+
+`AUTO_SEED_LEGACY` **foi removido**: não precisa configurar e não tem efeito. Não existe mais a geração de eventos fictícios antigos, nem em desenvolvimento.
+
+### O que a limpeza APAGA
+
+- Todos os eventos antigos, inclusive os personalizados, e suas ligações com mapas/produtos.
+- Todos os estabelecimentos, mapas internos, ambientes, pontos, produtos, cardápios, avaliações e participações em eventos anteriores.
+- Configurações gerais exclusivas dos eventos (reiniciadas para os padrões).
+- Compartilhamentos de localização vinculados aos eventos antigos (desativados).
+
+### O que a limpeza PRESERVA
+
+- Contas, perfis, permissões administrativas, autenticação, amizades, convites, grupos e integrantes.
+- Alertas/histórico de grupos e todas as notificações e recibos já armazenados.
+- Assinaturas push, fila de notificações e outras configurações globais do aplicativo.
+- Notificações pendentes relativas a eventos apagados permanecem no banco com envio cancelado, impedindo avisos de festas inexistentes.
+
+### Nova agenda
+
+- Oito eventos com nomes, datas, locais, endereços, ingressos e DJs divulgados na Meaple (sem horários de apresentações inventados). Quando não houver DJs, a interface mostra **Line-up em breve**.
+- Um mapa esquemático **fictício e identificado como demonstração** por evento e um cardápio **fictício** com preços ilustrativos, ambos associados ao respectivo estabelecimento/evento.
+- A localização em tempo real começa desativada; **não ative o GPS sobre plantas fictícias**.
+- **Idempotência:** a limpeza ocorre uma única vez por banco e fica registrada na chave `meaple808-clean-initialization-v1` da tabela `app_settings`. Reboots com `AUTO_SEED_DEMO=true` não apagam novas edições nem novos eventos. Se o seed falhar, a transação desfaz toda a limpeza.
+- `AUTO_SEED_DEMO=false` ou ausente **não gera, limpa nem restaura** eventos automaticamente; apenas preserva o catálogo já existente.
+- O botão `seed-demo` no painel administrativo gera/complementa o catálogo oficial, mas só está habilitado quando `AUTO_SEED_DEMO=true`; depois da limpeza única não a repete.
+
+Este é um catálogo fixo, não uma sincronização em tempo real: mudanças na Meaple requerem atualização manual. Valide `GET /api/public/events`, a aba Início, cada mapa/cardápio de demonstração e os links de ingressos após o deploy.
