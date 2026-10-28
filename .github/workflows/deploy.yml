@@ -99,6 +99,85 @@ jobs:
             PG_TEST_BASE_URL=http://127.0.0.1:18080 \
             node --test tests/postgres-integration.test.mjs
 
+      - name: Verify one-time PostgreSQL catalog reset preserves social and notifications
+        env:
+          PG_TEST_DATABASE_URL: postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test
+        run: |
+          set -euo pipefail
+          # The previous smoke left a registered user and a manually created event.
+          # Add an actual group and notification linked to that old event.
+          docker run --rm -i --network host \
+            -e DATABASE_URL="$PG_TEST_DATABASE_URL" --entrypoint node \
+            submundo808-pg-smoke --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {PostgresSync} from '/app/server/postgres-sync.mjs';
+          const db=new PostgresSync(process.env.DATABASE_URL);
+          const user=db.prepare('SELECT id FROM users LIMIT 1').get();
+          const old=db.prepare("SELECT id FROM events WHERE name='Evento Teste PG'").get();
+          assert.ok(user&&old,'Previous PostgreSQL integration must have created a user and event');
+          db.prepare('INSERT INTO friend_groups(id,owner_id,name,invite_hash,created_at) VALUES(?,?,?,?,?)').run('pg-preserved-group',user.id,'Grupo que permanece','pg-group-code',Date.now());
+          db.prepare("INSERT INTO friend_group_members(group_id,user_id,role,joined_at) VALUES(?,?,'owner',?)").run('pg-preserved-group',user.id,Date.now());
+          db.prepare("INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run('pg-old-notification',old.id,'Aviso antigo','Preservar histórico','info','event',old.id,'event','scheduled',Date.now()+60000,user.id,Date.now());
+          db.prepare('INSERT INTO notification_receipts(notification_id,user_id) VALUES(?,?)').run('pg-old-notification',user.id);
+          db.close();
+          JS
+
+          docker run --rm -d --name submundo808-pg-reset --network host \
+            -e DATABASE_URL="$PG_TEST_DATABASE_URL" -e APP_ENV=production \
+            -e AUTO_SEED_DEMO=true -e PORT=18081 -e DATA_DIR=/tmp/submundo-reset-ci \
+            submundo808-pg-smoke
+          trap 'docker logs submundo808-pg-reset || true; docker rm -f submundo808-pg-reset || true' EXIT
+          ready=false
+          for i in $(seq 1 50); do
+            if curl --silent --fail http://127.0.0.1:18081/api/health >/dev/null; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+
+          docker run --rm -i --network host \
+            -e DATABASE_URL="$PG_TEST_DATABASE_URL" --entrypoint node \
+            submundo808-pg-smoke --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {PostgresSync} from '/app/server/postgres-sync.mjs';
+          const db=new PostgresSync(process.env.DATABASE_URL);
+          const n=table=>Number(db.prepare('SELECT COUNT(*) n FROM '+table).get().n);
+          assert.equal(n('events'),8);
+          assert.equal(n('venues'),8);
+          assert.equal(n('event_maps'),8);
+          assert.equal(n('products'),12);
+          assert.equal(n('event_participants'),0);
+          assert.equal(n('event_reviews'),0);
+          assert.ok(n('users')>=1);
+          assert.equal(n('friend_groups'),1);
+          assert.equal(n('friend_group_members'),1);
+          assert.equal(n('notifications'),1);
+          assert.equal(n('notification_receipts'),1);
+          assert.equal(db.prepare('SELECT status FROM notifications WHERE id=?').get('pg-old-notification').status,'cancelled');
+          assert.equal(db.prepare('SELECT 1 FROM events WHERE name=?').get('Evento Teste PG'),undefined);
+          assert.ok(db.prepare('SELECT value FROM app_settings WHERE key=?').get('meaple808-clean-initialization-v1'));
+          db.prepare('UPDATE events SET name=? WHERE id=?').run('Persistiu após reinício','meaple-808-event-brasilia-2026-10-31');
+          db.close();
+          JS
+
+          docker restart submundo808-pg-reset
+          ready=false
+          for i in $(seq 1 50); do
+            if curl --silent --fail http://127.0.0.1:18081/api/health >/dev/null; then ready=true; break; fi
+            sleep 2
+          done
+          test "$ready" = true
+          docker run --rm -i --network host \
+            -e DATABASE_URL="$PG_TEST_DATABASE_URL" --entrypoint node \
+            submundo808-pg-smoke --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {PostgresSync} from '/app/server/postgres-sync.mjs';
+          const db=new PostgresSync(process.env.DATABASE_URL);
+          assert.equal(db.prepare('SELECT name FROM events WHERE id=?').get('meaple-808-event-brasilia-2026-10-31').name,'Persistiu após reinício');
+          assert.equal(Number(db.prepare('SELECT COUNT(*) n FROM events').get().n),8);
+          assert.equal(Number(db.prepare('SELECT COUNT(*) n FROM friend_groups').get().n),1);
+          db.close();
+          JS
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
