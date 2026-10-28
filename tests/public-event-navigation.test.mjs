@@ -56,10 +56,12 @@ test('cardápio consulta apenas o preço de produtos do evento ativo',()=>{
  assert.match(menu,/fetch\('\/api\/public\/menu\?event_id='\+encodeURIComponent\(activeEventId\)\)/);
  assert.match(menu,/loadedEventId!==activeEventId/);
 });
-test('modo demo carrega a agenda real 808 e mantém o modo fictício apenas sob opt-in legado',()=>{
- assert.match(backend,/AUTO_SEED_DEMO!=='false'/);
- assert.match(backend,/ensureRealTourDemo\(db\)/);
- assert.match(backend,/AUTO_SEED_LEGACY==='true'/);
+test('modo demo somente executa a inicialização real e limpa eventos antigos quando explicitamente ativado',()=>{
+ assert.match(backend,/AUTO_SEED_DEMO==='true'/);
+ assert.match(backend,/initializeRealTourDemo\(db/);
+ assert.doesNotMatch(backend,/AUTO_SEED_LEGACY/);
+ assert.doesNotMatch(backend,/ensureDemoShowcase\(db/);
+ assert.doesNotMatch(backend,/ensureDemoData\(db/);
 });
 
 
