@@ -1,3 +1,4 @@
+import {venueLocation,completeVenueAddress} from '../venue-address';
 import {formatMobile} from './phone-mask';
 import {applyAccentColor,DEFAULT_COLOR} from '../theme-accent';
 import {accentTextColor,contrastRatio,readableAccentOnDark} from '../accent-contrast';
@@ -19,27 +20,6 @@ import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil,
 type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[];location_sharing_enabled?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm text-white placeholder:text-white/40';
-// Tour imports and older venues may store the full address without its structured fields.
-function venueLocation(item:Item|null){
- const full=(item?.address||'').trim();
- const city=(item?.city||'').trim();
- const cityOffset=city?full.toLocaleLowerCase('pt-BR').lastIndexOf((', '+city).toLocaleLowerCase('pt-BR')):-1;
- const streetAndDistrict=cityOffset>=0?full.slice(0,cityOffset).trim():'';
- const districtOffset=streetAndDistrict.lastIndexOf(' - ');
- const inferredStreet=districtOffset>=0?streetAndDistrict.slice(0,districtOffset).trim():streetAndDistrict;
- const inferredDistrict=districtOffset>=0?streetAndDistrict.slice(districtOffset+3).trim():'';
- const inferredPostal=full.match(/\b\d{5}-?\d{3}\b/)?.[0]||'';
- return {
-  postalCode:item?.postal_code||inferredPostal,
-  street:item?.street||inferredStreet,
-  neighborhood:item?.neighborhood||inferredDistrict
- };
-}
-function completeVenueAddress(street:string,neighborhood:string,city:string,postalCode:string,previous:string){
- if(!street.trim())return previous;
- const country=previous.match(/,\s*(Brasil|Brazil)\s*$/i)?.[1]||'';
- return [street.trim()+(neighborhood.trim()?' - '+neighborhood.trim():''),city.trim(),postalCode.trim(),country].filter(Boolean).join(', ');
-}
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
 export default function AdminShell(){
  const [brandLogo,setBrandLogo]=useState(''),[brandMessage,setBrandMessage]=useState('');
