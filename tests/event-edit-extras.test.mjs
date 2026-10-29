@@ -14,18 +14,18 @@ test('editar evento persiste abertura dos portões, capa e serviços e recupera 
  const db=fixture();
  try{
   const values=updateEventExtras(db,'e1',{doors_at:'2026-11-06T21:00',cover_image:'data:image/jpeg;base64,nova',services:'Posto médico e chapelaria'});
-  assert.deepEqual(db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1'),values);
+  assert.deepEqual(({...db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1')}),values);
  }finally{db.close();}
 });
 test('editar evento preserva campos omitidos por clientes antigos e permite apagar valores intencionalmente',()=>{
  const db=fixture();
  try{
   updateEventExtras(db,'e1',{doors_at:'2026-11-06T22:00'});
-  assert.deepEqual(db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1'),{
+  assert.deepEqual(({...db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1')}),{
    doors_at:'2026-11-06T22:00',cover_image:'data:image/jpeg;base64,original',services:'Chapelaria'
   });
   updateEventExtras(db,'e1',{cover_image:'',services:''});
-  assert.deepEqual(db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1'),{
+  assert.deepEqual(({...db.prepare('SELECT doors_at,cover_image,services FROM events WHERE id=?').get('e1')}),{
    doors_at:'2026-11-06T22:00',cover_image:'',services:''
   });
  }finally{db.close();}
