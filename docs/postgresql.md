@@ -57,8 +57,15 @@ sem avaliar dados novos se o sistema já estiver atendendo usuários reais.
   pool de conexões e transações explícitas antes de dimensionar carga.
 - As migrações de schema são idempotentes para o banco vazio. Para ambientes
   com dados reais e mudanças futuras, adote scripts versionados de migração.
-- `DATABASE_URL` ausente mantém o SQLite anterior, sem apagar ou migrar
-  quaisquer dados automaticamente.
+- Em produção (`NODE_ENV=production` ou `APP_ENV=production`), a falta de
+  `DATABASE_URL` impede a inicialização. Não existe fallback silencioso
+  para SQLite no contêiner de produção.
+- Em execução local de desenvolvimento/testes, a ausência de `DATABASE_URL`
+  ainda permite o SQLite legado; isso **não** significa que o SQLite esteja
+  habilitado no ambiente de produção. Nenhum dado é migrado automaticamente.
+- O painel administrativo em **Preferências** consulta `/api/admin/database-status`
+  e exibe qual driver a instância conectada realmente utiliza, sem revelar
+  hostname, usuário, senha ou URL do banco.
 - Backups passam a ser de PostgreSQL (ex.: `pg_dump` com política de retenção,
   armazenamento externo e teste de restauração); não configure backups SQLite
   para o novo banco.
