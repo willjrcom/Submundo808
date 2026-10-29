@@ -256,11 +256,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(drag.current){drag.current=null;if(pasteboard.current?.hasPointerCapture(e.pointerId))pasteboard.current.releasePointerCapture(e.pointerId);}
  }
  async function save(){
-  if(saving)return;setSaving(true);setError('');
+  if(saving)return false;setSaving(true);setError('');
   try{
    await api('save-layout',{map_id:map.id,areas,markers,frame});
    setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');setEditLayout(false);setFrameEditing(false);setResizeId(null);
-  }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');}
+   return true;
+  }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');return false;}
   finally{setSaving(false);}
  }
  function requestCalibrationSave(){
@@ -527,11 +528,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       disabled={calibrationBusy||!calibrationArea} onClick={()=>capture(key)}
       className={'absolute z-40 flex h-11 w-11 items-center justify-center rounded-full border-2 text-xl font-black shadow-[0_2px_12px_#000b] transition disabled:opacity-40 '+pos+' '+(measured?'border-[#c4ff40] bg-[#c4ff40] text-black':'border-white/80 bg-[#5b2787] text-white hover:bg-[#7433ae]')}>{measured?'✓':'+'}</button>;
     })}
+    {ready&&corners?.marginMeters===MAP_MARGIN_METERS&&allCorners(rawCorners)&&CORNER_KEYS.map(key=>{
+     const original=gpsToMap(rawCorners[key],corners as MapCorners);
+     return original?<span key={'raw-'+key} aria-label={'Ponto medido '+key} title={'Ponto medido antes da margem de 5 m ('+key+')'} className="pointer-events-none absolute z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black bg-amber-400 shadow-[0_0_5px_#fbbf24]" style={{left:original.x+'%',top:original.y+'%'}}/>:null;
+    })}
     {ready&&projectedWalk.length>1&&<svg className="pointer-events-none absolute inset-0 z-20 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none"><polyline points={projectedWalk.map(p=>p.x+','+p.y).join(' ')} fill="none" stroke="#60a5fa" strokeWidth=".7" strokeLinecap="round" strokeLinejoin="round"/></svg>}
     {projectedLive&&<div aria-label="Sua localização atual" title={'Precisão GPS ±'+Math.round(gpsLive?.accuracy||0)+' m'} className="pointer-events-none absolute z-30 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-blue-500 shadow-[0_0_0_7px_#3b82f633]" style={{left:Math.max(0,Math.min(100,projectedLive.x))+'%',top:Math.max(0,Math.min(100,projectedLive.y))+'%'}}/>}
     {!ready&&gpsLive&&<div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded bg-blue-700 px-2 py-1 text-[10px] font-bold">GPS ativo · marque os cantos para projetar sua posição</div>}
    </div>
-   <p className="text-center text-xs text-white/55">{calibrationKeys.filter(k=>rawCorners[k]).length}/4 cantos medidos. Roxo (+): pendente · verde (✓): confirmado; toque novamente para refazer.</p>
+   <p className="text-center text-xs text-white/55">{calibrationKeys.filter(k=>rawCorners[k]).length}/4 cantos medidos. Roxo (+): pendente · verde (✓): confirmado; amarelo: GPS originalmente medido. Toque no canto novamente para refazer.</p>
    <div role="status" className="rounded-xl border border-blue-400/25 bg-blue-500/10 p-3 text-xs text-blue-100">{gpsStatus}{gpsLive&&<> · {gpsLive.lat.toFixed(6)}, {gpsLive.lng.toFixed(6)}</>}</div>
    <section className="space-y-3 rounded-xl border border-white/15 p-3">
     <h4 className="font-bold">Medidas e validação</h4>
@@ -543,7 +548,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    {ready&&<p className="rounded-lg border border-[#c4ff40]/30 bg-[#c4ff40]/5 p-3 text-xs text-[#c4ff40]">{corners?.marginMeters===MAP_MARGIN_METERS?'Margem externa de 5 m aplicada em cada borda, de acordo com a orientação da planta.':'Calibração anterior preservada sem alterar os limites. Ao refazer um canto, aplicaremos a margem externa de 5 m a partir das medidas.'} As dimensões acima consideram os pontos medidos, antes da margem.</p>}
    {ready&&<div className="space-y-2 rounded-xl border border-white/15 p-3"><h4 className="font-bold">Teste de caminhada</h4><p className="text-xs text-white/60">Ande em linha reta em um trecho conhecido. O caminho azul revela desvios e oscilações. O teste não corrige automaticamente o GPS.</p><button className={button} onClick={()=>{if(walkActive.current){walkActive.current=false;setWalkTesting(false);}else{setWalkPoints([]);walkActive.current=true;setWalkTesting(true);}}}>{walkTesting?'Encerrar teste':'Iniciar caminhada'}</button><p className="text-xs text-white/50">{walkPoints.length} leituras registradas nesta sessão.</p></div>}
     <p className="text-xs text-white/60">{calibrationKeys.filter(k=>calibrationArea?.gps?.[k]).length}/4 pontos calibrados. Após salvar, a localização será projetada usando esses quatro pontos. Confira sua posição na aba Mapa.</p>
-   {showCalibrationConfirm&&<div className="rounded-xl border-2 border-[#c4ff40]/60 bg-[#251d30] p-4 space-y-3"><h4 className="font-bold">Confirmação final da calibração</h4><p className="text-sm">Você espera aproximadamente <strong>{expectedWidth||'?'} m de largura</strong> e <strong>{expectedLength||'?'} m de comprimento</strong>. O GPS estimou <strong>{averageWidth.toFixed(1)} m × {averageLength.toFixed(1)} m</strong>.</p><p className="text-xs">{qualityOK?'Geometria e dimensões compatíveis com as tolerâncias do teste. Confirme também, presencialmente, que esquerda/direita e frente/fundo não foram invertidos.':'A calibração apresenta inconsistência ou precisão insuficiente. Refaça os cantos antes de publicar.'}</p><p className="text-xs text-amber-200">O GPS do telefone não pode garantir 100% de precisão nem detectar um espelhamento completo da planta.</p><div className="flex gap-2"><button className={button} onClick={()=>setShowCalibrationConfirm(false)}>Voltar</button><button className={button+' border-[#c4ff40] text-[#c4ff40]'} disabled={!qualityOK||saving} onClick={async()=>{await save();setShowCalibrationConfirm(false);setCalibrationOpen(false);}}>Confirmar orientação e salvar</button></div></div>}
+   {showCalibrationConfirm&&<div className="rounded-xl border-2 border-[#c4ff40]/60 bg-[#251d30] p-4 space-y-3"><h4 className="font-bold">Confirmação final da calibração</h4><p className="text-sm">Você espera aproximadamente <strong>{expectedWidth||'?'} m de largura</strong> e <strong>{expectedLength||'?'} m de comprimento</strong>. O GPS estimou <strong>{averageWidth.toFixed(1)} m × {averageLength.toFixed(1)} m</strong>.</p><p className="text-xs">{qualityOK?'Geometria e dimensões compatíveis com as tolerâncias do teste. Confirme também, presencialmente, que esquerda/direita e frente/fundo não foram invertidos.':'A calibração apresenta inconsistência ou precisão insuficiente. Refaça os cantos antes de publicar.'}</p><p className="text-xs text-amber-200">O GPS do telefone não pode garantir 100% de precisão nem detectar um espelhamento completo da planta.</p><div className="flex gap-2"><button className={button} onClick={()=>setShowCalibrationConfirm(false)}>Voltar</button><button className={button+' border-[#c4ff40] text-[#c4ff40]'} disabled={!qualityOK||saving} onClick={async()=>{if(await save()){setShowCalibrationConfirm(false);setCalibrationOpen(false);}}}>Confirmar orientação e salvar</button></div></div>}
    {captureReview&&<div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/85 p-3" role="dialog" aria-modal="true" aria-label="Coletar posição GPS">
     <div className="w-full max-w-sm space-y-4 rounded-2xl border border-[#c4ff40]/45 bg-[#21192a] p-5 shadow-2xl">
      <div className="flex items-center justify-between gap-3"><h4 className="text-base font-black">{calibrationLabels[calibrationKeys.indexOf(captureReview.corner)]}</h4><span className="text-xs text-white/60">Medição de GPS</span></div>
