@@ -1,0 +1,69 @@
+name: Validate crowd intelligence preview (no deployment)
+
+on:
+  push:
+    branches:
+      - feature/event-crowd-intelligence-preview
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crowd-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Regression, PostgreSQL and frontend build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: submundo_ci
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: submundo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U submundo_ci -d submundo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check server syntax
+        run: |
+          node --check server/index.mjs
+          node --check server/crowd-analytics.mjs
+      - name: Run SQLite and frontend safety regressions
+        run: |
+          node --test tests/crowd-gps-simulator.test.mjs tests/crowd-analytics.test.mjs tests/location-sharing.test.mjs tests/real-tour-reset.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs
+      - name: Compile frontend preview
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build
+      - name: Build local preview Docker image (never published)
+        run: docker build --target runner --tag submundo-crowd-preview-ci .
+      - name: Run isolated PostgreSQL aggregation integration
+        run: |
+          docker run --rm --network host \
+            -e PG_TEST_DATABASE_URL=postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test \
+            -v "$PWD/tests:/app/tests:ro" \
+            --entrypoint node submundo-crowd-preview-ci --test /app/tests/crowd-postgres.test.mjs
+      - name: Audit types (legacy baseline, nonblocking)
+        continue-on-error: true
+        run: pnpm --filter @workspace/submundo-808 typecheck
+
+# Intentional: this preview workflow does NOT publish GHCR, trigger Dokploy,
+# run database migrations against production, or merge into main.

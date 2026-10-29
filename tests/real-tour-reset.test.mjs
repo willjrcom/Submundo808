@@ -28,8 +28,10 @@ function fixture(){
  CREATE TABLE event_products(event_id TEXT NOT NULL,product_id TEXT NOT NULL,price_cents INTEGER,PRIMARY KEY(event_id,product_id));
  CREATE TABLE event_participants(event_id TEXT,user_id TEXT,first_selected_at INTEGER,last_selected_at INTEGER);
  CREATE TABLE event_reviews(event_id TEXT,user_id TEXT,rating INTEGER,tags_json TEXT,comment TEXT,created_at INTEGER,updated_at INTEGER);
- CREATE TABLE location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER,share_enabled INTEGER,share_expires_at INTEGER,share_event_id TEXT,share_with_groups INTEGER,updated_at INTEGER);
+ CREATE TABLE location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER,share_enabled INTEGER,share_expires_at INTEGER,share_event_id TEXT,share_with_groups INTEGER,updated_at INTEGER,analytics_enabled INTEGER NOT NULL DEFAULT 0,analytics_event_id TEXT);
  CREATE TABLE live_locations(user_id TEXT PRIMARY KEY,lat REAL,lng REAL,accuracy REAL,updated_at INTEGER);
+ CREATE TABLE event_crowd_snapshots(event_id TEXT,map_id TEXT,area_id TEXT,bucket_at INTEGER,people_count INTEGER);
+
  `);
  ensureSocialSchema(db);
  db.prepare('INSERT INTO users VALUES(?,?)').run('a','Ana');
@@ -57,8 +59,9 @@ function fixture(){
  db.prepare('INSERT INTO event_products VALUES(?,?,?)').run('old-event','old-product',300);
  db.prepare('INSERT INTO event_participants VALUES(?,?,?,?)').run('old-event','a',1,1);
  db.prepare('INSERT INTO event_reviews VALUES(?,?,?,?,?,?,?)').run('old-event','a',5,'[]','Foi legal',1,1);
- db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run('a',1,1,Date.now()+30000,'old-event',1,1);
+ db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_expires_at,share_event_id,share_with_groups,updated_at,analytics_enabled,analytics_event_id) VALUES(?,?,?,?,?,?,?,?,?)').run('a',1,1,Date.now()+30000,'old-event',1,1,1,'old-event');
  db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run('a',-23,-47,10,1);
+ db.prepare('INSERT INTO event_crowd_snapshots VALUES(?,?,?,?,?)').run('old-event','old-map','old-area',Date.now(),8);
  return db;
 }
 const count=(db,table)=>db.prepare('SELECT COUNT(*) n FROM '+table).get().n;
@@ -78,6 +81,7 @@ test('AUTO_SEED_DEMO limpa o catálogo completo uma vez e recria 8 eventos com m
   assert.equal(count(db,'products'),TOUR_DEMO_MENU.length);
   assert.equal(count(db,'event_products'),8*TOUR_DEMO_MENU.length);
   assert.equal(count(db,'event_reviews'),0);
+  assert.equal(count(db,'event_crowd_snapshots'),0);
   assert.equal(count(db,'event_participants'),0);
   assert.equal(db.prepare('SELECT 1 FROM events WHERE id=?').get('old-event'),undefined);
   assert.equal(db.prepare('SELECT value FROM app_settings WHERE key=?').get('default_demo_event_id'),undefined);

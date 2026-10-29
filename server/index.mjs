@@ -9,6 +9,7 @@ import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
+import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
 import webpush from 'web-push';
@@ -121,7 +122,17 @@ for(const [column,definition] of [
 ]){
  if(!db.prepare('PRAGMA table_info(location_preferences)').all().some(c=>c.name===column))db.exec('ALTER TABLE location_preferences ADD COLUMN '+column+' '+definition);
 }
+ensureCrowdSchema(db);
 expireLocationShares(db);
+// Snapshots persist only anonymous aggregate counts, never individual GPS fixes.
+let lastCrowdBucket=-1;
+const crowdSamplingTimer=setInterval(()=>{
+ const bucket=Math.floor(Date.now()/CROWD_BUCKET_MS);
+ if(bucket===lastCrowdBucket)return;
+ try{sampleCrowdHistory(db);lastCrowdBucket=bucket;}
+ catch(e){console.error('Crowd snapshot sampling failed',e?.message);}
+},60_000);
+crowdSamplingTimer.unref?.();
 const locationCleanupTimer=setInterval(()=>{
  try{expireLocationShares(db);}catch(e){console.error('Location-sharing cleanup failed',e);}
 },60_000);
@@ -299,18 +310,22 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/location/preferences'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const now=Date.now();expireLocationShares(db,now);
-        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups FROM location_preferences WHERE user_id=?').get(user.id);
+        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,analytics_enabled,analytics_event_id FROM location_preferences WHERE user_id=?').get(user.id);
         const shareEnabled=!!row?.share_enabled&&row.share_expires_at>now;
         return json(res,200,{
           gpsEnabled:shareEnabled&&!!row?.gps_enabled,shareEnabled,
           mode:row?.share_mode||'event',eventId:shareEnabled?row?.share_event_id||null:null,shareWithGroups:shareEnabled&&!!row?.share_with_groups,
+          analyticsEnabled:shareEnabled&&!!row?.analytics_enabled&&row.analytics_event_id===row.share_event_id,
           expiresAt:shareEnabled?row.share_expires_at:null
         });
       }
       if(url.pathname==='/api/location/preferences'&&req.method==='POST'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const b=await body(req);
-        if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled)||(b.shareWithGroups!==undefined&&typeof b.shareWithGroups!=='boolean'))return json(res,400,{error:'Preferências inválidas.'});
+        if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled)||
+           (b.shareWithGroups!==undefined&&typeof b.shareWithGroups!=='boolean')||
+           (b.analyticsEnabled!==undefined&&typeof b.analyticsEnabled!=='boolean')||
+           (b.analyticsEnabled===true&&!b.shareEnabled))return json(res,400,{error:'Preferências inválidas.'});
         const now=Date.now();
         let choice=null;
         if(b.shareEnabled){
@@ -321,10 +336,26 @@ http.createServer(async (req,res)=>{
           try{choice=resolveSharingExpiry(db,{mode:b.mode,eventId:b.eventId,now});}
           catch(e){return json(res,e.status||400,{error:e.message});}
         }
-        db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,share_with_groups=excluded.share_with_groups,updated_at=excluded.updated_at')
-          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,b.shareEnabled&&b.shareWithGroups===true?1:0,now);
+        db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,analytics_enabled,analytics_event_id,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,share_with_groups=excluded.share_with_groups,analytics_enabled=excluded.analytics_enabled,analytics_event_id=excluded.analytics_event_id,updated_at=excluded.updated_at')
+          .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,b.shareEnabled&&b.shareWithGroups===true?1:0,b.shareEnabled&&b.analyticsEnabled===true?1:0,b.shareEnabled&&b.analyticsEnabled===true?b.eventId:null,now);
         if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
-        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,shareWithGroups:b.shareEnabled&&b.shareWithGroups===true,expiresAt:choice?.expiresAt||null});
+        return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,shareWithGroups:b.shareEnabled&&b.shareWithGroups===true,analyticsEnabled:b.shareEnabled&&b.analyticsEnabled===true,expiresAt:choice?.expiresAt||null});
+      }
+      // Consent for event intelligence is independent from friend sharing
+      // and can be switched off at any time without stopping location with friends.
+      if(url.pathname==='/api/location/analytics-consent'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const b=await body(req);
+        if(typeof b.enabled!=='boolean')return json(res,400,{error:'Informe a autorização de análise.'});
+        const pref=db.prepare('SELECT share_enabled,share_event_id,share_expires_at FROM location_preferences WHERE user_id=?').get(user.id);
+        if(b.enabled&&(!pref?.share_enabled||pref.share_expires_at<=Date.now()||
+             !pref.share_event_id||pref.share_event_id!==b.eventId||
+             !db.prepare('SELECT 1 FROM events WHERE id=? AND location_sharing_enabled=1').get(b.eventId))){
+          return json(res,403,{error:'Ative sua localização no evento antes de autorizar estatísticas anônimas.'});
+        }
+        db.prepare('UPDATE location_preferences SET analytics_enabled=?,analytics_event_id=?,updated_at=? WHERE user_id=?')
+          .run(b.enabled?1:0,b.enabled?pref.share_event_id:null,Date.now(),user.id);
+        return json(res,200,{analyticsEnabled:b.enabled});
       }
       if (url.pathname==='/api/location/me' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
@@ -355,6 +386,7 @@ http.createServer(async (req,res)=>{
       if (url.pathname==='/api/location/stop' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
+        db.prepare('UPDATE location_preferences SET analytics_enabled=0,analytics_event_id=NULL WHERE user_id=?').run(user.id);
         return json(res,200,{ok:true});
       }
       if (url.pathname==='/api/location/friends' && req.method==='GET') {
@@ -521,6 +553,14 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
         const key=url.pathname.slice('/api/admin/'.length);
+        if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history')){
+          const eventId=String(url.searchParams.get('event_id')||'');
+          if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido.'});
+          try{
+            if(key==='crowd-live')return json(res,200,crowdPublicView(readCrowdLive(db,eventId)));
+            return json(res,200,readCrowdHistory(db,eventId,Date.now(),url.searchParams.get('period')||'24h'));
+          }catch(e){return json(res,e.status||500,{error:e.status?e.message:'Não foi possível consultar estatísticas deste evento.'});}
+        }
         const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
         if(req.method==='GET'&&tables[key]){
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
@@ -732,8 +772,10 @@ http.createServer(async (req,res)=>{
           if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
           db.exec('BEGIN');try{
             if(entity==='event'){db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
-            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);}
-            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);}
+            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);
+            db.prepare('DELETE FROM event_crowd_snapshots WHERE event_id=?').run(id);
+            db.prepare('UPDATE location_preferences SET analytics_enabled=0,analytics_event_id=NULL WHERE analytics_event_id=?').run(id);}
+            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_snapshots WHERE map_id=?').run(id);}
             db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,200,{ok:true});
@@ -754,7 +796,7 @@ http.createServer(async (req,res)=>{
               if(!b.location_sharing_enabled){
                 // Revogação imediata, sem aguardar a limpeza periódica.
                 db.prepare('DELETE FROM live_locations WHERE user_id IN (SELECT user_id FROM location_preferences WHERE share_event_id=?)').run(id);
-                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_with_groups=0,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
+                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_with_groups=0,share_expires_at=NULL,share_event_id=NULL,analytics_enabled=0,analytics_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
               }
             }
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);

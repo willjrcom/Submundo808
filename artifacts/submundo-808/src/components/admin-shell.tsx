@@ -10,12 +10,13 @@ import { EventEditor } from './admin-editors';
 import AdminMapWorkspace from './admin-map-workspace';
 import AdminVenueMaps from './admin-venue-maps';
 import AdminEventList from './admin-event-list';
+import AdminCrowd from './admin-crowd';
 import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
-import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell } from 'lucide-react';
-type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[]};
+import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell, BarChart3 } from 'lucide-react';
+type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[];location_sharing_enabled?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
@@ -33,7 +34,7 @@ export default function AdminShell(){
  const section=route.section,creating=route.creating;
  const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
  const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
- const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Eventos',Icon:CalendarDays},{name:'Produtos',Icon:ShoppingBag},{name:'Avaliações',Icon:Star},{name:'Notificações',Icon:Bell},{name:'Preferências',Icon:Pencil}];
+ const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Inteligência',Icon:BarChart3},{name:'Estabelecimentos',Icon:Building2},{name:'Eventos',Icon:CalendarDays},{name:'Produtos',Icon:ShoppingBag},{name:'Avaliações',Icon:Star},{name:'Notificações',Icon:Bell},{name:'Preferências',Icon:Pencil}];
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{void api('event-settings').then(j=>setSettings(j.settings)).catch(()=>{});void api('branding').then(j=>{setBrandLogo(j.logo||'');setAccentColor(j.color||DEFAULT_COLOR);}).catch(()=>{});},[]);
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
@@ -84,7 +85,7 @@ export default function AdminShell(){
   finally{setBusy(false);}
  }
  const pathParts=currentPath.split('/').filter(Boolean);
- const knownAdminRoute=pathParts.length===0||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
+ const knownAdminRoute=pathParts.length===0||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
@@ -94,6 +95,7 @@ export default function AdminShell(){
  {route.id&&!editing?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing&&section==='Estabelecimentos'?displayLabel(editing.name):editing?'Editar evento':creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
+ {section==='Inteligência'&&<AdminCrowd events={events}/>}
  {section==='Produtos'&&<AdminProducts/>}
  {section==='Avaliações'&&<AdminReviews events={events}/>}
  {section==='Notificações'&&<AdminNotifications events={events}/>}
@@ -107,6 +109,7 @@ export default function AdminShell(){
  </form>}
 
  {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
+ {section==='Visão geral'&&<AdminCrowd events={events} compact onOpenReports={()=>navigate('Inteligência')}/>}
  {section==='Estabelecimentos'&&(editing||creating?
  <div className="mt-8 space-y-5">
   {editing&&<div role="tablist" aria-label="Seções do estabelecimento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
