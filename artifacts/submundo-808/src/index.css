@@ -68,6 +68,11 @@
   * { @apply border-border; -webkit-tap-highlight-color: transparent; }
   html { color-scheme: dark; background: hsl(var(--background)); }
   body { @apply font-sans antialiased bg-background text-foreground; overscroll-behavior-y: none; }
+  /* Typed values must stay readable independently of muted label and placeholder colors. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']):not([type='button']):not([type='submit']):not([type='reset']),
+  textarea, select { color: #faf8ff; caret-color: #faf8ff; }
+  input::placeholder, textarea::placeholder { color: rgb(185 176 195 / 55%); opacity: 1; }
+
   button, a, [role='button'] { touch-action: manipulation; }
   :focus-visible { outline: 2px solid hsl(var(--acid)); outline-offset: 2px; }
 }
