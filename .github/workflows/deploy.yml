@@ -58,7 +58,7 @@ jobs:
         run: pnpm --filter @workspace/submundo-808 typecheck
 
       - name: Run critical regression tests
-        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs tests/notification-delivery.test.mjs tests/health.test.mjs tests/accent-contrast.test.mjs tests/notification-map-focus.test.mjs tests/security-ops.test.mjs tests/privacy-notices.test.mjs tests/postgres-sync.test.mjs tests/real-tour-reset.test.mjs tests/real-tour-seed.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs tests/crowd-analytics.test.mjs tests/crowd-gps-simulator.test.mjs tests/venue-analysis-production-ui.test.mjs
+        run: node --test tests/auth.test.mjs tests/request-security.test.mjs tests/location-sharing.test.mjs tests/demo-auto-seed.test.mjs tests/notification-delivery.test.mjs tests/health.test.mjs tests/accent-contrast.test.mjs tests/notification-map-focus.test.mjs tests/security-ops.test.mjs tests/privacy-notices.test.mjs tests/postgres-sync.test.mjs tests/real-tour-reset.test.mjs tests/real-tour-seed.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs tests/crowd-analytics.test.mjs tests/database-mode.test.mjs tests/event-edit-extras.test.mjs tests/entity-crud-ui.test.mjs tests/venue-address.test.mjs tests/notification-edit-hydration.test.mjs tests/map-marker-edit-hydration.test.mjs tests/venue-analysis-production-ui.test.mjs
 
       - name: Audit full test suite (baseline)
         continue-on-error: true
@@ -84,6 +84,18 @@ jobs:
 
       - name: Build PostgreSQL smoke image
         run: docker build --target runner --tag submundo808-pg-smoke .
+
+      - name: Refuse SQLite fallback when production DATABASE_URL is missing
+        run: |
+          set -euo pipefail
+          if docker run --rm --network none \
+             -e NODE_ENV=production -e APP_ENV=production \
+             -e DATA_DIR=/tmp/submundo-prod-guard submundo808-pg-smoke \
+             > /tmp/submundo-prod-guard.log 2>&1; then
+            echo "ERROR: production started without PostgreSQL"
+            exit 1
+          fi
+          grep -q "SQLite está desabilitado" /tmp/submundo-prod-guard.log
 
       - name: Test PostgreSQL initialization and API against isolated empty database
         env:
