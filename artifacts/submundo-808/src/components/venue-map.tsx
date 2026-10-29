@@ -3,7 +3,8 @@ import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import {displayLabel} from './display-label';
 import {MapPin,Navigation,ArrowUp,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sofa,Utensils,Wine,Bath,Flag,Stethoscope} from 'lucide-react';
-import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,type GpsFix} from './map-location-utils';
+import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,distanceMeters,type GpsFix} from './map-location-utils';
+import {mapPercentToGps} from './map-calibration-geometry';
 import {startInitialGps,gpsErrorText} from './gps-acquisition';
 import {mapFrameAspect,normalizeMapFrame,type MapFrame} from './map-frame-geometry';
 import {normalizeMarker,markerIconStyle,type MarkerAnchor} from './map-marker-geometry';
@@ -469,6 +470,19 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const outsideFriends=friendMarkers.filter(f=>f.point&&!f.point.inside);
  const distanceToVenue=myOutside?.outsideMeters??null;
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
+ const mapIsDemo=calibrated?.gps?.mode==='demo-auto'||data?.map.name.startsWith('DEMO —');
+ // Uma entrada cadastrada no mapa vira o destino; caso contrário mostramos
+ // apenas direção à borda, sem inventar uma rota ou entrada oficial.
+ const entrances=location&&bounds&&!mapIsDemo?data?.markers.filter(m=>m.type==='entrada').map(m=>{
+  const target=mapPercentToGps(m.x,m.y,bounds);
+  return {...m,target,meters:distanceMeters(location,target)};
+ }).sort((a,b)=>a.meters-b.meters)||[]:[];
+ const closestEntrance=entrances[0]||null;
+ const directionPoint=closestEntrance?{x:closestEntrance.x,y:closestEntrance.y}:
+  mapped?{x:Math.max(0,Math.min(100,mapped.x)),y:Math.max(0,Math.min(100,mapped.y))}:null;
+ const directionAngle=mapped&&directionPoint?(Math.atan2(directionPoint.x-mapped.x,mapped.y-directionPoint.y)*180/Math.PI+360)%360:0;
+ const directLineStart=mapped?{x:Math.max(0,Math.min(100,mapped.x)),y:Math.max(0,Math.min(100,mapped.y))}:null;
+ const directionsUrl=closestEntrance?'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(closestEntrance.target.lat+','+closestEntrance.target.lng):null;
  const scale=bounds?mapSize(bounds):null;
  const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired;
  const eventForSharing=activeEvent;
@@ -527,6 +541,22 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
   {friends.length>0&&<details className="mt-2 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
  </div>}
+ {myOutside&&!mapIsDemo&&<section aria-label="Orientação até o evento" className="space-y-3 rounded-2xl border border-[#c4ff40]/35 bg-[#211a29] p-4">
+  <div className="flex items-start gap-3"><Navigation size={23} className="mt-0.5 shrink-0 text-[#c4ff40]"/>
+   <div className="min-w-0 flex-1">
+    <h3 className="text-sm font-black">{positionUncertain?'Você está próximo do limite do mapa':'Você está fora do mapa'}</h3>
+    <p className="mt-1 text-xs leading-relaxed text-white/70">
+     {positionUncertain?'O erro estimado do GPS pode incluir sua posição dentro do local. Confira a seta e aguarde uma leitura melhor.':
+      closestEntrance?'Entrada '+closestEntrance.name+' a aproximadamente '+formatMapDistance(closestEntrance.meters)+'.':
+      'Você está a aproximadamente '+formatMapDistance(myOutside.outsideMeters)+' da borda do mapa.'}
+    </p>
+    {closestEntrance&&<p className="mt-1 text-[11px] text-white/50">Distância em linha reta, não é uma estimativa do trajeto a pé.</p>}
+    {!closestEntrance&&<p className="mt-1 text-[11px] text-amber-200/80">Entrada não cadastrada nesta planta; seta aponta apenas para a borda mais próxima.</p>}
+    <p className="mt-1 text-[11px] text-white/45">Precisão informada pelo aparelho: ±{Math.round(location?.accuracy||0)} m.</p>
+   </div>
+  </div>
+  {directionsUrl&&<a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black"><Navigation size={16}/> Como chegar à entrada</a>}
+ </section>}
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
@@ -551,20 +581,24 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  {pointLabels.filter(label=>label.visible).map(label=>{const m=data?.markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
  {mapped?.inside&&location&&scale&&<div aria-label={'Margem de precisão do seu GPS: ±'+Math.round(location.accuracy)+' m'} className="pointer-events-none absolute z-[18] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-blue-400/40 bg-blue-400/10" style={{left:mapped.x+'%',top:mapped.y+'%',width:Math.min(75,2*location.accuracy/Math.max(scale.width,1)*100)+'%',height:Math.min(75,2*location.accuracy/Math.max(scale.height,1)*100)+'%'}}/>}
  {mapped?.inside&&<div aria-label="Sua localização aproximada" className="pointer-events-none absolute z-20 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-500 shadow-[0_0_0_6px_#33aaff55]" style={{left:mapped.x+'%',top:mapped.y+'%'}}/>}
- {myOutside&&<div
+ {myOutside&&directionPoint&&!mapIsDemo&&<div
   role="img"
-  aria-label={'Sua posição está '+myOutside.direction+' do mapa, a aproximadamente '+formatMapDistance(myOutside.outsideMeters)+'. Seta apontando para fora da área.'}
+  aria-label={'Sua posição está '+myOutside.direction+' do mapa, a aproximadamente '+formatMapDistance(myOutside.outsideMeters)+'. Seta indicando a direção '+(closestEntrance?'da entrada '+closestEntrance.name:'da borda mais próxima')+'.'}
   title={'Você está '+myOutside.direction+' · ~'+formatMapDistance(myOutside.outsideMeters)}
   className="pointer-events-none absolute z-40 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-blue-500 text-white shadow-[0_0_0_5px_#3b82f655,0_2px_14px_#000a]"
   style={{left:'clamp(20px, '+myOutside.edgeX+'%, calc(100% - 20px))',top:'clamp(20px, '+myOutside.edgeY+'%, calc(100% - 20px))'}}
- ><ArrowUp size={22} strokeWidth={3} style={{transform:'rotate('+myOutside.angleDegrees+'deg)'}}/></div>}
+ ><ArrowUp size={22} strokeWidth={3} style={{transform:'rotate('+directionAngle+'deg)'}}/></div>}
+ {myOutside&&directionPoint&&directLineStart&&closestEntrance&&!mapIsDemo&&<svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-[16] h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+  <line x1={directLineStart.x} y1={directLineStart.y} x2={directionPoint.x} y2={directionPoint.y}
+   stroke="#c4ff40" strokeWidth=".7" strokeDasharray="2 2" strokeLinecap="round"/>
+ </svg>}
  {visibleFriends.map(f=><span key={f.id} title={f.name+' · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-400 px-2 py-1 text-[10px] font-bold text-black" style={{left:f.point!.x+'%',top:f.point!.y+'%'}}>{f.name}</span>)}
  {outsideFriends.map(f=><span key={f.id} title={f.name+' fora da área de referência, a aproximadamente '+Math.round(f.edge!.outsideMeters)+' m do limite · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg border border-amber-300 bg-[#231b13] px-1.5 py-1 text-[10px] font-bold text-amber-100" style={{left:f.edge!.edgeX+'%',top:f.edge!.edgeY+'%'}}><ArrowUp size={13} style={{transform:'rotate('+f.edge!.angleDegrees+'deg)'}}/> {f.name.slice(0,12)} · {f.edge!.outsideMeters<=f.accuracy?'perto do limite':'~'+formatMapDistance(f.edge!.outsideMeters)}</span>)}
  </div></div>}
 {pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{marker.name}</h3><p className="mt-1 text-xs text-white/60">{marker.description||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{p.description&&<p className="mt-1 text-xs text-white/55">{p.description}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
-  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapped.inside?'Você está no mapa.':positionUncertain?'Você parece estar '+myOutside?.direction+' do mapa, mas o GPS está impreciso.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+'.'}</p>
+  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapIsDemo?'Mapa demonstrativo sem orientação geográfica confiável.':mapped.inside?'Você está no mapa.':positionUncertain?'Você está próximo ao limite do mapa, mas o GPS está impreciso.':closestEntrance?'Você está fora do mapa. Entrada a aproximadamente '+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+' da borda.'}</p>
   {location&&<p className="mt-1 text-white/40">Precisão do GPS: ±{Math.round(location.accuracy)} m</p>}
  </div>
  {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
