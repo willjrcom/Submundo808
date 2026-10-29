@@ -154,20 +154,24 @@ export function sampleCrowdHistory(db,now=Date.now()){
  return sampled;
 }
 
-export function readCrowdHistory(db,eventId,now=Date.now(),period='24h'){
+export function readCrowdHistory(db,eventId,now=Date.now(),period='24h',mapId=null){
  if(!['24h','7d','30d'].includes(period))throw Object.assign(Error('Período inválido.'),{status:400});
  const event=db.prepare('SELECT id,name FROM events WHERE id=?').get(eventId);
  if(!event)throw Object.assign(Error('Evento não encontrado.'),{status:404});
  const windowMs={'24h':24*60*60_000,'7d':7*24*60*60_000,'30d':CROWD_RETENTION_MS}[period];
+ const maps=eventMaps(db,eventId);
+ if(mapId&&!maps.some(m=>m.id===mapId))
+  throw Object.assign(Error('Planta não vinculada a este evento.'),{status:404});
  const rows=db.prepare(`SELECT map_id,area_id,bucket_at,people_count FROM event_crowd_snapshots
   WHERE event_id=? AND bucket_at>=? ORDER BY bucket_at`).all(eventId,now-windowMs);
  const totals=new Map();
  const zones=new Map();
- const maps=eventMaps(db,eventId);
  const zoneNames=new Map(maps.flatMap(map=>map.areas.map(a=>[map.id+':'+a.id,{id:a.id,mapId:map.id,name:a.name,mapName:map.name}])));
  for(const row of rows){
+  if(mapId&&row.map_id!==mapId)continue;
   const count=Number(row.people_count);
-  if(row.map_id==='__event__'&&row.area_id==='__total__'){totals.set(Number(row.bucket_at),count);continue;}
+  if(!mapId&&row.map_id==='__event__'&&row.area_id==='__total__'){totals.set(Number(row.bucket_at),count);continue;}
+  if(mapId)totals.set(Number(row.bucket_at),(totals.get(Number(row.bucket_at))||0)+count);
   const key=row.map_id+':'+row.area_id;
   if(!zoneNames.has(key))continue;
   const entry=zones.get(key)||{...zoneNames.get(key),sum:0,peak:0,samples:0};
@@ -188,6 +192,6 @@ export function readCrowdHistory(db,eventId,now=Date.now(),period='24h'){
   .map(z=>({id:z.id,mapId:z.mapId,name:z.name,mapName:z.mapName,
    average:Math.round(z.sum/z.samples*10)/10,peak:z.peak,samples:z.samples}))
   .sort((a,b)=>b.average-a.average).slice(0,20);
- return {event,period,minimumGroup:CROWD_MIN_GROUP,sampleIntervalMinutes:5,
+ return {event,period,mapId,minimumGroup:CROWD_MIN_GROUP,sampleIntervalMinutes:5,
   series,hotspots,snapshotCount:totals.size,lastSnapshotAt:Math.max(0,...totals.keys())||null};
 }
