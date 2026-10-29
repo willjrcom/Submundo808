@@ -31,6 +31,11 @@ const mapIcon=(type:string)=>{
  return icons[type]||MapPin;
 };
 const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.test(color)?color:fallback;
+// Nomes internos de seed não são títulos de navegação para o público.
+const publicMapName=(name?:string)=>{
+ const cleaned=displayLabel(name||'').replace(/^DEMO\s*[—–-]\s*/i,'').trim();
+ return cleaned||'Planta do local';
+};
 export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{activeEventId:string;onChooseEvent:()=>void;focusRequest?:{eventId:string;pointId:string;requestId:number}|null}){
  const [maps,setMaps]=useState<{id:string;name:string}[]>([]);
  const [selectedMap,setSelectedMap]=useState('');
@@ -460,9 +465,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    });
   };
 
- const mapped=location&&bounds?gpsToMap(location,bounds):null;
+ // Não projetar pessoas em plantas cujas referências geográficas não foram
+ // validadas: a grade de seed não corresponde ao espaço físico do evento.
+ const mapIsDemo=calibrated?.gps?.mode==='demo-auto'||data?.map.name.startsWith('DEMO —');
+ const mapped=location&&bounds&&!mapIsDemo?gpsToMap(location,bounds):null;
  const myOutside=mapped&&bounds&&!mapped.inside?offMapInfo(mapped,bounds):null;
- const friendMarkers=bounds?friends.map(f=>{
+ const friendMarkers=bounds&&!mapIsDemo?friends.map(f=>{
   const point=gpsToMap({lat:f.lat,lng:f.lng},bounds);
   return {...f,point,edge:point&&!point.inside?offMapInfo(point,bounds):null};
  }):[];
@@ -470,7 +478,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const outsideFriends=friendMarkers.filter(f=>f.point&&!f.point.inside);
  const distanceToVenue=myOutside?.outsideMeters??null;
  const positionUncertain=!!(location&&myOutside&&location.accuracy>=myOutside.outsideMeters);
- const mapIsDemo=calibrated?.gps?.mode==='demo-auto'||data?.map.name.startsWith('DEMO —');
  // Uma entrada cadastrada no mapa vira o destino; caso contrário mostramos
  // apenas direção à borda, sem inventar uma rota ou entrada oficial.
  // A margem de 5 m expande a visualização. Para orientar até a entrada
@@ -565,9 +572,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
  </div>
-  {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{displayLabel(m.name)}</option>)}</select>}
- {selectedMap&&data?.map.name.startsWith('DEMO —')&&<div role="note" className="rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-xs font-semibold leading-relaxed text-amber-100">Mapa demonstrativo — não representa a planta real do estabelecimento. Posições de entrada, palco, bares e banheiros são ilustrativas. Não utilize para orientação ou segurança no local.</div>}
- {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{displayLabel(data?.map.name)||'Mapa'}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+  {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{publicMapName(m.name)}</option>)}</select>}
+ {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  {data?.areas.map(a=>{const color=validColor(a.color);return <div key={a.id} role="img" aria-label={'Ambiente: '+a.name} title={a.description||a.name} className="absolute border-2" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:color,backgroundColor:color+'33'}}/>;})}
  {roomLabels.map(label=>{
   const room=data?.areas.find(a=>a.id===label.id);
@@ -602,10 +608,10 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
 {pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{marker.name}</h3><p className="mt-1 text-xs text-white/60">{marker.description||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{p.description&&<p className="mt-1 text-xs text-white/55">{p.description}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
-  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapIsDemo?'Mapa demonstrativo sem orientação geográfica confiável.':mapped.inside?'Você está no mapa.':positionUncertain?'Você está próximo ao limite do mapa, mas o GPS está impreciso.':closestEntrance?'Você está fora do mapa. Entrada a aproximadamente '+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+' da borda.'}</p>
+  <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting?'Obtendo sua posição...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapIsDemo?'A localização nesta planta estará disponível após a calibração GPS do local.':mapped.inside?'Você está no mapa.':positionUncertain?'Você está próximo ao limite do mapa, mas o GPS está impreciso.':closestEntrance?'Você está fora do mapa. Entrada a aproximadamente '+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+' da borda.'}</p>
   {location&&<p className="mt-1 text-white/40">Precisão do GPS: ±{Math.round(location.accuracy)} m</p>}
  </div>
- {calibrated?.gps?.mode==='demo-auto'&&<p className="rounded-lg border border-amber-300/20 px-3 py-2 text-xs text-amber-100/75">Localização aproximada. Os cantos ainda não foram medidos no espaço; para maior precisão, calibre o mapa.</p>}
+ {mapIsDemo&&<p className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/55">Para utilizar a orientação por GPS nesta planta, o local precisa estar calibrado.</p>}
  {mapError&&<p role="alert" className="text-sm text-red-300">{mapError}</p>}
  </section>;
 }
