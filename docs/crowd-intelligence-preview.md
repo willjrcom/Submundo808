@@ -12,6 +12,16 @@ Branch: `feature/event-crowd-intelligence-preview`
 4. Clique em **Ver exemplo fictício** para visualizar o mapa de calor e gráficos mesmo sem GPS/participantes. O aviso amarelo diferencia claramente os dados fictícios das leituras reais; a prévia não insere dados de exemplo no banco.
 5. Para obter leituras reais, é necessário publicar um evento, configurar `location_sharing_enabled=true`, vincular um mapa com quatro cantos **calibrados manualmente** e ter participantes autorizando localização **e** estatísticas no mapa.
 
+## Simulação com GPS (nova)
+
+1. Em **Visão geral** ou **Inteligência**, selecione o evento e o mapa desejados.
+2. Escolha **50**, **140** ou **250 pessoas fictícias** e pressione **Simular ±20 m do meu GPS**.
+3. O navegador solicita sua posição atual **somente após o clique**. O app cria um mapa virtual de **40 × 40 metros**, com seu GPS como centro e localizações fictícias até **20 metros em cada direção**. A planta do estabelecimento é usada apenas como **representação esquemática**, não como medida física do local.
+4. Os pontos rosas se movem automaticamente a cada **3 segundos**; cada etapa representa **5 minutos simulados**. Os cards, as zonas do mapa e a aba **Histórico** apresentam os números simulados em tempo real.
+5. Clique em **Parar simulação** para voltar imediatamente aos dados reais.
+
+**Privacidade e isolamento:** a simulação é executada **inteiramente no navegador**, não usa o endpoint de envio de localização de participantes, não grava trajetos mockados nem no PostgreSQL nem em armazenamento local, e é sempre identificada com aviso de **SIMULAÇÃO GPS ATIVA**. Os números falsos não entram nos relatórios reais. Em caso de GPS negado ou indisponível, ainda há o botão **Ver exemplo fictício** que não usa localização.
+
 ## Como funciona
 
 - A aplicação reutiliza **exclusivamente** as posições temporárias já enviadas para localização de amigos. Não liga GPS adicional, não coleta em background e não captura posições com o PWA fechado.
