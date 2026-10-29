@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {advanceGpsSimulation,createGpsSimulation,simulationHotspots,SIMULATION_INTERVAL_MS,SIMULATION_RADIUS_METERS,SIMULATION_STEP_MINUTES,type CrowdGpsSimulation,type SimulationZone} from './crowd-gps-simulator';
-import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints} from 'lucide-react';
+import {Activity,BarChart3,MapPin,RefreshCw,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints,ChevronDown,ChevronUp} from 'lucide-react';
 import {AreaChart,Area,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 
 type EventItem={id:string;name:string;starts_at?:string;location_sharing_enabled?:number;map_ids?:string[]};
@@ -20,15 +20,12 @@ async function get<T>(path:string):Promise<T>{
  if(!r.ok)throw Error(j.error||'Não foi possível consultar a movimentação.');
  return j as T;
 }
-function exampleMaps(maps:MapInfo[]):MapInfo[]{
- const source=maps.length?maps:[{id:'example',name:'Planta demonstrativa',calibrated:false,areas:[
-  {id:'pista',name:'Pista',x:5,y:5,width:63,height:55,count:0},
-  {id:'palco',name:'Palco',x:70,y:5,width:26,height:55,count:0},
-  {id:'bar',name:'Bares',x:5,y:64,width:46,height:32,count:0},
-  {id:'lounge',name:'Área externa',x:55,y:64,width:41,height:32,count:0}
- ]}];
- return source.map(map=>({...map,calibrated:true,areas:map.areas.map((a,i)=>({...a,count:[186,128,78,36,24,12][i%6]}))}));
-}
+const VIRTUAL_MAP:MapInfo={id:'virtual-map',name:'Área virtual (40 × 40 m)',calibrated:false,areas:[
+ {id:'pista',name:'Pista',x:5,y:5,width:63,height:55,count:0},
+ {id:'palco',name:'Palco',x:70,y:5,width:26,height:55,count:0},
+ {id:'bar',name:'Bares',x:5,y:64,width:46,height:32,count:0},
+ {id:'lounge',name:'Área externa',x:55,y:64,width:41,height:32,count:0}
+]};
 function congestionColor(n:number|null,peak:number){
  if(n===null)return 'rgba(148,163,184,.14)';
  if(n===0)return 'rgba(22,163,74,.12)';
@@ -43,7 +40,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
  const [selectedMapId,setSelectedMapId]=useState('');
  const [view,setView]=useState<'live'|'history'>('live');
  const [period,setPeriod]=useState<'24h'|'7d'|'30d'>('24h');
- const [example,setExample]=useState(false);
+ const [simulationToolsOpen,setSimulationToolsOpen]=useState(false);
  const [simulation,setSimulation]=useState<CrowdGpsSimulation|null>(null);
  const [simulatingGps,setSimulatingGps]=useState(false);
  const gpsRequestId=useRef(0);
@@ -61,7 +58,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
   const scopedMapId=linkedMaps.some(m=>m.id===selectedMapId)?selectedMapId:linkedMaps[0]?.id||'';
  useEffect(()=>{
   gpsRequestId.current++;
-  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);setGpsFailed(false);setPickingCenter(false);setCenterChosen(false);setManualCenter({x:50,y:50});
+  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setGpsFailed(false);setPickingCenter(false);setCenterChosen(false);setManualCenter({x:50,y:50});
  },[currentEvent]);
  useEffect(()=>{
   if(!currentEvent)return;
@@ -92,7 +89,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
  // Somente a apresentação é mockada. A API real e os snapshots do banco
  // permanecem inteiramente separados e não recebem nenhuma posição fictícia.
  const sourceMaps=(live?.maps||[]).filter(m=>m.id===scopedMapId);
- const virtualMap:MapInfo={...exampleMaps([])[0],id:'virtual-map',name:'Mapa virtual (40 × 40 m)'};
+ const virtualMap=VIRTUAL_MAP;
  const baseMaps=simulation?.mapId==='virtual-map'||((simulation||pickingCenter||centerChosen)&&!sourceMaps.length)?[virtualMap]:sourceMaps;
  const latest=simulation?.history.at(-1);
  const maps=simulation?baseMaps.map(map=>({...map,calibrated:true,areas:map.areas.map(area=>({
@@ -103,28 +100,27 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
  const peak=Math.max(1,...(chosenMap?.areas.map(a=>a.count||0)||[]));
  const topZone=maps.flatMap(m=>m.areas.map(a=>({...a,mapName:m.name})))
   .filter(a=>(a.count||0)>=5).sort((a,b)=>(b.count||0)-(a.count||0))[0];
- const fakeSeries=Array.from({length:12},(_,i)=>({at:Date.now()-(11-i)*60*60_000,participants:[24,45,82,146,220,315,428,378,303,226,120,62][i]}));
  const chartPoints=simulation?simulation.history.map(frame=>({
   label:frame.step===0?'Início':'+'+(frame.step*SIMULATION_STEP_MINUTES)+' min',
   participants:frame.participants
- })):(example?fakeSeries:history?.series||[]).map(p=>({...p,label:timeText(p.at,period!=='24h')}));
+ })):(history?.series||[]).map(p=>({...p,label:timeText(p.at,period!=='24h')}));
  const fakeHotspots=(simulation?
    simulationHotspots(simulation,(simulationMap?.areas||[])).map(zone=>({
     ...zone,mapId:simulation.mapId,name:simulationMap?.areas.find(a=>a.id===zone.id)?.name||'Ambiente',
     mapName:simulationMap?.name||'Mapa virtual'
    }))
-   :example?maps.flatMap(m=>m.areas.map(a=>({id:a.id,mapId:m.id,name:a.name,mapName:m.name,average:Math.round((a.count||0)*.66),peak:a.count||0,samples:12}))):history?.hotspots||[]
+   :history?.hotspots||[]
   ).sort((a,b)=>b.average-a.average);
  function startSimulation(origin:{lat:number;lng:number},source:'gps'|'virtual'){
   try{
    // O layout é esquemático: cada centro cria sua janela virtual de 40 × 40 m.
    // Não publicamos coordenadas, pessoas ou histórico falsos no backend.
-   const availableMaps=live?.maps||[];
+   const availableMaps=(live?.maps||[]).filter(m=>m.id===scopedMapId);
    const map=availableMaps.find(m=>m.id===selectedMapId)||availableMaps[0]||virtualMap;
    const zones:SimulationZone[]=map.areas.map(a=>({id:a.id,x:a.x,y:a.y,width:a.width,height:a.height}));
    const result=createGpsSimulation(origin,zones,map.id,simulationSize,Date.now(),
     {center:manualCenter,source});
-   setSelectedMapId(map.id);setExample(false);setView('live');setSimulation(result);
+   setSelectedMapId(map.id);setView('live');setSimulation(result);setSimulationToolsOpen(true);
    setPickingCenter(false);setGpsFailed(false);setError('');
   }catch(e){setError(e instanceof Error?e.message:'Falha ao criar a simulação.');}
  }
@@ -135,7 +131,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
  }
  function chooseManualCenter(){
   gpsRequestId.current++;setSimulatingGps(false);setError('');
-  setSimulation(null);setExample(false);setCenterChosen(false);setPickingCenter(true);setView('live');
+  setSimulation(null);setCenterChosen(false);setPickingCenter(true);setView('live');setSimulationToolsOpen(true);
   window.requestAnimationFrame(()=>document.getElementById('crowd-map-canvas')?.scrollIntoView({behavior:'smooth',block:'center'}));
  }
  function beginGpsSimulation(){
@@ -174,10 +170,10 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
   },SIMULATION_INTERVAL_MS);
   return()=>window.clearInterval(timer);
  },[simulation?.seed,simulation?.mapId,live?.maps]);
- if(!eventOptions.length)return <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.035] p-5"><p className="font-bold">Análise de Ocupação</p><p className="mt-2 text-sm text-white/60">Vincule uma planta deste estabelecimento a um evento para acompanhar sua movimentação.</p></div>;
- return <section className="mt-7 space-y-4" aria-label="Análise de Ocupação">
+ if(!eventOptions.length)return <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.035] p-5"><p className="font-bold">Análise de público</p><p className="mt-2 text-sm text-white/60">Vincule uma planta deste estabelecimento a um evento para acompanhar sua movimentação.</p></div>;
+ return <section className="mt-7 space-y-4" aria-label="Análise de público">
   <div className="flex flex-wrap items-center justify-between gap-3">
-   <div><p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#c4ff40]"><Activity size={16}/> Análise de Ocupação </p><h3 className="mt-2 text-xl font-black">{compact?'Concentração ao vivo':'Movimentação por planta'}</h3><p className="mt-1 text-xs text-white/55">Amostra voluntária de GPS. Não representa lotação total nem taxa de pessoas por metro quadrado.</p></div>
+   <div><p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#c4ff40]"><Activity size={16}/> Análise de público </p><h3 className="mt-2 text-xl font-black">{compact?'Concentração ao vivo':'Movimentação por planta'}</h3><p className="mt-1 text-xs text-white/55">Amostra voluntária de GPS. Não representa lotação total nem taxa de pessoas por metro quadrado.</p></div>
    {compact&&onOpenReports&&<button type="button" onClick={onOpenReports} className="rounded-xl border border-[#c4ff40]/50 px-3 py-2.5 text-xs font-bold text-[#c4ff40]">Ver relatórios <BarChart3 size={14} className="ml-1 inline"/></button>}
   </div>
   <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-white/[.035] p-4">
@@ -195,9 +191,9 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
   {(view==='live'||compact)?<>
    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
     {[
-     {label:simulation?'Pessoas fictícias em movimento':'Participantes detectados no evento',value:simulation?latest?.participants:example?428:live?.participants,icon:Users,hint:simulation?'Simulação local, sem pessoas reais':'Consentimento ativo e GPS recente'},
-     {label:simulation?'Simulados dentro dos ambientes':'Identificados no evento',value:simulation?latest?.classified:example?392:live?.classified,icon:MapPin,hint:simulation?'Contagem fictícia por área no mapa':'Localização com precisão suficiente'},
-     {label:simulation?'Simulados fora dos ambientes':'Sem ambiente confiável no evento',value:simulation?latest?.unclassified:example?36:live?.unclassified,icon:Activity,hint:simulation?'Pessoas fictícias em circulação':'GPS impreciso, fora da área ou planta sem calibração'}
+     {label:simulation?'Pessoas fictícias em movimento':'Participantes detectados no evento',value:simulation?latest?.participants:live?.participants,icon:Users,hint:simulation?'Simulação local, sem pessoas reais':'Consentimento ativo e GPS recente'},
+     {label:simulation?'Simulados dentro dos ambientes':'Identificados nesta planta',value:simulation?latest?.classified:(chosenMap?.areas.some(a=>a.count===null)?null:chosenMap?.areas.reduce((sum,a)=>sum+(a.count||0),0)??null),icon:MapPin,hint:simulation?'Contagem fictícia por área no mapa':'Localização com precisão suficiente'},
+     {label:simulation?'Simulados fora dos ambientes':'Sem ambiente confiável no evento',value:simulation?latest?.unclassified:live?.unclassified,icon:Activity,hint:simulation?'Pessoas fictícias em circulação':'GPS impreciso, fora da área ou planta sem calibração'}
     ].map(({label,value,icon:Icon,hint})=><div key={label} className={'rounded-2xl border border-white/10 bg-[#1c1424] p-3 sm:p-4 '+(label.includes('fora')||label.includes('Sem ambiente')?'col-span-2 sm:col-span-1':'')}><Icon size={18} className="text-[#c4ff40]"/><p className="mt-3 text-xs text-white/60">{label}</p><p className="mt-2 text-2xl font-black">{countText(value)}</p><p className="mt-1 text-[11px] text-white/40">{hint}</p></div>)}
    </div>
    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)]">
@@ -217,7 +213,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
        {simulation.people.filter(person=>person.active).map(person=><span key={person.id} aria-hidden="true" className="pointer-events-none absolute z-[12] h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-200/85 shadow-[0_0_5px_#e879f9]" style={{left:person.x+'%',top:person.y+'%'}}/>)}
        <span className="pointer-events-none absolute bottom-1 left-2 z-[26] rounded bg-black/85 px-2 py-1 text-[10px] font-semibold text-amber-100">SIMULADO · ±{SIMULATION_RADIUS_METERS} m · {simulation.source==='gps'?'GPS do aparelho':'centro virtual'}</span>
       </>}
-      {!chosenMap.calibrated&&!example&&!simulation&&!pickingCenter&&<div className="absolute inset-0 flex items-center justify-center bg-[#0e0c14]/85 p-5 text-center"><p className="max-w-xs text-xs leading-relaxed text-amber-200">Esta planta ainda não possui calibração GPS manual. O mapa de calor real só poderá funcionar depois da calibração do local.</p></div>}
+      {!chosenMap.calibrated&&!simulation&&!pickingCenter&&<div className="absolute inset-0 flex items-center justify-center bg-[#0e0c14]/85 p-5 text-center"><p className="max-w-xs text-xs leading-relaxed text-amber-200">Esta planta ainda não possui calibração GPS manual. O mapa de calor real só poderá funcionar depois da calibração do local.</p></div>}
      </div>}
      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-[11px] text-white/50"><span>Baixa <span className="text-green-300">●</span> · Moderada <span className="text-yellow-300">●</span> · Alta <span className="text-red-300">●</span></span><span>Relativo à maior contagem, não à capacidade</span></div>
     </div>
@@ -226,7 +222,7 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
      <p className="mt-1 text-xs text-white/50">Por pessoas detectadas neste instante</p>
      <div className="mt-4 space-y-3">{maps.flatMap(m=>m.areas.map(a=>({...a,mapName:m.name}))).filter(a=>(a.count||0)>=5).sort((a,b)=>(b.count||0)-(a.count||0)).slice(0,7).map(a=><div key={a.id} className="space-y-1"><div className="flex items-center justify-between gap-2 text-xs"><span className="truncate">{a.name}</span><span className="shrink-0 font-bold">{countText(a.count)}</span></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full" style={{width:(100*(a.count||0)/Math.max(peak,1))+'%',backgroundColor:congestionColor(a.count,peak).replace(/\.\d+\)$/,'1)')}}/></div></div>)}</div>
      {!topZone&&<p className="mt-5 text-xs leading-relaxed text-white/55">Ainda não há amostras suficientes por ambiente. As contagens menores que 5 são ocultadas.</p>}
-     <div className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-xs text-white/50"><RefreshCw size={15} className={'shrink-0 '+(busy?'animate-spin':'')}/> {simulation?'Movimento simulado: a cada 3 segundos · +5 min por ciclo. Etapa '+simulation.tick+'.':'Atualização real a cada 30 segundos.'} {live?.updatedAt&&!example&&!simulation?'Última leitura: '+timeText(live.updatedAt):''}</div>
+     <div className="mt-5 flex items-start gap-2 border-t border-white/10 pt-4 text-xs text-white/50"><RefreshCw size={15} className={'shrink-0 '+(busy?'animate-spin':'')}/> {simulation?'Movimento simulado: a cada 3 segundos · +5 min por ciclo. Etapa '+simulation.tick+'.':'Atualização real a cada 30 segundos.'} {live?.updatedAt&&!simulation?'Última leitura: '+timeText(live.updatedAt):''}</div>
     </div>
    </div>
   </>:<div className="space-y-4">
