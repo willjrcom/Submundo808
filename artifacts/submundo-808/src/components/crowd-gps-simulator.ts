@@ -1,7 +1,7 @@
 /**
  * Simulação exclusivamente local: posição GPS serve de centro temporário a
  * uma área virtual de 40 × 40 metros (20 m em cada direção).
- * Nenhuma amostra é enviada à API ou persistida em localStorage.
+ * Nenhuma amostra é enviada à API nem persistida em armazenamento local.
  */
 export const SIMULATION_RADIUS_METERS=20;
 export const SIMULATION_STEP_MINUTES=5;
