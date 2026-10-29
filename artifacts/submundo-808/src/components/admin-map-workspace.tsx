@@ -110,6 +110,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
  },[map.id]);
+ useEffect(()=>{if(!calibrationOpen){stopCaptureWatch();setCaptureReview(null);setCalibrationBusy(false);}},[calibrationOpen]);
+ useEffect(()=>()=>stopCaptureWatch(),[]);
  useEffect(()=>{
   if(!calibrationOpen){if(gpsWatch.current!==null){navigator.geolocation.clearWatch(gpsWatch.current);gpsWatch.current=null;}walkActive.current=false;setWalkTesting(false);return;}
   if(!navigator.geolocation){setGpsStatus('Este dispositivo não disponibiliza GPS.');return;}
@@ -129,7 +131,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    if(event.key==='Escape'&&pendingDiscardAction){event.preventDefault();event.stopPropagation();if(!loading&&!saving)setPendingDiscardAction(null);return;}
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
-    event.preventDefault();event.stopPropagation();setCalibrationOpen(false);return;
+    event.preventDefault();event.stopPropagation();
+    if(captureReview)cancelCapture();else setCalibrationOpen(false);
+    return;
    }
    if(pendingDelete||pendingDiscardAction)return;
    if(!(event.ctrlKey||event.metaKey)||event.altKey||drag.current)return;
@@ -143,7 +147,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[calibrationOpen,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
+ },[calibrationOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -261,24 +265,56 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  }
  function requestCalibrationSave(){
   if(!ready){setError('Registre os quatro cantos antes de salvar.');return;}
+  if(!geometryValid){setError('Os cantos parecem invertidos ou cruzados. Confira os quatro pontos.');return;}
   setShowCalibrationConfirm(true);
  }
-  async function capture(corner:string){
+ function stopCaptureWatch(){
+  if(captureWatch.current!==null){navigator.geolocation?.clearWatch(captureWatch.current);captureWatch.current=null;}
+  if(captureTimer.current!==null){window.clearTimeout(captureTimer.current);captureTimer.current=null;}
+  if(captureProgressTimer.current!==null){window.clearInterval(captureProgressTimer.current);captureProgressTimer.current=null;}
+ }
+ function cancelCapture(){
+  stopCaptureWatch();captureSamples.current=[];setCaptureReview(null);setCalibrationBusy(false);
+ }
+ function capture(corner:CornerKey){
   if(!calibrationArea){setError('Crie um ambiente antes de calibrar o mapa.');return;}
   if(!navigator.geolocation){setError('GPS indisponível neste navegador.');return;}
-  setCalibrationBusy(true);setError('');
-  navigator.geolocation.getCurrentPosition(p=>{
-   const point={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};
-   checkpoint();setCalibrationPosition(point);
-   setAreas(v=>v.map(a=>{
-    if(a.id!==calibrationArea.id)return {...a,gps:{}};
-    // Nunca misturar cantos gerados automaticamente com cantos medidos.
-    const previous=a.gps?.mode==='demo-auto'?{}:a.gps;
-    return {...a,gps:{...previous,[corner]:point,mode:'manual' as const}};
-   }));
-   setNotice('Ponto registrado (precisão ±'+Math.round(point.accuracy)+' m). Salve o mapa para publicar.');
+  stopCaptureWatch();setCalibrationBusy(true);setError('');
+  captureSamples.current=[];
+  const started=Date.now();
+  setCaptureReview({corner,phase:'collecting',elapsed:0,result:null,message:''});
+  const finish=()=>{
+   stopCaptureWatch();
+   const result=summarizeGpsSamples(captureSamples.current);
    setCalibrationBusy(false);
-  },e=>{setError('Não foi possível calibrar: '+e.message);setCalibrationBusy(false);},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+   setCaptureReview({corner,phase:'review',elapsed:GPS_CAPTURE_MS,result,
+    message:result?(result.reliable?'Leituras estáveis para esta captura.':
+     'Precisão baixa ou poucas leituras. Recomendamos mapear novamente se a posição estiver incorreta.')
+    :'Nenhuma leitura de GPS válida. Tente novamente em um local com sinal.'});
+  };
+  captureProgressTimer.current=window.setInterval(()=>{
+   setCaptureReview(prev=>prev?.phase==='collecting'?{...prev,elapsed:Math.min(GPS_CAPTURE_MS,Date.now()-started)}:prev);
+  },100);
+  captureTimer.current=window.setTimeout(finish,GPS_CAPTURE_MS);
+  captureWatch.current=navigator.geolocation.watchPosition(p=>{
+   captureSamples.current.push({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy});
+  },e=>{
+   if(e.code===1){stopCaptureWatch();setCalibrationBusy(false);
+    setCaptureReview({corner,phase:'review',elapsed:GPS_CAPTURE_MS,result:null,
+     message:'Permissão de localização negada. Autorize o GPS para calibrar.'});}
+   else setGpsStatus('GPS instável: '+e.message+'. Tentando até completar os 8 segundos.');
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
+ }
+ function confirmCapturedPoint(){
+  const candidate=captureReview?.result?.point,corner=captureReview?.corner;
+  if(!candidate||!corner||!calibrationArea)return;
+  stopCaptureWatch();checkpoint();setCalibrationPosition(candidate);
+  setAreas(v=>v.map(a=>{
+   if(a.id!==calibrationArea.id)return {...a,gps:{}};
+   return {...a,gps:applyMeasuredCorner(a.gps,corner,candidate)};
+  }));
+  setNotice('Ponto confirmado (±'+Math.round(candidate.accuracy)+' m). Os limites terão margem externa de 5 m quando os quatro cantos estiverem medidos.');
+  setCaptureReview(null);setCalibrationBusy(false);setShowCalibrationConfirm(false);
  }
  async function discard(){
   setLoading(true);setError('');
