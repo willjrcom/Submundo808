@@ -30,8 +30,8 @@ function fixture(){
  db.prepare('INSERT INTO events VALUES(?,?,?)').run('event-2','Outra festa',1);
  db.prepare('INSERT INTO venue_maps VALUES(?,?)').run('map-1','Área principal');
  db.prepare('INSERT INTO event_maps VALUES(?,?)').run('event-1','map-1');
- db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?,?)').run('pista','map-1','Pista',0,0,50,100,JSON.stringify(GPS));
- db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?,?)').run('bar','map-1','Bar',50,0,50,100,'{}');
+ db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?)').run('pista','map-1','Pista',0,0,50,100,JSON.stringify(GPS));
+ db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?)').run('bar','map-1','Bar',50,0,50,100,'{}');
  return db;
 }
 function insertPerson(db,id,{x=.25,y=.5,accuracy=4,consent=true,share=true,event='event-1',updatedAt=NOW}={}){
