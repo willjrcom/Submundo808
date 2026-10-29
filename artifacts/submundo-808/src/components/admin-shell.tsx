@@ -15,7 +15,7 @@ import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
-import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell, BarChart3 } from 'lucide-react';
+import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell, BarChart3, Menu, X } from 'lucide-react';
 type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[];location_sharing_enabled?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
@@ -26,6 +26,7 @@ export default function AdminShell(){
  const [settings,setSettings]=useState({minimum_age:18,entry_rules:'',accepted_documents:'',cancellation_policy:'',contact_name:'Submundo 808',contact_phone:''}),[settingsNotice,setSettingsNotice]=useState('');
  const [venueTab,setVenueTab]=useState<'maps'|'info'>('info');
  const [currentPath,setCurrentPath]=useState(window.location.pathname);
+ const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
@@ -38,7 +39,7 @@ export default function AdminShell(){
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{void api('event-settings').then(j=>setSettings(j.settings)).catch(()=>{});void api('branding').then(j=>{setBrandLogo(j.logo||'');setAccentColor(j.color||DEFAULT_COLOR);}).catch(()=>{});},[]);
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
- useEffect(()=>{const onPop=()=>{setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+ useEffect(()=>{const onPop=()=>{setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setMobileMenuOpen(false);setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
  useEffect(()=>{setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setPostalCode(editing?.postal_code||'');setStreet(editing?.street||'');setNeighborhood(editing?.neighborhood||'');setComplement(editing?.complement||'');setAddressUrl(editing?.address_url||'');setServices(editing?.services||'');},[section,route.id,route.creating,editing?.id]);
  useEffect(()=>{if(section!=='Visão geral'||!user?.isAdmin)return;const t=setInterval(()=>void api('overview').then(setStats).catch(()=>{}),30000);return ()=>clearInterval(t);},[section,user?.isAdmin]);
  // Preserve old /mapas/:id bookmarks while removing the standalone menu.
@@ -53,7 +54,7 @@ export default function AdminShell(){
   setRoute(next);
  },[section,route.id,listsLoaded,maps]);
  useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
- function go(next:AdminRoute){const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
+ function go(next:AdminRoute){setMobileMenuOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
@@ -84,13 +85,37 @@ export default function AdminShell(){
   }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}
   finally{setBusy(false);}
  }
+ useEffect(()=>{
+  if(!mobileMenuOpen)return;
+  const key=(event:KeyboardEvent)=>{if(event.key==='Escape')setMobileMenuOpen(false);};
+  window.addEventListener('keydown',key);
+  return()=>window.removeEventListener('keydown',key);
+ },[mobileMenuOpen]);
  const pathParts=currentPath.split('/').filter(Boolean);
  const knownAdminRoute=pathParts.length===0||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
  if(!user?.isAdmin)return <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[#0b090f] p-6 text-center text-white"><h1 className="text-2xl font-black">Painel administrativo</h1><p className="text-white/60">{user?'Sua conta não possui permissão de administrador.':'Faça login no Submundo 808 para acessar o painel.'}</p><a href="https://submundo.menudevendas.com.br/profile" className="rounded-xl bg-[#c4ff40] px-5 py-3 font-bold text-black">Ir para meu perfil</a></div>;
- return <div className="min-h-dvh bg-[#0b090f] text-white md:flex"><aside className="border-b border-white/10 bg-[#17101e] p-5 md:min-h-dvh md:w-64 md:border-b-0 md:border-r"><h1 className="mb-5 text-xl font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></h1><nav className="flex gap-2 overflow-x-auto md:flex-col">{sections.map(({name:label,Icon})=><button key={label} onClick={()=>navigate(label)} className={'flex shrink-0 items-center gap-2 rounded-xl px-3 py-3 text-sm '+(section===label?'bg-[#c4ff40] font-bold text-black':'text-white/70')}><Icon size={17}/>{label}</button>)}</nav><a className="mt-6 flex items-center gap-2 text-sm text-white/60" href="https://submundo.menudevendas.com.br/profile"><ArrowLeft size={16}/> Acessar visão do usuário</a></aside><main className="w-full min-w-0 max-w-6xl p-5 md:p-10">
+ return <div className="min-h-dvh bg-[#0b090f] text-white xl:flex">
+ <header className="sticky top-0 z-40 flex min-h-16 items-center justify-between gap-3 border-b border-white/10 bg-[#17101e] px-4 py-3 xl:hidden">
+  <span className="min-w-0 truncate text-lg font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></span>
+  <button type="button" aria-label="Abrir menu administrativo" aria-expanded={mobileMenuOpen} aria-controls="admin-mobile-navigation" onClick={()=>setMobileMenuOpen(true)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 text-[#c4ff40]"><Menu size={22}/></button>
+ </header>
+ {mobileMenuOpen&&<div className="fixed inset-0 z-[70] xl:hidden">
+  <button type="button" aria-label="Fechar menu administrativo" onClick={()=>setMobileMenuOpen(false)} className="absolute inset-0 h-full w-full bg-black/80"/>
+  <aside id="admin-mobile-navigation" role="dialog" aria-modal="true" aria-label="Navegação administrativa" className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-white/15 bg-[#17101e] p-4 shadow-2xl">
+   <div className="mb-6 flex items-center justify-between gap-3"><p className="text-lg font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></p><button type="button" aria-label="Fechar navegação" onClick={()=>setMobileMenuOpen(false)} className="rounded-xl border border-white/20 p-2.5"><X size={20}/></button></div>
+   <nav aria-label="Seções administrativas" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">{sections.map(({name:label,Icon})=><button key={label} type="button" onClick={()=>navigate(label)} aria-current={section===label?'page':undefined} className={'flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-left text-sm '+(section===label?'bg-[#c4ff40] font-bold text-black':'text-white/75')}><Icon size={18}/>{label}</button>)}</nav>
+   <a className="mt-4 flex items-center gap-3 border-t border-white/10 pt-4 text-sm text-white/70" href="https://submundo.menudevendas.com.br/profile"><ArrowLeft size={16}/> Acessar visão do usuário</a>
+  </aside>
+ </div>}
+ <aside className="hidden shrink-0 border-r border-white/10 bg-[#17101e] p-5 xl:flex xl:min-h-dvh xl:w-64 xl:flex-col">
+  <h1 className="mb-5 text-xl font-black">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></h1>
+  <nav aria-label="Menu administrativo" className="flex flex-col gap-1">{sections.map(({name:label,Icon})=><button key={label} type="button" onClick={()=>navigate(label)} className={'flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-3 text-left text-sm '+(section===label?'bg-[#c4ff40] font-bold text-black':'text-white/70')}><Icon size={17}/>{label}</button>)}</nav>
+  <a className="mt-6 flex items-center gap-2 text-sm text-white/60" href="https://submundo.menudevendas.com.br/profile"><ArrowLeft size={16}/> Acessar visão do usuário</a>
+ </aside>
+ <main className="mx-auto w-full min-w-0 max-w-6xl p-3 pb-8 sm:p-5 xl:p-10">
  {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
  {route.id&&!editing?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
