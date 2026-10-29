@@ -86,7 +86,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  // permanecem inteiramente separados e não recebem nenhuma posição fictícia.
  const sourceMaps=example?exampleMaps(live?.maps||[]):live?.maps||[];
  const virtualMap:MapInfo={...exampleMaps([])[0],id:'virtual-map',name:'Mapa virtual (40 × 40 m)'};
- const baseMaps=simulation&&!sourceMaps.length?[virtualMap]:sourceMaps;
+ const baseMaps=simulation?.mapId==='virtual-map'||(simulation&&!sourceMaps.length)?[virtualMap]:sourceMaps;
  const latest=simulation?.history.at(-1);
  const maps=simulation?baseMaps.map(map=>({...map,calibrated:true,areas:map.areas.map(area=>({
   ...area,count:map.id===simulation.mapId?(latest?.zones[area.id]||0):0
