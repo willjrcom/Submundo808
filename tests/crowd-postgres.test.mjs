@@ -23,7 +23,7 @@ test('PostgreSQL: consentimento é OFF por padrão, leituras agregadas e histór
   db.prepare('INSERT INTO venue_maps(id,name) VALUES(?,?)').run('pg-map','Área teste');
   db.prepare('INSERT INTO event_maps(event_id,map_id) VALUES(?,?)').run(e,'pg-map');
   const calibration={mode:'manual',tl:{lat:-23,lng:-47},tr:{lat:-23,lng:-46.999},bl:{lat:-23.001,lng:-47},br:{lat:-23.001,lng:-46.999}};
-  db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?,?)').run('pg-pista','pg-map','Pista',0,0,100,100,JSON.stringify(calibration));
+  db.prepare('INSERT INTO map_areas VALUES(?,?,?,?,?,?,?,?)').run('pg-pista','pg-map','Pista',0,0,100,100,JSON.stringify(calibration));
   for(let i=0;i<6;i++){
    db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_event_id,share_expires_at,analytics_enabled,analytics_event_id,updated_at) VALUES(?,?,?,?,?,?,?,?)')
     .run('pg-user-'+i,1,1,e,now+600_000,i<5?1:0,i<5?e:null,now);
