@@ -44,17 +44,23 @@ jobs:
         run: |
           node --check server/index.mjs
           node --check server/crowd-analytics.mjs
-      - name: Run critical regression tests with isolated PostgreSQL
-        env:
-          PG_TEST_DATABASE_URL: postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test
+      - name: Run SQLite and frontend safety regressions
         run: |
-          node --test tests/crowd-analytics.test.mjs tests/crowd-postgres.test.mjs tests/location-sharing.test.mjs tests/real-tour-reset.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs
+          node --test tests/crowd-analytics.test.mjs tests/location-sharing.test.mjs tests/real-tour-reset.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs
       - name: Compile frontend preview
         env:
           PORT: '3000'
           BASE_PATH: /
           NODE_ENV: production
         run: pnpm --filter @workspace/submundo-808 build
+      - name: Build local preview Docker image (never published)
+        run: docker build --target runner --tag submundo-crowd-preview-ci .
+      - name: Run isolated PostgreSQL aggregation integration
+        run: |
+          docker run --rm --network host \
+            -e PG_TEST_DATABASE_URL=postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test \
+            -v "$PWD/tests:/app/tests:ro" \
+            --entrypoint node submundo-crowd-preview-ci --test /app/tests/crowd-postgres.test.mjs
       - name: Audit types (legacy baseline, nonblocking)
         continue-on-error: true
         run: pnpm --filter @workspace/submundo-808 typecheck
