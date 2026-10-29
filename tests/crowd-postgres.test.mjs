@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PostgresSync} from '../server/postgres-sync.mjs';
-import {ensureCrowdSchema,readCrowdLive,crowdPublicView,sampleCrowdHistory,readCrowdHistory} from '../server/crowd-analytics.mjs';
+import {ensureCrowdSchema,readCrowdLive,crowdPublicView,sampleCrowdHistory,readCrowdHistory,readCrowdHourly} from '../server/crowd-analytics.mjs';
 
 test('PostgreSQL: consentimento é OFF por padrão, leituras agregadas e histórico persistem', {skip:!process.env.PG_TEST_DATABASE_URL},()=>{
  const db=new PostgresSync(process.env.PG_TEST_DATABASE_URL);
@@ -38,5 +38,9 @@ test('PostgreSQL: consentimento é OFF por padrão, leituras agregadas e histór
   assert.equal(history.snapshotCount,1);
   assert.equal(history.hotspots[0].peak,5);
   assert.equal(history.series[0].participants,5);
+  const hourly=readCrowdHourly(db,e,'pg-map',now+3000);
+  assert.equal(hourly.hours.length,1);
+  assert.equal(hourly.hours[0].participants,5);
+  assert.equal(hourly.hours[0].cells.length,1);
  }finally{db.close();}
 });

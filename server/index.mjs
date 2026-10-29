@@ -9,7 +9,7 @@ import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
-import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
+import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,readCrowdHourly,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
 import webpush from 'web-push';
@@ -392,7 +392,6 @@ http.createServer(async (req,res)=>{
       if (url.pathname==='/api/location/friends' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const eventId=String(url.searchParams.get('event_id')||'');
-          const mapId=String(url.searchParams.get('map_id')||'');
         if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const event=db.prepare('SELECT location_sharing_enabled FROM events WHERE id=?').get(eventId);
         if(!event)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
@@ -554,13 +553,18 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
         const key=url.pathname.slice('/api/admin/'.length);
-        if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history')){
+        if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history'||key==='crowd-hourly')){
           const eventId=String(url.searchParams.get('event_id')||'');
+          const mapId=String(url.searchParams.get('map_id')||'');
           if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido.'});
           try{
             if(key==='crowd-live')return json(res,200,crowdPublicView(readCrowdLive(db,eventId)));
             if(mapId.length>100)return json(res,400,{error:'Informe uma planta válida.'});
-          return json(res,200,readCrowdHistory(db,eventId,Date.now(),url.searchParams.get('period')||'24h',mapId||null));
+            if(key==='crowd-hourly'){
+              if(!mapId)return json(res,400,{error:'Selecione uma planta válida.'});
+              return json(res,200,readCrowdHourly(db,eventId,mapId));
+            }
+            return json(res,200,readCrowdHistory(db,eventId,Date.now(),url.searchParams.get('period')||'24h',mapId||null));
           }catch(e){return json(res,e.status||500,{error:e.status?e.message:'Não foi possível consultar estatísticas deste evento.'});}
         }
         const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
@@ -775,9 +779,9 @@ http.createServer(async (req,res)=>{
           db.exec('BEGIN');try{
             if(entity==='event'){db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);
-            db.prepare('DELETE FROM event_crowd_snapshots WHERE event_id=?').run(id);
+            db.prepare('DELETE FROM event_crowd_snapshots WHERE event_id=?').run(id);db.prepare('DELETE FROM event_crowd_cells WHERE event_id=?').run(id);
             db.prepare('UPDATE location_preferences SET analytics_enabled=0,analytics_event_id=NULL WHERE analytics_event_id=?').run(id);}
-            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_snapshots WHERE map_id=?').run(id);}
+            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_snapshots WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_cells WHERE map_id=?').run(id);}
             db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,200,{ok:true});

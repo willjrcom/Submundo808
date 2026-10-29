@@ -5,6 +5,7 @@ import {LOCATION_FRESH_MS} from './location-sharing.mjs';
 
 export const CROWD_BUCKET_MS=5*60_000;
 export const CROWD_MIN_GROUP=5;
+export const CROWD_GRID_DIVISIONS=8;
 export const CROWD_RETENTION_MS=30*24*60*60_000;
 const MAX_ACCURACY_METERS=25;
 const METERS_PER_DEGREE=111320;
@@ -17,6 +18,12 @@ export function ensureCrowdSchema(db){
   PRIMARY KEY(event_id,map_id,area_id,bucket_at)
  );
  CREATE INDEX IF NOT EXISTS idx_crowd_snapshots_event_time ON event_crowd_snapshots(event_id,bucket_at);`);
+ db.exec(`CREATE TABLE IF NOT EXISTS event_crowd_cells(
+  event_id TEXT NOT NULL,map_id TEXT NOT NULL,cell_x INTEGER NOT NULL,cell_y INTEGER NOT NULL,
+  bucket_at INTEGER NOT NULL,people_count INTEGER NOT NULL,
+  PRIMARY KEY(event_id,map_id,cell_x,cell_y,bucket_at)
+ );
+ CREATE INDEX IF NOT EXISTS idx_crowd_cells_event_map_time ON event_crowd_cells(event_id,map_id,bucket_at);`);
  // Consent is OFF for all existing users. Existing friend sharing never grants it.
  if(!db.prepare('PRAGMA table_info(location_preferences)').all().some(c=>c.name==='analytics_enabled'))
   db.exec('ALTER TABLE location_preferences ADD COLUMN analytics_enabled INTEGER NOT NULL DEFAULT 0');
@@ -91,6 +98,7 @@ export function readCrowdLive(db,eventId,now=Date.now()){
    AND p.share_expires_at>? AND l.updated_at>?`)
   .all(eventId,eventId,now,now-LOCATION_FRESH_MS);
  let placed=0;
+ const cellTotals=new Map();
  if(event.location_sharing_enabled){
   for(const person of people){
    const accuracy=Number(person.accuracy);
@@ -107,17 +115,25 @@ export function readCrowdLive(db,eventId,now=Date.now()){
      if(p.x>=area.x+padX&&p.x<=area.x+area.width-padX&&
         p.y>=area.y+padY&&p.y<=area.y+area.height-padY){
        const size=area.width*area.height;
-       if(!best||size<best.size)best={area,size};
+       if(!best||size<best.size)best={area,size,map,position:p};
      }
     }
    }
-   if(best){best.area.count++;placed++;}
+   if(best){
+    best.area.count++;placed++;
+    // One device is assigned to one coarse map cell per snapshot; never store its coordinates.
+    const x=Math.max(0,Math.min(CROWD_GRID_DIVISIONS-1,Math.floor(best.position.x*CROWD_GRID_DIVISIONS/100)));
+    const y=Math.max(0,Math.min(CROWD_GRID_DIVISIONS-1,Math.floor(best.position.y*CROWD_GRID_DIVISIONS/100)));
+    const key=best.map.id+':'+x+':'+y;
+    const entry=cellTotals.get(key)||{mapId:best.map.id,x,y,count:0};
+    entry.count++;cellTotals.set(key,entry);
+   }
   }
  }
  const total=event.location_sharing_enabled?people.length:0;
  return {event:{id:event.id,name:event.name},updatedAt:now,minimumGroup:CROWD_MIN_GROUP,
   raw:{total,placed,unclassified:total-placed},
-  maps};
+  maps,cells:[...cellTotals.values()]};
 }
 
 export function crowdPublicView(reading){
@@ -136,21 +152,27 @@ export function sampleCrowdHistory(db,now=Date.now()){
  const insert=db.prepare(`INSERT INTO event_crowd_snapshots(event_id,map_id,area_id,bucket_at,people_count)
   VALUES(?,?,?,?,?) ON CONFLICT(event_id,map_id,area_id,bucket_at)
   DO UPDATE SET people_count=excluded.people_count`);
+ const insertCell=db.prepare(`INSERT INTO event_crowd_cells(event_id,map_id,cell_x,cell_y,bucket_at,people_count)
+  VALUES(?,?,?,?,?,?) ON CONFLICT(event_id,map_id,cell_x,cell_y,bucket_at)
+  DO UPDATE SET people_count=excluded.people_count`);
  let sampled=0;
  for(const event of events){
   const live=readCrowdLive(db,event.id,now);
   if(live.raw.total===0)continue; // No empty future-event sampling.
   db.exec('BEGIN');
   try{
+   db.prepare('DELETE FROM event_crowd_cells WHERE event_id=? AND bucket_at=?').run(event.id,bucketAt);
    insert.run(event.id,'__event__','__total__',bucketAt,live.raw.total);
    insert.run(event.id,'__event__','__unclassified__',bucketAt,live.raw.unclassified);
    for(const map of live.maps)for(const area of map.areas)
     insert.run(event.id,map.id,area.id,bucketAt,area.count);
+   for(const cell of live.cells)insertCell.run(event.id,cell.mapId,cell.x,cell.y,bucketAt,cell.count);
    db.exec('COMMIT');
    sampled++;
   }catch(e){db.exec('ROLLBACK');throw e;}
  }
  db.prepare('DELETE FROM event_crowd_snapshots WHERE bucket_at<?').run(now-CROWD_RETENTION_MS);
+ db.prepare('DELETE FROM event_crowd_cells WHERE bucket_at<?').run(now-CROWD_RETENTION_MS);
  return sampled;
 }
 
@@ -194,4 +216,52 @@ export function readCrowdHistory(db,eventId,now=Date.now(),period='24h',mapId=nu
   .sort((a,b)=>b.average-a.average).slice(0,20);
  return {event,period,mapId,minimumGroup:CROWD_MIN_GROUP,sampleIntervalMinutes:5,
   series,hotspots,snapshotCount:totals.size,lastSnapshotAt:Math.max(0,...totals.keys())||null};
+}
+
+/**
+ * Historical, hourly occupancy. Counts are the mean active consenting devices
+ * per 5-minute snapshot, never a count of unique attendees over the hour.
+ * Heat cells are anonymous and redacted when their hourly average is < 5.
+ */
+export function readCrowdHourly(db,eventId,mapId,now=Date.now()){
+ const event=db.prepare('SELECT id,name,starts_at,ends_at FROM events WHERE id=?').get(eventId);
+ if(!event)throw Object.assign(Error('Evento não encontrado.'),{status:404});
+ const map=eventMaps(db,eventId).find(item=>item.id===mapId);
+ if(!map)throw Object.assign(Error('Planta não vinculada a este evento.'),{status:404});
+ const since=now-CROWD_RETENTION_MS;
+ const totalRows=db.prepare(`SELECT bucket_at,people_count FROM event_crowd_snapshots
+  WHERE event_id=? AND map_id='__event__' AND area_id='__total__' AND bucket_at>=?
+  ORDER BY bucket_at`).all(eventId,since);
+ const cellRows=db.prepare(`SELECT bucket_at,cell_x,cell_y,people_count FROM event_crowd_cells
+  WHERE event_id=? AND map_id=? AND bucket_at>=?
+  ORDER BY bucket_at`).all(eventId,mapId,since);
+ const hours=new Map();
+ const ensure=at=>{
+  const hour=Math.floor(Number(at)/3600000)*3600000;
+  if(!hours.has(hour))hours.set(hour,{at:hour,total:0,samples:0,cells:new Map()});
+  return hours.get(hour);
+ };
+ for(const row of totalRows){
+  const hour=ensure(row.bucket_at);
+  hour.total+=Number(row.people_count);hour.samples++;
+ }
+ for(const row of cellRows){
+  const hour=ensure(row.bucket_at),key=row.cell_x+':'+row.cell_y;
+  const item=hour.cells.get(key)||{x:Number(row.cell_x),y:Number(row.cell_y),sum:0};
+  item.sum+=Number(row.people_count);hour.cells.set(key,item);
+ }
+ return {
+  event:{id:event.id,name:event.name,starts_at:event.starts_at,ends_at:event.ends_at},
+  map:{id:map.id,name:map.name,calibrated:map.calibrated,
+   areas:map.areas.map(({id,name,x,y,width,height})=>({id,name,x,y,width,height}))},
+  divisions:CROWD_GRID_DIVISIONS,minimumGroup:CROWD_MIN_GROUP,
+  hours:[...hours.values()].sort((a,b)=>a.at-b.at).map(hour=>({
+   at:hour.at,participants:redactSmallCount(Math.round(hour.total/Math.max(1,hour.samples))),
+   samples:hour.samples,
+   cells:[...hour.cells.values()].map(cell=>({
+    x:cell.x,y:cell.y,
+    count:Math.round(cell.sum/Math.max(1,hour.samples))
+   })).filter(cell=>cell.count>=CROWD_MIN_GROUP)
+  }))
+ };
 }

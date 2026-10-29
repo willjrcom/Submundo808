@@ -15,7 +15,7 @@ import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
-import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell, BarChart3, Menu, X } from 'lucide-react';
+import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Trash2, Users, ShoppingBag, Star, Bell, Menu, X } from 'lucide-react';
 type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[];location_sharing_enabled?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm';
@@ -24,9 +24,10 @@ export default function AdminShell(){
  const [brandLogo,setBrandLogo]=useState(''),[brandMessage,setBrandMessage]=useState('');
  const [accentColor,setAccentColor]=useState(DEFAULT_COLOR),[accentStatus,setAccentStatus]=useState(''),[accentSaving,setAccentSaving]=useState(false);
  const [settings,setSettings]=useState({minimum_age:18,entry_rules:'',accepted_documents:'',cancellation_policy:'',contact_name:'Submundo 808',contact_phone:''}),[settingsNotice,setSettingsNotice]=useState('');
- const [venueTab,setVenueTab]=useState<'maps'|'info'|'occupancy'>(window.location.pathname.endsWith('/analytics')?'occupancy':'info');
+ const [venueTab,setVenueTab]=useState<'maps'|'info'|'events'>(window.location.pathname.includes('/events/')||window.location.pathname.endsWith('/analytics')?'events':'info');
  const [currentPath,setCurrentPath]=useState(window.location.pathname);
  const [navOpen,setNavOpen]=useState(false);
+ const [exampleOpen,setExampleOpen]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
@@ -35,11 +36,13 @@ export default function AdminShell(){
  const section=route.section,creating=route.creating;
  const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
  const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
+ const venueEvents=events.filter(item=>item.venue_id===route.id);
+ const selectedVenueEvent=route.eventId?venueEvents.find(item=>item.id===route.eventId):null;
  const sections:{name:AdminSection;Icon:typeof LayoutDashboard}[]=[{name:'Visão geral',Icon:LayoutDashboard},{name:'Estabelecimentos',Icon:Building2},{name:'Eventos',Icon:CalendarDays},{name:'Produtos',Icon:ShoppingBag},{name:'Avaliações',Icon:Star},{name:'Notificações',Icon:Bell},{name:'Preferências',Icon:Pencil}];
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{void api('event-settings').then(j=>setSettings(j.settings)).catch(()=>{});void api('branding').then(j=>{setBrandLogo(j.logo||'');setAccentColor(j.color||DEFAULT_COLOR);}).catch(()=>{});},[]);
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
- useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setVenueTab(window.location.pathname.endsWith('/analytics')?'occupancy':'info');setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+ useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setVenueTab(window.location.pathname.includes('/events/')||window.location.pathname.endsWith('/analytics')?'events':'info');setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
  useEffect(()=>{
   if(!navOpen)return;
   const onEscape=(e:KeyboardEvent)=>{if(e.key==='Escape')setNavOpen(false);};
@@ -67,10 +70,11 @@ export default function AdminShell(){
    setCurrentPath(path);setRoute(next);
   },[section]);
   useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
- function go(next:AdminRoute){setNavOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'){if(next.analytics)setVenueTab('occupancy');else if(next.id!==route.id)setVenueTab('info');}if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
+ function go(next:AdminRoute){setNavOpen(false);setExampleOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'){if(next.analytics||next.eventId)setVenueTab('events');else if(next.id!==route.id)setVenueTab('info');}if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
+  if(route.eventId){go({section:'Estabelecimentos',id:route.id,creating:false});setVenueTab('events');return;}
   if(route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});setVenueTab('maps');return;}
   go({section,id:null,creating:false});
  }
@@ -99,7 +103,7 @@ export default function AdminShell(){
   finally{setBusy(false);}
  }
  const pathParts=currentPath.split('/').filter(Boolean);
- const knownAdminRoute=pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
+ const knownAdminRoute=(pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
@@ -125,7 +129,7 @@ export default function AdminShell(){
   </aside>
   <main className="mx-auto w-full min-w-0 max-w-6xl px-4 py-5 sm:px-6 xl:px-10 xl:py-10">
  {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
- {route.id&&!editing?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
+ {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing&&section==='Estabelecimentos'?displayLabel(editing.name):editing?'Editar evento':creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
  {section==='Produtos'&&<AdminProducts/>}
@@ -148,9 +152,9 @@ export default function AdminShell(){
   {editing&&<div role="tablist" aria-label="Seções do estabelecimento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
    <button type="button" role="tab" aria-selected={venueTab==='info'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('info');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='info'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Pencil size={16}/> Dados do estabelecimento</button>
    <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('maps');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Plantas do local ({maps.filter(map=>map.venue_id===editing.id).length})</button>
-    <button type="button" role="tab" aria-selected={venueTab==='occupancy'} onClick={()=>go({section:'Estabelecimentos',id:editing.id,creating:false,analytics:true})} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='occupancy'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><BarChart3 size={16}/> Análise de público</button>
+    <button type="button" role="tab" aria-selected={venueTab==='events'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('events');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='events'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><CalendarDays size={16}/> Eventos ({events.filter(event=>event.venue_id===editing.id).length})</button>
   </div>}
-  <div role="tabpanel" className={venueTab==='occupancy'?'w-full':'max-w-3xl'}>
+  <div role="tabpanel" className={venueTab==='events'?'w-full':'max-w-3xl'}>
    {(!editing||venueTab==='info')&&<form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
     <h3 className="font-bold">{editing?'Dados do estabelecimento':'Cadastrar estabelecimento'}</h3>
     <label className="block space-y-1 text-xs text-white/60">Nome<input required maxLength={100} placeholder="Nome do estabelecimento" value={name} onChange={e=>setName(e.target.value)} className={input}/></label>
@@ -163,13 +167,32 @@ export default function AdminShell(){
    {editing&&venueTab==='maps'&&<AdminVenueMaps key={editing.id} venue={editing} maps={maps} events={events}
     onOpen={openMap} onChanged={reload}
     onDelete={map=>setConfirmDelete({id:map.id,name:map.name,entity:'map'})}/>}
-    {editing&&venueTab==='occupancy'&&<AdminCrowd key={editing.id} venueMaps={maps.filter(map=>map.venue_id===editing.id)} events={events.filter(event=>event.venue_id===editing.id||event.map_ids?.some(id=>maps.some(map=>map.id===id&&map.venue_id===editing.id)))}/>}
+    {editing&&venueTab==='events'&&(!route.eventId?
+    <section className="space-y-4">
+     <div className="flex flex-wrap items-center justify-between gap-3">
+      <div><h3 className="font-bold">Eventos deste estabelecimento</h3><p className="mt-1 text-xs text-white/55">Selecione uma festa para consultar o histórico de movimentação por hora.</p></div>
+      <button type="button" onClick={()=>setExampleOpen(true)} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold">Ver exemplo</button>
+     </div>
+     {!venueEvents.length?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/60">Nenhum evento cadastrado neste estabelecimento.</p>:
+      <div className="space-y-3">{[...venueEvents].sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')).map(event=>
+       <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.035] p-4">
+        <div className="min-w-0"><p className="font-bold">{displayLabel(event.name)}</p><p className="mt-1 text-xs text-white/60">{event.starts_at?new Date(event.starts_at).toLocaleString('pt-BR'):'Data a definir'}</p></div>
+        <button type="button" onClick={()=>go({section:'Estabelecimentos',id:editing.id,creating:false,eventId:event.id})} className="shrink-0 rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-bold text-black">Ver análise</button>
+       </article>)}</div>}
+    </section>
+   :selectedVenueEvent&&<AdminCrowd key={selectedVenueEvent.id} event={selectedVenueEvent} venueMaps={maps.filter(map=>map.venue_id===editing.id)}/>)}
+   {editing&&venueTab==='events'&&exampleOpen&&<div role="dialog" aria-modal="true" aria-label="Exemplo de análise do evento" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3" onClick={()=>setExampleOpen(false)}>
+    <div className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/20 bg-[#17111d] p-4 sm:p-6" onClick={e=>e.stopPropagation()}>
+     <div className="mb-5 flex items-center justify-between gap-2"><h3 className="font-bold">Como a análise aparecerá depois do evento</h3><button type="button" onClick={()=>setExampleOpen(false)} aria-label="Fechar exemplo" className="rounded-lg border border-white/20 p-2"><X size={18}/></button></div>
+     <AdminCrowd example event={{id:'example',name:'Exemplo de movimentação',map_ids:[]}} venueMaps={[]}/>
+    </div>
+   </div>}
 
   </div>
  </div>
  :<div className="mt-8 space-y-4">
   <div className="flex items-center justify-between gap-3">
-   <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Acesse um estabelecimento para gerenciar seus mapas e ambientes.</p></div>
+   <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Acesse um estabelecimento para gerenciar plantas e consultar eventos.</p></div>
    <button type="button" onClick={()=>go({section:'Estabelecimentos',id:null,creating:true})} className="shrink-0 rounded-xl bg-[#c4ff40] px-3 py-2.5 text-xs font-bold text-black"><Plus size={14} className="mr-1 inline-block"/> Novo</button>
   </div>
   <label className="block space-y-2 text-xs text-white/60">Buscar por nome, cidade, rua, bairro ou CEP<input value={venueSearch} onChange={e=>setVenueSearch(e.target.value)} placeholder="Digite uma cidade ou outro termo..." className={input}/></label>{searchBusy&&<p className="text-xs text-white/50">Buscando no servidor...</p>}

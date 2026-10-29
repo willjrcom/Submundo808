@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {
  ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,
- gpsToPercent,CROWD_BUCKET_MS,CROWD_MIN_GROUP
+ gpsToPercent,CROWD_BUCKET_MS,CROWD_MIN_GROUP,readCrowdHourly
 } from '../server/crowd-analytics.mjs';
 
 const NOW=Date.parse('2026-11-07T23:00:00Z');
@@ -120,12 +120,20 @@ test('agrega snapshots por janela de cinco minutos e preserva somente métricas,
   assert.equal(history.series[0].participants,6);
   assert.equal(history.hotspots[0].name,'Pista');
   assert.equal(history.hotspots[0].peak,6);
+  const cells=db.prepare('SELECT cell_x,cell_y,people_count FROM event_crowd_cells WHERE event_id=?').all('event-1');
+  assert.ok(cells.length>=1);
+  assert.equal(cells.reduce((sum,row)=>sum+row.people_count,0),6);
+  const hourly=readCrowdHourly(db,'event-1','map-1',NOW+10_000);
+  assert.equal(hourly.hours.length,1);
+  assert.equal(hourly.hours[0].participants,6);
+  assert.ok(hourly.hours[0].cells.length>=1);
   const scoped=readCrowdHistory(db,'event-1',NOW+10_000,'24h','map-1');
   assert.equal(scoped.mapId,'map-1');
   assert.equal(scoped.snapshotCount,1);
   assert.equal(scoped.series[0].participants,6);
   assert.equal(scoped.hotspots[0].mapId,'map-1');
   assert.throws(()=>readCrowdHistory(db,'event-1',NOW,'24h','map-unknown'),/Planta não vinculada/);
+  assert.throws(()=>readCrowdHourly(db,'event-1','map-unknown',NOW),/Planta não vinculada/);
   const columns=db.prepare('PRAGMA table_info(event_crowd_snapshots)').all().map(c=>c.name);
   assert.deepEqual(columns,['event_id','map_id','area_id','bucket_at','people_count']);
   assert.ok(!columns.includes('user_id'));
