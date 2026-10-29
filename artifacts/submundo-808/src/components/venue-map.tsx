@@ -128,6 +128,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
+  const [analyticsConsent,setAnalyticsConsent]=useState(false);
+  const [analyticsBusy,setAnalyticsBusy]=useState(false);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
   const [sharingEventId,setSharingEventId]=useState<string|null>(null);
   const [prefsReady,setPrefsReady]=useState(false);
@@ -146,7 +148,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
    setPrefsSaving(true);
    try{
-    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups});
+    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:shareEnabled&&analyticsConsent});
     setSharingExpiresAt(result.expiresAt||null);
     setSharingEventId(result.eventId||null);
     return result;
@@ -202,6 +204,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     setPrefsReady(true);
     setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
     setShareWithGroups(p.shareWithGroups===true);
+    setAnalyticsConsent(p.analyticsEnabled===true);
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
     if(p.shareEnabled){
@@ -312,6 +315,16 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     },24000);
    }
   };
+  async function toggleAnalyticsConsent(){
+   if(analyticsBusy||!sharing||!activeEventId)return;
+   setAnalyticsBusy(true);setFriendError('');
+   try{
+    const next=!analyticsConsent;
+    const result=await requestLocation('analytics-consent',{eventId:activeEventId,enabled:next});
+    setAnalyticsConsent(result.analyticsEnabled===true);
+   }catch(e){setFriendError(e instanceof Error?e.message:'Não foi possível alterar a participação nas estatísticas.');}
+   finally{setAnalyticsBusy(false);}
+  }
   const endLocalSharing=(message:string)=>{
    gpsAttemptId.current++;
    gpsActivatingRef.current=false;
@@ -321,7 +334,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
    setTracking(false);setSharing(false);setGpsStarting(false);
    setLocation(null);locationRef.current=null;
-   setSharingExpiresAt(null);setSharingEventId(null);
+   setSharingExpiresAt(null);setSharingEventId(null);setAnalyticsConsent(false);
    setGeoError(message);
   };
   useEffect(()=>{
@@ -373,6 +386,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    cancelGpsStartup();
    try{
     await savePrefs(false,false);
+    setAnalyticsConsent(false);
     shareEpoch.current++;sharingRef.current=false;setSharing(false);
     setLocationSetupOpen(false);
     setGpsPermissionRequired(false);lastSend.current=0;
@@ -492,6 +506,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     </label>)}
    </fieldset>
    <label className="flex items-start gap-3 rounded-xl border border-white/15 p-3 text-sm"><input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Compartilhar também com meus grupos</strong><span className="mt-1 block text-xs text-white/55">Se ativado, membros dos seus grupos poderão ver sua posição neste evento. Participar de um grupo, sozinho, não ativa o GPS.</span></span></label>
+   <label className="flex items-start gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.035] p-3 text-sm"><input type="checkbox" checked={analyticsConsent} onChange={e=>setAnalyticsConsent(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Contribuir com estatísticas anônimas da festa (opcional)</strong><span className="mt-1 block text-xs leading-relaxed text-white/55">Autoriza usar sua posição enquanto o compartilhamento estiver ativo para contar movimentação por ambiente. O organizador vê somente totais agregados, sem nomes, localização individual ou trajetos. Os totais históricos continuam anônimos após você desativar.</span></span></label>
    <div className="flex gap-2">
     <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold text-white/75">Cancelar</button>
     <button type="button" disabled={prefsSaving||gpsStarting} onClick={startSharing} className="flex-[1.4] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black disabled:opacity-50">Confirmar e ativar</button>
@@ -499,6 +514,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    <p className="text-[11px] text-white/45">A localização só atualiza enquanto o dispositivo permite. Você pode desativar quando quiser.</p>
   </div>}
   {sharing&&sharingExpiresAt&&<p className="mt-2 text-xs text-[#c4ff40]">Compartilhando até {sharingDeadline}</p>}
+  {sharing&&!locationSetupOpen&&<div className="mt-3 rounded-xl border border-white/15 bg-white/[.025] p-3">
+   <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0"><p className="text-xs font-bold">Estatísticas anônimas do evento</p><p className="mt-1 text-[11px] leading-relaxed text-white/55">{analyticsConsent?'Você autorizou a contagem agregada da sua posição. Pode revogar quando quiser.':'Desativado. Seu GPS não entra nos números do dashboard do organizador.'} Nenhum nome ou trajeto individual é exibido. Os totais já agregados permanecem no histórico.</p></div>
+    <button type="button" disabled={analyticsBusy||prefsSaving} onClick={()=>void toggleAnalyticsConsent()} className={'shrink-0 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-40 '+(analyticsConsent?'border-amber-400/50 text-amber-200':'border-[#c4ff40]/50 text-[#c4ff40]')}>{analyticsBusy?'Aguarde...':analyticsConsent?'Revogar':'Autorizar'}</button>
+   </div>
+  </div>}
   {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
   {gpsStarting&&<p className="mt-2 text-xs text-white/60">Aguardando o GPS do aparelho...</p>}
   {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
