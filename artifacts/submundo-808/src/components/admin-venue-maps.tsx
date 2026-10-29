@@ -1,5 +1,5 @@
 import {useState,type FormEvent} from 'react';
-import {Map,Plus,Pencil,X,CalendarDays} from 'lucide-react';
+import {Map,Plus,Pencil,Trash2,X,CalendarDays} from 'lucide-react';
 import {displayLabel} from './display-label';
 
 type Venue={id:string;name:string};
@@ -65,7 +65,10 @@ export default function AdminVenueMaps({
        <p className="break-words text-sm font-bold">{displayLabel(map.name)}</p>
        <p className="mt-1 flex items-center gap-1 text-xs text-white/50"><CalendarDays size={12}/>{usages} {usages===1?'evento vinculado':'eventos vinculados'}</p>
       </div>
-      <button type="button" onClick={()=>onOpen(map.id)} aria-label={'Editar planta '+map.name} title="Editar planta" className="inline-flex items-center justify-center rounded-lg border border-[#c4ff40]/40 p-3 text-[#c4ff40]"><Pencil size={18}/></button>
+      <div className="flex items-center gap-2">
+       <button type="button" onClick={()=>onOpen(map.id)} aria-label={'Editar planta '+map.name} title="Editar planta" className="inline-flex items-center justify-center rounded-lg border border-[#c4ff40]/40 p-3 text-[#c4ff40]"><Pencil size={18}/></button>
+       <button type="button" onClick={()=>onDelete(map)} aria-label={'Excluir planta '+map.name} title={usages?'Remova este mapa dos eventos antes de excluir':'Excluir planta'} className="inline-flex items-center justify-center rounded-lg border border-red-400/40 p-3 text-red-300"><Trash2 size={18}/></button>
+      </div>
      </div>
     </div>;
    })}
