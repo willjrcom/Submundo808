@@ -185,6 +185,13 @@ export default function AdminCrowd({events,venueId,venueMapIds,compact=false,onO
    <label className="w-full min-w-0 flex-1 space-y-1 text-xs text-white/65 sm:min-w-[220px]">Evento
     <select aria-label="Evento para análise de público" value={currentEvent} onChange={e=>{setEventId(e.target.value);setSelectedMapId('');}} className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">{eventOptions.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}</select>
    </label>
+   {sourceMaps.length>0&&<label className="w-full min-w-0 flex-1 space-y-1 text-xs text-white/65 sm:min-w-[190px]">Planta
+    <select aria-label="Planta para análise de público" value={sourceMaps.some(m=>m.id===selectedMapId)?selectedMapId:sourceMaps[0].id}
+     onChange={e=>{gpsRequestId.current++;setSimulation(null);setSimulatingGps(false);setCenterChosen(false);setPickingCenter(false);setSelectedMapId(e.target.value);}}
+     className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">
+     {sourceMaps.map(map=><option key={map.id} value={map.id}>{map.name}</option>)}
+    </select>
+   </label>}
    {!compact&&<div role="tablist" aria-label="Período da análise" className="flex gap-1 rounded-xl border border-white/10 p-1">
     {(['live','history'] as const).map(tab=><button type="button" key={tab} role="tab" aria-selected={view===tab} onClick={()=>setView(tab)} className={'rounded-lg px-3 py-2 text-xs font-bold '+(view===tab?'bg-[#c4ff40] text-black':'text-white/70')}>{tab==='live'?'Ao vivo':'Histórico'}</button>)}
    </div>}
@@ -220,7 +227,7 @@ export default function AdminCrowd({events,venueId,venueMapIds,compact=false,onO
    </div>
    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)]">
     <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4">
-     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração relativa no mapa</div>{maps.length>1&&<select aria-label="Mapa da concentração" value={chosenMap?.id||''} onChange={e=>{gpsRequestId.current++;setSimulation(null);setSimulatingGps(false);setSelectedMapId(e.target.value);}} className="rounded-lg border border-white/20 bg-[#211829] px-2 py-2 text-xs">{maps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}</div>
+     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração por ambiente{chosenMap?' · '+chosenMap.name:''}</div></div>
      {!chosenMap?<p className="rounded-xl border border-white/10 p-6 text-sm text-white/55">O evento ainda não possui mapa cadastrado.</p>:<div id="crowd-map-canvas" className="relative aspect-[6/5] w-full overflow-hidden rounded-xl border border-white/15 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff0d 1px,transparent 1px),linear-gradient(90deg,#ffffff0d 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
       {chosenMap.areas.map(a=><div key={a.id} className="absolute flex flex-col items-center justify-center overflow-hidden border-2 border-white/25 p-1 text-center" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',backgroundColor:congestionColor(a.count,peak)}} title={a.name+' · '+(a.count===null?'amostra protegida':String(a.count)+' detectados')}><span className="max-w-full truncate text-[10px] font-bold text-white drop-shadow-md">{a.name}</span><span className="mt-0.5 text-[10px] text-white/80">{a.count===null?'< 5':String(a.count)}</span></div>)}
       {pickingCenter&&<button type="button" aria-label="Escolher centro da simulação neste ponto do mapa" className="absolute inset-0 z-[45] cursor-crosshair bg-blue-400/[.035]" onClick={event=>{
