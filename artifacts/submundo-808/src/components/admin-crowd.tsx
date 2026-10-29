@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useState} from 'react';
-import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp} from 'lucide-react';
+import {advanceGpsSimulation,createGpsSimulation,simulationHotspots,SIMULATION_INTERVAL_MS,SIMULATION_RADIUS_METERS,SIMULATION_STEP_MINUTES,type CrowdGpsSimulation,type SimulationZone} from './crowd-gps-simulator';
+import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints} from 'lucide-react';
 import {AreaChart,Area,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 
 type EventItem={id:string;name:string;starts_at?:string;location_sharing_enabled?:number};
@@ -43,11 +44,14 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const [view,setView]=useState<'live'|'history'>('live');
  const [period,setPeriod]=useState<'24h'|'7d'|'30d'>('24h');
  const [example,setExample]=useState(false);
+ const [simulation,setSimulation]=useState<CrowdGpsSimulation|null>(null);
+ const [simulatingGps,setSimulatingGps]=useState(false);
+ const [simulationSize,setSimulationSize]=useState(140);
  const [live,setLive]=useState<Live|null>(null),[history,setHistory]=useState<History|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const eventOptions=useMemo(()=>[...events].sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')),[events]);
  const currentEvent=eventOptions.some(e=>e.id===eventId)?eventId:eventOptions[0]?.id||'';
- useEffect(()=>{setSelectedMapId('');setError('');setLive(null);setHistory(null);},[currentEvent]);
+ useEffect(()=>{setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);},[currentEvent]);
  useEffect(()=>{
   if(!currentEvent)return;
   let alive=true,updating=false;
@@ -74,14 +78,67 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
    .catch(e=>{if(alive)setError(e instanceof Error?e.message:'Erro no histórico.');});
   return()=>{alive=false;};
  },[currentEvent,compact,view,period]);
- const maps=example?exampleMaps(live?.maps||[]):live?.maps||[];
+ // Somente a apresentação é mockada. A API real e os snapshots do banco
+ // permanecem inteiramente separados e não recebem nenhuma posição fictícia.
+ const sourceMaps=example?exampleMaps(live?.maps||[]):live?.maps||[];
+ const virtualMap:MapInfo={...exampleMaps([])[0],id:'virtual-map',name:'Mapa virtual (40 × 40 m)'};
+ const baseMaps=simulation&&!sourceMaps.length?[virtualMap]:sourceMaps;
+ const latest=simulation?.history.at(-1);
+ const maps=simulation?baseMaps.map(map=>({...map,calibrated:true,areas:map.areas.map(area=>({
+  ...area,count:map.id===simulation.mapId?(latest?.zones[area.id]||0):0
+ }))})):baseMaps;
  const chosenMap=maps.find(m=>m.id===selectedMapId)||maps[0];
+ const simulationMap=simulation?maps.find(m=>m.id===simulation.mapId):null;
  const peak=Math.max(1,...(chosenMap?.areas.map(a=>a.count||0)||[]));
  const topZone=maps.flatMap(m=>m.areas.map(a=>({...a,mapName:m.name})))
   .filter(a=>(a.count||0)>=5).sort((a,b)=>(b.count||0)-(a.count||0))[0];
  const fakeSeries=Array.from({length:12},(_,i)=>({at:Date.now()-(11-i)*60*60_000,participants:[24,45,82,146,220,315,428,378,303,226,120,62][i]}));
- const chartPoints=(example?fakeSeries:history?.series||[]).map(p=>({...p,label:timeText(p.at,period!=='24h')}));
- const fakeHotspots=(example?maps.flatMap(m=>m.areas.map(a=>({id:a.id,mapId:m.id,name:a.name,mapName:m.name,average:Math.round((a.count||0)*.66),peak:a.count||0,samples:12}))):history?.hotspots||[]).sort((a,b)=>b.average-a.average);
+ const chartPoints=simulation?simulation.history.map(frame=>({
+  label:frame.step===0?'Início':'+'+(frame.step*SIMULATION_STEP_MINUTES)+' min',
+  participants:frame.participants
+ })):(example?fakeSeries:history?.series||[]).map(p=>({...p,label:timeText(p.at,period!=='24h')}));
+ const fakeHotspots=(simulation?
+   simulationHotspots(simulation,(simulationMap?.areas||[])).map(zone=>({
+    ...zone,mapId:simulation.mapId,name:simulationMap?.areas.find(a=>a.id===zone.id)?.name||'Ambiente',
+    mapName:simulationMap?.name||'Mapa virtual'
+   }))
+   :example?maps.flatMap(m=>m.areas.map(a=>({id:a.id,mapId:m.id,name:a.name,mapName:m.name,average:Math.round((a.count||0)*.66),peak:a.count||0,samples:12}))):history?.hotspots||[]
+  ).sort((a,b)=>b.average-a.average);
+ function beginGpsSimulation(){
+  if(simulatingGps)return;
+  setError('');
+  if(!navigator.geolocation){setError('GPS indisponível. Use o botão Ver exemplo fictício para visualizar uma demonstração sem localização.');return;}
+  if(!window.isSecureContext){setError('A simulação com GPS precisa de HTTPS.');return;}
+  setSimulatingGps(true);
+  // getCurrentPosition somente no clique: nunca solicitar GPS em segundo plano.
+  navigator.geolocation.getCurrentPosition(position=>{
+   setSimulatingGps(false);
+   try{
+    const map=sourceMaps.find(m=>m.id===selectedMapId)||sourceMaps[0]||virtualMap;
+    const zones:SimulationZone[]=map.areas.map(a=>({id:a.id,x:a.x,y:a.y,width:a.width,height:a.height}));
+    const result=createGpsSimulation({lat:position.coords.latitude,lng:position.coords.longitude},
+     zones,map.id,simulationSize);
+    setSelectedMapId(map.id);setExample(false);setView('live');setSimulation(result);
+   }catch(e){setError(e instanceof Error?e.message:'Falha ao criar a simulação.');}
+  },error=>{
+   setSimulatingGps(false);
+   setError(error.code===1
+    ?'A localização foi bloqueada. Libere o GPS nas configurações do navegador ou use Ver exemplo fictício.'
+    :error.code===3?'O GPS demorou para responder. Tente novamente em um local com sinal.'
+    :'Não foi possível obter seu GPS. Confira a conexão e tente novamente.');
+  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+ }
+ useEffect(()=>{
+  if(!simulation)return;
+  const timer=window.setInterval(()=>{
+   setSimulation(previous=>{
+    if(!previous)return previous;
+    const selected=(live?.maps||[]).find(m=>m.id===previous.mapId)||virtualMap;
+    return advanceGpsSimulation(previous,selected.areas);
+   });
+  },SIMULATION_INTERVAL_MS);
+  return()=>window.clearInterval(timer);
+ },[simulation?.seed,simulation?.mapId,live?.maps]);
  if(!eventOptions.length)return <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.035] p-5"><p className="font-bold">Inteligência do evento</p><p className="mt-2 text-sm text-white/60">Cadastre um evento com mapa para iniciar a análise de movimentação.</p></div>;
  return <section className="mt-7 space-y-4" aria-label="Inteligência do evento">
   <div className="flex flex-wrap items-center justify-between gap-3">
