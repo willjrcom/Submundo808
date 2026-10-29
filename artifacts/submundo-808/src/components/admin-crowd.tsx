@@ -202,7 +202,7 @@ export default function AdminCrowd({events,venueId,venueMapIds,compact=false,onO
      </label>
      <button type="button" disabled={simulatingGps} onClick={beginGpsSimulation} className="flex items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-3 py-3 text-xs font-bold text-black disabled:opacity-50"><LocateFixed size={16}/>{simulatingGps?'Obtendo GPS...':'Usar meu GPS'}</button>
      <button type="button" onClick={beginVirtualSimulation} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/50 bg-[#c4ff40]/10 px-3 py-3 text-xs font-bold text-[#c4ff40]"><Play size={15}/> Simular sem GPS</button>
-     <button type="button" onClick={chooseManualCenter} className="flex items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-3 text-xs font-bold text-white/80"><MapPin size={15}/> Escolher centro no mapa</button>
+     <button type="button" onClick={chooseManualCenter} className="flex items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-3 text-xs font-bold text-white/80"><MapPin size={15}/> Marcar centro no mapa</button>
     </>}
    </div>}
   </section>}
