@@ -224,7 +224,7 @@ export function readCrowdHistory(db,eventId,now=Date.now(),period='24h',mapId=nu
  * Heat cells are anonymous and redacted when their hourly average is < 5.
  */
 export function readCrowdHourly(db,eventId,mapId,now=Date.now()){
- const event=db.prepare('SELECT id,name,starts_at,ends_at FROM events WHERE id=?').get(eventId);
+ const event=db.prepare('SELECT id,name FROM events WHERE id=?').get(eventId);
  if(!event)throw Object.assign(Error('Evento não encontrado.'),{status:404});
  const map=eventMaps(db,eventId).find(item=>item.id===mapId);
  if(!map)throw Object.assign(Error('Planta não vinculada a este evento.'),{status:404});

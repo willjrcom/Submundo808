@@ -20,5 +20,5 @@ test('a análise só mostra histórico por hora e mapa de calor',()=>{
  assert.match(crowd,/Mapa de calor/);
  assert.match(crowd,/Participantes ativos detectados/);
  assert.doesNotMatch(crowd,/Simular sem GPS|Ferramentas de simulação|navigator\.geolocation|setInterval|Concentração ao vivo|Usar meu GPS/);
- assert.match(crowd,/example\?'Exemplo ilustrativo/);
+ assert.match(crowd,/Exemplo ilustrativo de como será a análise/);
 });
