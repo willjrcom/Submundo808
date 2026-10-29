@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PostgresSync } from './postgres-sync.mjs';
+import {databaseMode} from './database-mode.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 
 const PORT = Number(process.env.PORT || 80);
@@ -27,9 +28,11 @@ fs.mkdirSync(DATA, { recursive: true });
 const secretFile=path.join(DATA,'friend-invite-secret');
 if(!fs.existsSync(secretFile))fs.writeFileSync(secretFile,randomBytes(32).toString('hex'),{mode:0o600});
 const FRIEND_SECRET=process.env.FRIEND_INVITE_SECRET||fs.readFileSync(secretFile,'utf8').trim();
-const db = process.env.DATABASE_URL
+const storageMode=databaseMode(process.env);
+const db=storageMode==='postgresql'
  ? new PostgresSync(process.env.DATABASE_URL)
- : new DatabaseSync(path.join(DATA, 'submundo.sqlite'));
+ : new DatabaseSync(path.join(DATA,'submundo.sqlite'));
+console.info('[startup] Database backend: '+storageMode);
 const JWT_SECRET=loadJwtSecret(DATA);
 const PUBLIC_APP_ORIGIN=publicAppOrigin();
 db.exec(`PRAGMA journal_mode=WAL;
@@ -554,6 +557,7 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
         const key=url.pathname.slice('/api/admin/'.length);
+        if(req.method==='GET'&&key==='database-status')return json(res,200,{engine:storageMode});
         if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history'||key==='crowd-hourly')){
           const eventId=String(url.searchParams.get('event_id')||'');
           const mapId=String(url.searchParams.get('map_id')||'');
@@ -778,8 +782,7 @@ http.createServer(async (req,res)=>{
           if(entity==='venue'&&(db.prepare('SELECT 1 FROM venue_maps WHERE venue_id=?').get(id)||db.prepare('SELECT 1 FROM events WHERE venue_id=?').get(id)))return json(res,409,{error:'Exclua os mapas e eventos vinculados primeiro.'});
           if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
           db.exec('BEGIN');try{
-            if(entity==='event'){db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
-            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);
+            if(entity==='event'){db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);
             db.prepare('DELETE FROM event_crowd_snapshots WHERE event_id=?').run(id);db.prepare('DELETE FROM event_crowd_cells WHERE event_id=?').run(id);
             db.prepare('UPDATE location_preferences SET analytics_enabled=0,analytics_event_id=NULL WHERE analytics_event_id=?').run(id);}
             if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_snapshots WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_cells WHERE map_id=?').run(id);}
