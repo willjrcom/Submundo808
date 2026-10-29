@@ -41,7 +41,7 @@ test('margem acompanha mapa rotacionado e preserva o centro geográfico',()=>{
  assert.equal(cornersGeometryValid(raw),true);
  const expanded=expandMeasuredCorners(raw,5);
  assert.ok(expanded);
- for(const key of ['tl','tr','bl','br'])assert.ok(distanceMeters(raw[key],expanded[key])>6.9);
+ for(const key of ['tl','tr','bl','br'])assert.ok(distanceMeters(raw[key],expanded[key])>4.5); // 5m em cada vetor local; ângulos não precisam ser 90°
  const rawCenter=mapPercentToGps(50,50,raw);
  const expandedCenter=mapPercentToGps(50,50,expanded);
  assert.ok(distanceMeters(rawCenter,expandedCenter)<0.15);
@@ -49,9 +49,9 @@ test('margem acompanha mapa rotacionado e preserva o centro geográfico',()=>{
  assert.ok(p?.inside);
  assert.ok(Math.abs(p.x-50)<.01&&Math.abs(p.y-50)<.01);
 });
-test('geometria cruzada não deve aplicar margem ou salvar quadrilátero invertido',()=>{
+test('geometria cruzada não deve aplicar margem nem aceitar limites autointersectados',()=>{
  const raw=original();
- const crossed={...raw,tr:raw.bl,bl:raw.tr};
+ const crossed={...raw,tr:raw.br,br:raw.tr};
  assert.equal(cornersGeometryValid(crossed),false);
  assert.equal(expandMeasuredCorners(crossed),null);
  assert.equal(expandMeasuredCorners({...raw,br:raw.tl}),null);
