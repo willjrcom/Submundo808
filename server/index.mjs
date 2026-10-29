@@ -392,6 +392,7 @@ http.createServer(async (req,res)=>{
       if (url.pathname==='/api/location/friends' && req.method==='GET') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const eventId=String(url.searchParams.get('event_id')||'');
+          const mapId=String(url.searchParams.get('map_id')||'');
         if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
         const event=db.prepare('SELECT location_sharing_enabled FROM events WHERE id=?').get(eventId);
         if(!event)return json(res,400,{error:'Informe um evento válido para visualizar posições.'});
@@ -558,7 +559,8 @@ http.createServer(async (req,res)=>{
           if(!eventId||eventId.length>100)return json(res,400,{error:'Informe um evento válido.'});
           try{
             if(key==='crowd-live')return json(res,200,crowdPublicView(readCrowdLive(db,eventId)));
-            return json(res,200,readCrowdHistory(db,eventId,Date.now(),url.searchParams.get('period')||'24h'));
+            if(mapId.length>100)return json(res,400,{error:'Informe uma planta válida.'});
+          return json(res,200,readCrowdHistory(db,eventId,Date.now(),url.searchParams.get('period')||'24h',mapId||null));
           }catch(e){return json(res,e.status||500,{error:e.status?e.message:'Não foi possível consultar estatísticas deste evento.'});}
         }
         const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
