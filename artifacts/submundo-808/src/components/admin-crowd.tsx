@@ -50,6 +50,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const [simulationSize,setSimulationSize]=useState(140);
  const [manualCenter,setManualCenter]=useState({x:50,y:50});
  const [pickingCenter,setPickingCenter]=useState(false);
+ const [centerChosen,setCenterChosen]=useState(false);
  const [gpsFailed,setGpsFailed]=useState(false);
  const [live,setLive]=useState<Live|null>(null),[history,setHistory]=useState<History|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -57,7 +58,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const currentEvent=eventOptions.some(e=>e.id===eventId)?eventId:eventOptions[0]?.id||'';
  useEffect(()=>{
   gpsRequestId.current++;
-  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);setGpsFailed(false);setPickingCenter(false);setManualCenter({x:50,y:50});
+  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);setGpsFailed(false);setPickingCenter(false);setCenterChosen(false);setManualCenter({x:50,y:50});
  },[currentEvent]);
  useEffect(()=>{
   if(!currentEvent)return;
@@ -89,7 +90,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  // permanecem inteiramente separados e não recebem nenhuma posição fictícia.
  const sourceMaps=example?exampleMaps(live?.maps||[]):live?.maps||[];
  const virtualMap:MapInfo={...exampleMaps([])[0],id:'virtual-map',name:'Mapa virtual (40 × 40 m)'};
- const baseMaps=simulation?.mapId==='virtual-map'||((simulation||pickingCenter)&&!sourceMaps.length)?[virtualMap]:sourceMaps;
+ const baseMaps=simulation?.mapId==='virtual-map'||((simulation||pickingCenter||centerChosen)&&!sourceMaps.length)?[virtualMap]:sourceMaps;
  const latest=simulation?.history.at(-1);
  const maps=simulation?baseMaps.map(map=>({...map,calibrated:true,areas:map.areas.map(area=>({
   ...area,count:map.id===simulation.mapId?(latest?.zones[area.id]||0):0
@@ -131,7 +132,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  }
  function chooseManualCenter(){
   gpsRequestId.current++;setSimulatingGps(false);setError('');
-  setSimulation(null);setExample(false);setPickingCenter(true);setView('live');
+  setSimulation(null);setExample(false);setCenterChosen(false);setPickingCenter(true);setView('live');
   window.requestAnimationFrame(()=>document.getElementById('crowd-map-canvas')?.scrollIntoView({behavior:'smooth',block:'center'}));
  }
  function beginGpsSimulation(){
@@ -180,7 +181,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
    <label className="w-full min-w-0 flex-1 space-y-1 text-xs text-white/65 sm:min-w-[220px]">Evento
     <select aria-label="Evento para análise de movimento" value={currentEvent} onChange={e=>{setEventId(e.target.value);setSelectedMapId('');}} className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">{eventOptions.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}</select>
    </label>
-   <button type="button" onClick={()=>{gpsRequestId.current++;setSimulatingGps(false);setSimulation(null);setPickingCenter(false);setGpsFailed(false);setError('');setExample(v=>!v);}} className={'flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold '+(example?'border-amber-400/50 bg-amber-400/10 text-amber-200':'border-white/20 text-white/70')}>{example?<EyeOff size={16}/>:<Eye size={16}/>} {example?'Ocultar exemplo':'Ver exemplo fictício'}</button>
+   <button type="button" onClick={()=>{gpsRequestId.current++;setSimulatingGps(false);setSimulation(null);setPickingCenter(false);setCenterChosen(false);setGpsFailed(false);setError('');setExample(v=>!v);}} className={'flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold '+(example?'border-amber-400/50 bg-amber-400/10 text-amber-200':'border-white/20 text-white/70')}>{example?<EyeOff size={16}/>:<Eye size={16}/>} {example?'Ocultar exemplo':'Ver exemplo fictício'}</button>
    {simulation?<button type="button" onClick={()=>{gpsRequestId.current++;setSimulation(null);setGpsFailed(false);setError('');}} className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-3 text-xs font-bold text-red-200"><Square size={15}/> Parar simulação</button>
     :<div className="flex flex-wrap items-end gap-2">
      <label className="space-y-1 text-xs text-white/60">Pessoas fictícias
@@ -194,6 +195,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
     {(['live','history'] as const).map(tab=><button type="button" key={tab} role="tab" aria-selected={view===tab} onClick={()=>setView(tab)} className={'rounded-lg px-3 py-2 text-xs font-bold '+(view===tab?'bg-[#c4ff40] text-black':'text-white/70')}>{tab==='live'?'Ao vivo':'Histórico'}</button>)}
    </div>}
   </div>
+  {centerChosen&&!simulation&&!pickingCenter&&<div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-400/35 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100"><span>Centro selecionado no mapa. Agora gere os participantes fictícios ao redor dele.</span><button type="button" onClick={beginVirtualSimulation} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-black text-black">Simular sem GPS</button></div>}
   {pickingCenter&&<div role="status" className="rounded-xl border border-blue-400/45 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100">Toque em qualquer ponto do mapa abaixo para escolher o centro. Depois clique em <strong>Simular sem GPS</strong>. Sua posição real não será usada.</div>}
   {simulation&&<div role="note" className="flex items-start gap-2 rounded-xl border border-amber-400/60 bg-amber-400/10 p-3 text-xs font-semibold leading-relaxed text-amber-100"><Footprints size={17} className="mt-0.5 shrink-0"/> SIMULAÇÃO {simulation.source==='gps'?'GPS':'VIRTUAL'} ATIVA — {simulation.people.length} pessoas fictícias em uma área virtual de 40 × 40 metros, centrada {simulation.source==='gps'?'na posição obtida do seu aparelho':'no ponto virtual escolhido no mapa'}. O mapa é esquemático, não usa a escala real do local. Cada 3 segundos avançam 5 minutos fictícios. Nenhuma posição é enviada ao servidor ou salva em relatórios reais.</div>}
   {example&&<div role="note" className="flex gap-2 rounded-xl border border-amber-400/45 bg-amber-400/10 p-3 text-xs font-semibold text-amber-200"><AlertTriangle size={16} className="shrink-0"/> EXEMPLO FICTÍCIO — números e cores inventados para visualizar a interface. Não representam pessoas reais nem medições do evento.</div>}
@@ -216,9 +218,9 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
        if(!bounds.width||!bounds.height)return;
        setManualCenter({x:Math.max(0,Math.min(100,(event.clientX-bounds.left)/bounds.width*100)),
         y:Math.max(0,Math.min(100,(event.clientY-bounds.top)/bounds.height*100))});
-       setPickingCenter(false);setError('');
+       setCenterChosen(true);setPickingCenter(false);setError('');
       }}><span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-blue-400/50 bg-[#17111d]/95 px-3 py-2 text-xs font-bold text-blue-100">Toque para escolher o centro</span></button>}
-      {(pickingCenter||simulation)&&<span aria-label="Centro escolhido para a simulação" className="pointer-events-none absolute z-[44] flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-blue-500 shadow-[0_0_0_6px_#3b82f655]" style={{left:(simulation?.center.x??manualCenter.x)+'%',top:(simulation?.center.y??manualCenter.y)+'%'}}><MapPin size={13}/></span>}
+      {(pickingCenter||centerChosen||simulation)&&<span aria-label="Centro escolhido para a simulação" className="pointer-events-none absolute z-[44] flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-blue-500 shadow-[0_0_0_6px_#3b82f655]" style={{left:(simulation?.center.x??manualCenter.x)+'%',top:(simulation?.center.y??manualCenter.y)+'%'}}><MapPin size={13}/></span>}
       {simulation&&chosenMap.id===simulation.mapId&&<>
        {simulation.people.filter(person=>person.active).map(person=><span key={person.id} aria-hidden="true" className="pointer-events-none absolute z-[12] h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-fuchsia-200/85 shadow-[0_0_5px_#e879f9]" style={{left:person.x+'%',top:person.y+'%'}}/>)}
        <span className="pointer-events-none absolute bottom-1 left-2 z-[26] rounded bg-black/85 px-2 py-1 text-[10px] font-semibold text-amber-100">SIMULADO · ±{SIMULATION_RADIUS_METERS} m · {simulation.source==='gps'?'GPS do aparelho':'centro virtual'}</span>
