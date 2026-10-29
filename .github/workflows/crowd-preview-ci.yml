@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/event-crowd-intelligence-preview
+      - fix/crowd-gps-fallback-mobile-admin
   workflow_dispatch:
 
 permissions:
