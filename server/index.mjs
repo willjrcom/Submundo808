@@ -1,3 +1,4 @@
+import {updateEventExtras} from './event-edit-extras.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
@@ -755,7 +756,7 @@ http.createServer(async (req,res)=>{
           const id=randomUUID();db.exec('BEGIN');
           try{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
-            db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
+            updateEventExtras(db,id,b);
             db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
             db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled===true?1:0,id);
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
@@ -796,7 +797,8 @@ http.createServer(async (req,res)=>{
           if(b.location_sharing_enabled!==undefined&&typeof b.location_sharing_enabled!=='boolean')return json(res,400,{error:'Configuração de localização inválida.'});
           db.exec('BEGIN');try{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
-            db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
+            updateEventExtras(db,id,b);
+             db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
             if(typeof b.location_sharing_enabled==='boolean'){
               db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled?1:0,id);
               if(!b.location_sharing_enabled){
