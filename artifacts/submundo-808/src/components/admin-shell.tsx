@@ -24,7 +24,7 @@ export default function AdminShell(){
  const [brandLogo,setBrandLogo]=useState(''),[brandMessage,setBrandMessage]=useState('');
  const [accentColor,setAccentColor]=useState(DEFAULT_COLOR),[accentStatus,setAccentStatus]=useState(''),[accentSaving,setAccentSaving]=useState(false);
  const [settings,setSettings]=useState({minimum_age:18,entry_rules:'',accepted_documents:'',cancellation_policy:'',contact_name:'Submundo 808',contact_phone:''}),[settingsNotice,setSettingsNotice]=useState('');
- const [venueTab,setVenueTab]=useState<'maps'|'info'|'occupancy'>('info');
+ const [venueTab,setVenueTab]=useState<'maps'|'info'|'occupancy'>(window.location.pathname.endsWith('/analytics')?'occupancy':'info');
  const [currentPath,setCurrentPath]=useState(window.location.pathname);
  const [navOpen,setNavOpen]=useState(false);
  const [confirmDelete,setConfirmDelete]=useState<{id:string;name:string;entity:string}|null>(null);
@@ -39,7 +39,7 @@ export default function AdminShell(){
  async function reload(){const [v,m,e,o]=await Promise.all([api('venues'),api('maps'),api('events'),api('overview')]);setVenues(v.items);setMaps(m.items);setEvents(e.items);setStats(o);}
  useEffect(()=>{void api('event-settings').then(j=>setSettings(j.settings)).catch(()=>{});void api('branding').then(j=>{setBrandLogo(j.logo||'');setAccentColor(j.color||DEFAULT_COLOR);}).catch(()=>{});},[]);
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
- useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+ useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setVenueTab(window.location.pathname.endsWith('/analytics')?'occupancy':'info');setError('');setConfirmDelete(null);};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
  useEffect(()=>{
   if(!navOpen)return;
   const onEscape=(e:KeyboardEvent)=>{if(e.key==='Escape')setNavOpen(false);};
@@ -67,11 +67,11 @@ export default function AdminShell(){
    setCurrentPath(path);setRoute(next);
   },[section]);
   useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
- function go(next:AdminRoute){setNavOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'&&next.id!==route.id)setVenueTab('info');if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
+ function go(next:AdminRoute){setNavOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'){if(next.analytics)setVenueTab('occupancy');else if(next.id!==route.id)setVenueTab('info');}if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');setConfirmDelete(null);}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
-  if(route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});return;}
+  if(route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});setVenueTab('maps');return;}
   go({section,id:null,creating:false});
  }
  function openMap(mapId:string){if(!route.id)return;go({section:'Estabelecimentos',id:route.id,creating:false,mapId});}
@@ -99,7 +99,7 @@ export default function AdminShell(){
   finally{setBusy(false);}
  }
  const pathParts=currentPath.split('/').filter(Boolean);
- const knownAdminRoute=pathParts.length===0||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
+ const knownAdminRoute=pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
@@ -146,9 +146,9 @@ export default function AdminShell(){
  {section==='Estabelecimentos'&&(editing||creating?
  <div className="mt-8 space-y-5">
   {editing&&<div role="tablist" aria-label="Seções do estabelecimento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
-   <button type="button" role="tab" aria-selected={venueTab==='info'} onClick={()=>setVenueTab('info')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='info'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Pencil size={16}/> Dados do estabelecimento</button>
-   <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>setVenueTab('maps')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Plantas do local ({maps.filter(map=>map.venue_id===editing.id).length})</button>
-    <button type="button" role="tab" aria-selected={venueTab==='occupancy'} onClick={()=>setVenueTab('occupancy')} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='occupancy'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><BarChart3 size={16}/> Análise de Ocupação</button>
+   <button type="button" role="tab" aria-selected={venueTab==='info'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('info');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='info'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Pencil size={16}/> Dados do estabelecimento</button>
+   <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('maps');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Plantas do local ({maps.filter(map=>map.venue_id===editing.id).length})</button>
+    <button type="button" role="tab" aria-selected={venueTab==='occupancy'} onClick={()=>go({section:'Estabelecimentos',id:editing.id,creating:false,analytics:true})} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='occupancy'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><BarChart3 size={16}/> Análise de público</button>
   </div>}
   <div role="tabpanel" className={venueTab==='occupancy'?'w-full':'max-w-3xl'}>
    {(!editing||venueTab==='info')&&<form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
