@@ -117,8 +117,10 @@ test('evento sem atrações exibe Line-up em breve e não exibe horas inventadas
  assert.match(home,/event\.lineup\.length\?/);
  assert.match(home,/\(dj\.inicio\|\|dj\.fim\)\&\&<p/);
 });
-test('mapa e cardápio demonstrativos são sinalizados para o público',()=>{
- assert.match(map,/Mapa demonstrativo — não representa a planta real/);
+test('mapa sem avisos de desenvolvimento não inventa navegação GPS; cardápio ainda protege preços de exemplo',()=>{
+ assert.doesNotMatch(map,/Mapa demonstrativo — não representa a planta real/);
+ assert.match(map,/const mapped=location&&bounds&&!mapIsDemo\?gpsToMap/);
+ assert.match(map,/calibração GPS do local/);
  assert.match(menu,/Cardápio demonstrativo: itens, preços e disponibilidade são fictícios/);
 });
 

@@ -70,13 +70,18 @@ test('movimentação altera posições e registros a cada etapa sem sair dos lim
  assert.equal(SIMULATION_INTERVAL_MS,3000);
 });
 
-test('painel de ocupação mostra dados reais, sem controles de demonstração',()=>{
+test('painel de público mostra dados reais e isola a simulação em card fechado',()=>{
  const component=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
  assert.match(component,/const sourceMaps=\(live\?\.maps\|\|\[\]\)\.filter/);
  assert.match(component,/crowd-live\?event_id=/);
  assert.match(component,/map_id=/);
- assert.match(component,/Análise de Ocupação/);
- assert.doesNotMatch(component,/Ver exemplo fictício|Simular sem GPS|Prévia/);
+ assert.match(component,/Análise de público/);
+ assert.match(component,/const \[simulationToolsOpen,setSimulationToolsOpen\]=useState\(false\)/);
+ assert.match(component,/Ferramentas de simulação/);
+ assert.match(component,/simulationToolsOpen&&<div/);
+ assert.match(component,/Simular sem GPS/);
+ assert.doesNotMatch(component,/Ver exemplo fictício|Prévia/);
+ assert.doesNotMatch(component,/example\?428|example\?392|example\?36/);
  assert.doesNotMatch(component,/fetch\(['"]\/api\/location\/update/);
 });
 
@@ -99,10 +104,10 @@ test('funciona sem permissão GPS, com centro fictício e 250 pessoas em movimen
  }
  assert.equal(sim.history.at(-1).classified+sim.history.at(-1).unclassified,sim.history.at(-1).participants);
 });
-test('análise de ocupação fica na última aba do estabelecimento',()=>{
+test('análise de público fica na última aba do estabelecimento',()=>{
  const admin=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-shell.tsx',import.meta.url),'utf8');
  const tabs=admin.indexOf('Plantas do local (');
- const occupancy=admin.indexOf('Análise de Ocupação');
+ const occupancy=admin.indexOf('Análise de público');
  assert.ok(occupancy>tabs);
  assert.match(admin,/venueTab==='occupancy'/);
  assert.match(admin,/venueMaps=\{maps\.filter/);
