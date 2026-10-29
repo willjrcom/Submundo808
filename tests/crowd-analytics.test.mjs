@@ -120,6 +120,12 @@ test('agrega snapshots por janela de cinco minutos e preserva somente métricas,
   assert.equal(history.series[0].participants,6);
   assert.equal(history.hotspots[0].name,'Pista');
   assert.equal(history.hotspots[0].peak,6);
+  const scoped=readCrowdHistory(db,'event-1',NOW+10_000,'24h','map-1');
+  assert.equal(scoped.mapId,'map-1');
+  assert.equal(scoped.snapshotCount,1);
+  assert.equal(scoped.series[0].participants,6);
+  assert.equal(scoped.hotspots[0].mapId,'map-1');
+  assert.throws(()=>readCrowdHistory(db,'event-1',NOW,'24h','map-unknown'),/Planta não vinculada/);
   const columns=db.prepare('PRAGMA table_info(event_crowd_snapshots)').all().map(c=>c.name);
   assert.deepEqual(columns,['event_id','map_id','area_id','bucket_at','people_count']);
   assert.ok(!columns.includes('user_id'));
