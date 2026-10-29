@@ -772,8 +772,10 @@ http.createServer(async (req,res)=>{
           if(entity==='map'&&db.prepare('SELECT 1 FROM event_maps WHERE map_id=?').get(id))return json(res,409,{error:'Remova o mapa dos eventos primeiro.'});
           db.exec('BEGIN');try{
             if(entity==='event'){db.prepare('UPDATE events SET doors_at=?,cover_image=?,services=? WHERE id=?').run(String(b.doors_at||'').slice(0,20),String(b.cover_image||'').slice(0,160000),String(b.services||'').slice(0,2000),id);
-            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);}
-            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);}
+            db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);
+            db.prepare('DELETE FROM event_crowd_snapshots WHERE event_id=?').run(id);
+            db.prepare('UPDATE location_preferences SET analytics_enabled=0,analytics_event_id=NULL WHERE analytics_event_id=?').run(id);}
+            if(entity==='map'){db.prepare('DELETE FROM map_areas WHERE map_id=?').run(id);db.prepare('DELETE FROM map_markers WHERE map_id=?').run(id);db.prepare('DELETE FROM event_crowd_snapshots WHERE map_id=?').run(id);}
             db.prepare('DELETE FROM '+table+' WHERE id=?').run(id);db.exec('COMMIT');
           }catch(e){db.exec('ROLLBACK');throw e;}
           return json(res,200,{ok:true});
