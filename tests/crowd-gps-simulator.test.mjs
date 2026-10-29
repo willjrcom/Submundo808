@@ -70,15 +70,13 @@ test('movimentação altera posições e registros a cada etapa sem sair dos lim
  assert.equal(SIMULATION_INTERVAL_MS,3000);
 });
 
-test('dados mockados pertencem somente ao navegador, não são misturados aos dados reais da API',()=>{
+test('painel de ocupação mostra dados reais, sem controles de demonstração',()=>{
  const component=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
- assert.match(component,/navigator\.geolocation\.getCurrentPosition\(/);
- assert.match(component,/startSimulation\(\{lat:position\.coords\.latitude,lng:position\.coords\.longitude\},'gps'\)/);
- assert.match(component,/SIMULAÇÃO \{simulation\.source==='gps'\?'GPS':'VIRTUAL'\} ATIVA/);
- assert.match(component,/setSimulation\(null\)/);
- assert.match(component,/Nenhuma posição é enviada ao servidor/);
- assert.match(component,/simulation\?simulation\.history\.map\(/);
- assert.match(component,/simulation\.people\.filter\(person=>person\.active\)/);
+ assert.match(component,/const sourceMaps=\(live\?\.maps\|\|\[\]\)\.filter/);
+ assert.match(component,/crowd-live\?event_id=/);
+ assert.match(component,/map_id=/);
+ assert.match(component,/Análise de Ocupação/);
+ assert.doesNotMatch(component,/Ver exemplo fictício|Simular sem GPS|Prévia/);
  assert.doesNotMatch(component,/fetch\(['"]\/api\/location\/update/);
 });
 
@@ -101,23 +99,18 @@ test('funciona sem permissão GPS, com centro fictício e 250 pessoas em movimen
  }
  assert.equal(sim.history.at(-1).classified+sim.history.at(-1).unclassified,sim.history.at(-1).participants);
 });
-test('interface permite iniciar sem GPS, escolher centro no mapa e apresenta fallback após timeout',()=>{
- const component=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
+test('análise de ocupação fica na última aba do estabelecimento',()=>{
  const admin=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-shell.tsx',import.meta.url),'utf8');
- assert.match(component,/function beginVirtualSimulation\(\)/);
- assert.match(component,/startSimulation\(\{lat:0,lng:0\},'virtual'\)/);
- assert.match(component,/Simular sem GPS/);
- assert.match(component,/Marcar centro no mapa/);
- assert.match(component,/setManualCenter\(\{x:Math\.max/);
- assert.match(component,/O GPS demorou para responder/);
- assert.match(component,/Iniciar sem GPS/);
- assert.match(component,/maximumAge:60000/);
- assert.match(admin,/aria-label="Abrir menu administrativo"/);
- assert.match(admin,/xl:sticky/);
- assert.match(admin,/className="mx-auto w-full min-w-0 max-w-6xl/);
- assert.match(admin,/\(section==='Visão geral'\|\|section==='Inteligência'\)&&<AdminCrowd/);
+ const tabs=admin.indexOf('Plantas do local (');
+ const occupancy=admin.indexOf('Análise de Ocupação');
+ assert.ok(occupancy>tabs);
+ assert.match(admin,/venueTab==='occupancy'/);
+ assert.match(admin,/venueMaps=\{maps\.filter/);
+ assert.doesNotMatch(admin,/\{name:'Inteligência',Icon:BarChart3\}/);
  assert.equal((admin.match(/<AdminCrowd /g)||[]).length,1);
+ assert.match(admin,/aria-label="Abrir menu administrativo"/);
 });
+
 test('não permite posição GPS inválida nem mapa sem nome',()=>{
  assert.throws(()=>createGpsSimulation({lat:91,lng:0},zones,'abc'),/inválida/);
  assert.throws(()=>createGpsSimulation(center,zones,''),/mapa/);
