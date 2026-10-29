@@ -12,9 +12,10 @@ import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrame
 import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
 import {gpsToMap,distanceMeters,type MapCorners} from './map-location-utils';
+import {GPS_CAPTURE_MS,MAP_MARGIN_METERS,CORNER_KEYS,measuredCorners,allCorners,applyMeasuredCorner,summarizeGpsSamples,cornersGeometryValid,type CornerKey,type CalibrationGps} from './map-calibration-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
-type GPSData=Partial<Record<'tl'|'tr'|'br'|'bl',GPS>> & {mode?:'manual'|'demo-auto';spacingMeters?:number;accuracyMeters?:number};
+type GPSData=CalibrationGps;
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
 type MapItem={id:string;name:string;venue_id:string};
@@ -59,26 +60,27 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
  const gpsWatch=useRef<number|null>(null),walkActive=useRef(false);
+ const captureWatch=useRef<number|null>(null),captureTimer=useRef<number|null>(null),captureProgressTimer=useRef<number|null>(null);
+ const captureSamples=useRef<GPS[]>([]);
+ const [captureReview,setCaptureReview]=useState<{corner:CornerKey;phase:'collecting'|'review';elapsed:number;result:ReturnType<typeof summarizeGpsSamples>;message:string}|null>(null);
  const [pendingDelete,setPendingDelete]=useState<{id:string;name:string;kind:'area'|'marker'}|null>(null);
  const [pendingDiscardAction,setPendingDiscardAction]=useState<'discard'|'leave'|null>(null);
  const calibrationArea=areas.find(a=>(['tl','tr','br','bl'] as const).some(k=>a.gps?.[k]))||areas[0];
- const calibrationKeys=['tl','tr','bl','br'] as const;
+ const calibrationKeys=CORNER_KEYS;
  const calibrationLabels=['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
  const corners=calibrationArea?.gps;
  const ready=!!(corners?.tl&&corners?.tr&&corners?.bl&&corners?.br);
- const distances=ready?{
-  top:distanceMeters(corners!.tl!,corners!.tr!),bottom:distanceMeters(corners!.bl!,corners!.br!),
-  left:distanceMeters(corners!.tl!,corners!.bl!),right:distanceMeters(corners!.tr!,corners!.br!)
+ const rawCorners=measuredCorners(corners);
+ const distances=allCorners(rawCorners)?{
+  top:distanceMeters(rawCorners.tl,rawCorners.tr),bottom:distanceMeters(rawCorners.bl,rawCorners.br),
+  left:distanceMeters(rawCorners.tl,rawCorners.bl),right:distanceMeters(rawCorners.tr,rawCorners.br)
  }:null;
  const averageWidth=distances?(distances.top+distances.bottom)/2:0;
  const averageLength=distances?(distances.left+distances.right)/2:0;
  const geo=(p:GPS)=>({x:p.lng*111320*Math.cos(p.lat*Math.PI/180),y:-p.lat*111320});
  const cross=(a:GPS,b:GPS,c:GPS)=>{const x=geo(a),y=geo(b),z=geo(c);return(y.x-x.x)*(z.y-x.y)-(y.y-x.y)*(z.x-x.x);};
- const geometryValid=!!(ready&&corners&&
-  cross(corners.tl!,corners.tr!,corners.br!)*cross(corners.tr!,corners.br!,corners.bl!)>0&&
-  cross(corners.tr!,corners.br!,corners.bl!)*cross(corners.br!,corners.bl!,corners.tl!)>0&&
-  cross(corners.br!,corners.bl!,corners.tl!)*cross(corners.bl!,corners.tl!,corners.tr!)>0);
- const accuracyMax=ready?Math.max(...(['tl','tr','bl','br'] as const).map(k=>corners?.[k]?.accuracy||999)):0;
+ const geometryValid=allCorners(rawCorners)&&cornersGeometryValid(rawCorners);
+ const accuracyMax=ready?Math.max(...CORNER_KEYS.map(k=>rawCorners[k]?.accuracy||999)):0;
  const accuracyReasonable=ready&&Math.min(averageWidth,averageLength)>accuracyMax*2;
  const widthExpected=Number(expectedWidth.replace(',','.')),lengthExpected=Number(expectedLength.replace(',','.'));
  const expectationsValid=widthExpected>0&&lengthExpected>0&&Number.isFinite(widthExpected)&&Number.isFinite(lengthExpected);
