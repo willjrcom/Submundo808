@@ -114,7 +114,10 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
   navigator.geolocation.getCurrentPosition(position=>{
    setSimulatingGps(false);
    try{
-    const map=sourceMaps.find(m=>m.id===selectedMapId)||sourceMaps[0]||virtualMap;
+    // "Ver exemplo fictício" não pode virar a origem dos mocks do GPS.
+    // Usa somente a planta real cadastrada ou a grade virtual independente.
+    const availableMaps=live?.maps||[];
+    const map=availableMaps.find(m=>m.id===selectedMapId)||availableMaps[0]||virtualMap;
     const zones:SimulationZone[]=map.areas.map(a=>({id:a.id,x:a.x,y:a.y,width:a.width,height:a.height}));
     const result=createGpsSimulation({lat:position.coords.latitude,lng:position.coords.longitude},
      zones,map.id,simulationSize);
