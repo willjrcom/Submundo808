@@ -187,6 +187,26 @@ export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports
     {(['live','history'] as const).map(tab=><button type="button" key={tab} role="tab" aria-selected={view===tab} onClick={()=>setView(tab)} className={'rounded-lg px-3 py-2 text-xs font-bold '+(view===tab?'bg-[#c4ff40] text-black':'text-white/70')}>{tab==='live'?'Ao vivo':'Histórico'}</button>)}
    </div>}
   </div>
+  {!compact&&<section aria-label="Ferramentas de simulação" className="overflow-hidden rounded-2xl border border-white/10 bg-[#15101e]">
+   <button type="button" aria-expanded={simulationToolsOpen} onClick={()=>setSimulationToolsOpen(v=>!v)} className="flex w-full items-center justify-between gap-3 p-4 text-left">
+    <span className="min-w-0"><span className="block text-sm font-bold text-white">Ferramentas de simulação</span><span className="mt-1 block text-xs text-white/50">Opcional · recursos administrativos isolados dos dados reais</span></span>
+    <span className="flex shrink-0 items-center gap-2 text-xs text-[#c4ff40]">{simulation?'Em execução':''} {simulationToolsOpen?<ChevronUp size={18}/>:<ChevronDown size={18}/>}</span>
+   </button>
+   {simulationToolsOpen&&<div className="flex flex-wrap items-end gap-2 border-t border-white/10 p-4">
+    {simulation?<button type="button" onClick={()=>{gpsRequestId.current++;setSimulation(null);setGpsFailed(false);setError('');}} className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-3 text-xs font-bold text-red-200"><Square size={15}/> Encerrar simulação</button>
+    :<>
+     <label className="space-y-1 text-xs text-white/60">Participantes virtuais
+      <select aria-label="Quantidade de participantes simulados" value={simulationSize} onChange={e=>setSimulationSize(Number(e.target.value))} className="block rounded-xl border border-white/20 bg-[#211829] px-3 py-3 text-xs text-white"><option value={50}>50</option><option value={140}>140</option><option value={250}>250</option></select>
+     </label>
+     <button type="button" disabled={simulatingGps} onClick={beginGpsSimulation} className="flex items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-3 py-3 text-xs font-bold text-black disabled:opacity-50"><LocateFixed size={16}/>{simulatingGps?'Obtendo GPS...':'Usar meu GPS'}</button>
+     <button type="button" onClick={beginVirtualSimulation} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/50 bg-[#c4ff40]/10 px-3 py-3 text-xs font-bold text-[#c4ff40]"><Play size={15}/> Simular sem GPS</button>
+     <button type="button" onClick={chooseManualCenter} className="flex items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-3 text-xs font-bold text-white/80"><MapPin size={15}/> Marcar centro no mapa</button>
+    </>}
+   </div>}
+  </section>}
+  {centerChosen&&!simulation&&!pickingCenter&&<div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-400/35 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100"><span>Centro selecionado no mapa. Gere os participantes virtuais ao redor dele.</span><button type="button" onClick={beginVirtualSimulation} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-black text-black">Simular sem GPS</button></div>}
+  {pickingCenter&&<div role="status" className="rounded-xl border border-blue-400/45 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100">Toque no local desejado da planta e depois em <strong>Simular sem GPS</strong>.</div>}
+  {simulation&&<div role="note" className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-xs font-semibold leading-relaxed text-amber-100"><Footprints size={17} className="mt-0.5 shrink-0"/> SIMULAÇÃO {simulation.source==='gps'?'GPS':'VIRTUAL'} ATIVA — {simulation.people.length} participantes virtuais, área esquemática de 40 × 40 metros. Cada 3 segundos avançam 5 minutos fictícios. Nenhum registro é enviado para as métricas reais.</div>}
   {error&&<div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-sm text-amber-100"><span className="flex-1">{error}</span>{gpsFailed&&<button type="button" onClick={beginVirtualSimulation} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-black text-black">Iniciar sem GPS</button>}</div>}
   {(view==='live'||compact)?<>
    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
