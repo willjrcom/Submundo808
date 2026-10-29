@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/event-crowd-intelligence-preview
+      - fix/crowd-simulator-fallback-mobile
   workflow_dispatch:
 
 permissions:
