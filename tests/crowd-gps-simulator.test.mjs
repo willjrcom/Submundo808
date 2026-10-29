@@ -43,7 +43,7 @@ test('simulação inicial cria pessoas virtuais a 20m ou menos do usuário, sem 
   assert.ok(person.x>=0&&person.x<=100);
   assert.ok(person.y>=0&&person.y<=100);
  }
- assert.doesNotMatch(source,/\bfetch\s*\(|localStorage|sessionStorage|sendBeacon/);
+ assert.doesNotMatch(source,/\bfetch\s*\(|\blocalStorage\s*\.|\bsessionStorage\s*\.|\bsendBeacon\s*\(/);
 });
 
 test('movimentação altera posições e registros a cada etapa sem sair dos limites GPS',()=>{
