@@ -32,11 +32,13 @@ export function AdminNotifications({events}:{events:Event[]}){
  useEffect(()=>{
   if(!dialog||!eventId){setPoints([]);return;}
   let active=true;
-  fetch('/api/public/events').then(r=>r.json()).then(async j=>{
-   const ev=j.items?.find((x:{id:string})=>x.id===eventId);
+  // Draft events are omitted from public APIs but their points must remain
+  // available when editing saved administrative notification models.
+  request('events').then(async j=>{
+   const ev=(j.items||[]).find((x:{id:string})=>x.id===eventId) as {map_ids?:string[]}|undefined;
    const mapIds:string[]=ev?.map_ids||[];
-   const maps=await Promise.all(mapIds.map(id=>fetch('/api/public/map-detail?map_id='+encodeURIComponent(id)).then(r=>r.json())));
-   if(active)setPoints(maps.flatMap(x=>x.markers||[]).map((m:{id:string;name:string})=>({id:m.id,name:m.name})));
+   const maps=await Promise.all(mapIds.map(id=>request('markers?map_id='+encodeURIComponent(id))));
+   if(active)setPoints(maps.flatMap(x=>x.items||[]).map((m:{id:string;name:string})=>({id:m.id,name:m.name})));
   }).catch(()=>{if(active)setPoints([]);});
   return()=>{active=false;};
  },[dialog,eventId]);
@@ -88,7 +90,7 @@ export function AdminNotifications({events}:{events:Event[]}){
     <label className="block text-xs text-white/65">Tipo<select className={inp+' mt-1'} value={kind} onChange={e=>setKind(e.target.value)}><option value="promo">Promoção</option><option value="info">Aviso importante</option><option value="lineup">Programação</option><option value="survey">Pesquisa de satisfação</option></select></label>
     <label className="block text-xs text-white/65">Título<input autoFocus className={inp+' mt-1'} maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Bebida em dobro!"/></label>
     <label className="block text-xs text-white/65">Mensagem<textarea className={inp+' mt-1'} rows={3} maxLength={700} value={message} onChange={e=>setMessage(e.target.value)} placeholder="Descreva a promoção ou aviso..."/></label>
-    <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-white/65">Ao tocar, abrir<select className={inp+' mt-1'} value={targetKind} onChange={e=>{setTargetKind(e.target.value);setTargetId('');}}><option value="event">Evento</option><option value="lineup">Programação</option><option value="menu">Cardápio</option><option value="map">Mapa do evento</option><option value="point">Ponto específico no mapa</option><option value="survey">Avaliação</option></select></label>{targetKind==='point'&&<label className="text-xs text-white/65">Ponto de destaque<select className={inp+' mt-1'} value={targetId} onChange={e=>setTargetId(e.target.value)}><option value="">Selecionar ponto</option>{points.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}</div>
+    <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-white/65">Ao tocar, abrir<select className={inp+' mt-1'} value={targetKind} onChange={e=>{setTargetKind(e.target.value);setTargetId('');}}><option value="event">Evento</option><option value="lineup">Programação</option><option value="menu">Cardápio</option><option value="map">Mapa do evento</option><option value="point">Ponto específico no mapa</option><option value="survey">Avaliação</option></select></label>{targetKind==='point'&&<label className="text-xs text-white/65">Ponto de destaque<select className={inp+' mt-1'} value={targetId} onChange={e=>setTargetId(e.target.value)}><option value="">Selecionar ponto</option>{targetId&&!points.some(p=>p.id===targetId)&&<option value={targetId}>Ponto salvo anteriormente (indisponível nesta planta)</option>}{points.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}</div>
     <div className="rounded-xl border border-white/10 bg-black/20 p-4"><p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/45">Prévia para o participante</p><div className="flex gap-3"><Bell className="shrink-0 text-[#c4ff40]" size={18}/><div><p className="font-bold">{title||'Título da notificação'}</p><p className="mt-1 text-sm text-white/60">{message||'Mensagem que aparecerá no celular e na central de notificações.'}</p></div></div></div>
     <p className="text-xs text-white/50">Depois de salvar, esta notificação poderá ser enviada, testada e agendada novamente pela listagem.</p>
     {feedback&&<p role="alert" className="text-sm text-amber-300">{feedback}</p>}
