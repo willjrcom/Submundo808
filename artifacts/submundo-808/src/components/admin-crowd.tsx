@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {advanceGpsSimulation,createGpsSimulation,simulationHotspots,SIMULATION_INTERVAL_MS,SIMULATION_RADIUS_METERS,SIMULATION_STEP_MINUTES,type CrowdGpsSimulation,type SimulationZone} from './crowd-gps-simulator';
 import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints} from 'lucide-react';
 import {AreaChart,Area,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
@@ -46,12 +46,16 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const [example,setExample]=useState(false);
  const [simulation,setSimulation]=useState<CrowdGpsSimulation|null>(null);
  const [simulatingGps,setSimulatingGps]=useState(false);
+ const gpsRequestId=useRef(0);
  const [simulationSize,setSimulationSize]=useState(140);
  const [live,setLive]=useState<Live|null>(null),[history,setHistory]=useState<History|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const eventOptions=useMemo(()=>[...events].sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')),[events]);
  const currentEvent=eventOptions.some(e=>e.id===eventId)?eventId:eventOptions[0]?.id||'';
- useEffect(()=>{setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);},[currentEvent]);
+ useEffect(()=>{
+  gpsRequestId.current++;
+  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);
+ },[currentEvent]);
  useEffect(()=>{
   if(!currentEvent)return;
   let alive=true,updating=false;
@@ -110,8 +114,10 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
   if(!navigator.geolocation){setError('GPS indisponível. Use o botão Ver exemplo fictício para visualizar uma demonstração sem localização.');return;}
   if(!window.isSecureContext){setError('A simulação com GPS precisa de HTTPS.');return;}
   setSimulatingGps(true);
+  const request=++gpsRequestId.current;
   // getCurrentPosition somente no clique: nunca solicitar GPS em segundo plano.
   navigator.geolocation.getCurrentPosition(position=>{
+   if(request!==gpsRequestId.current)return; // Evento ou modal alterado durante a permissão.
    setSimulatingGps(false);
    try{
     // "Ver exemplo fictício" não pode virar a origem dos mocks do GPS.
@@ -124,6 +130,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
     setSelectedMapId(map.id);setExample(false);setView('live');setSimulation(result);
    }catch(e){setError(e instanceof Error?e.message:'Falha ao criar a simulação.');}
   },error=>{
+   if(request!==gpsRequestId.current)return;
    setSimulatingGps(false);
    setError(error.code===1
     ?'A localização foi bloqueada. Libere o GPS nas configurações do navegador ou use Ver exemplo fictício.'
@@ -152,8 +159,8 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
    <label className="min-w-[200px] flex-1 space-y-1 text-xs text-white/65">Evento
     <select aria-label="Evento para análise de movimento" value={currentEvent} onChange={e=>{setEventId(e.target.value);setSelectedMapId('');}} className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">{eventOptions.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}</select>
    </label>
-   <button type="button" onClick={()=>{setSimulation(null);setExample(v=>!v);}} className={'flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold '+(example?'border-amber-400/50 bg-amber-400/10 text-amber-200':'border-white/20 text-white/70')}>{example?<EyeOff size={16}/>:<Eye size={16}/>} {example?'Ocultar exemplo':'Ver exemplo fictício'}</button>
-   {simulation?<button type="button" onClick={()=>setSimulation(null)} className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-3 text-xs font-bold text-red-200"><Square size={15}/> Parar simulação</button>
+   <button type="button" onClick={()=>{gpsRequestId.current++;setSimulatingGps(false);setSimulation(null);setExample(v=>!v);}} className={'flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold '+(example?'border-amber-400/50 bg-amber-400/10 text-amber-200':'border-white/20 text-white/70')}>{example?<EyeOff size={16}/>:<Eye size={16}/>} {example?'Ocultar exemplo':'Ver exemplo fictício'}</button>
+   {simulation?<button type="button" onClick={()=>{gpsRequestId.current++;setSimulation(null);}} className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-3 text-xs font-bold text-red-200"><Square size={15}/> Parar simulação</button>
     :<div className="flex flex-wrap items-end gap-2">
      <label className="space-y-1 text-xs text-white/60">Pessoas fictícias
       <select aria-label="Quantidade de pessoas simuladas" value={simulationSize} onChange={e=>setSimulationSize(Number(e.target.value))} className="block rounded-xl border border-white/20 bg-[#211829] px-3 py-3 text-xs text-white"><option value={50}>50</option><option value={140}>140</option><option value={250}>250</option></select>
@@ -177,7 +184,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
    </div>
    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)]">
     <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4">
-     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração relativa no mapa</div>{maps.length>1&&<select aria-label="Mapa da concentração" value={chosenMap?.id||''} onChange={e=>{setSimulation(null);setSelectedMapId(e.target.value);}} className="rounded-lg border border-white/20 bg-[#211829] px-2 py-2 text-xs">{maps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}</div>
+     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração relativa no mapa</div>{maps.length>1&&<select aria-label="Mapa da concentração" value={chosenMap?.id||''} onChange={e=>{gpsRequestId.current++;setSimulation(null);setSimulatingGps(false);setSelectedMapId(e.target.value);}} className="rounded-lg border border-white/20 bg-[#211829] px-2 py-2 text-xs">{maps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}</div>
      {!chosenMap?<p className="rounded-xl border border-white/10 p-6 text-sm text-white/55">O evento ainda não possui mapa cadastrado.</p>:<div className="relative aspect-[6/5] w-full overflow-hidden rounded-xl border border-white/15 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff0d 1px,transparent 1px),linear-gradient(90deg,#ffffff0d 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
       {chosenMap.areas.map(a=><div key={a.id} className="absolute flex flex-col items-center justify-center overflow-hidden border-2 border-white/25 p-1 text-center" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',backgroundColor:congestionColor(a.count,peak)}} title={a.name+' · '+(a.count===null?'amostra protegida':String(a.count)+' detectados')}><span className="max-w-full truncate text-[10px] font-bold text-white drop-shadow-md">{a.name}</span><span className="mt-0.5 text-[10px] text-white/80">{a.count===null?'< 5':String(a.count)}</span></div>)}
       {simulation&&chosenMap.id===simulation.mapId&&<>
