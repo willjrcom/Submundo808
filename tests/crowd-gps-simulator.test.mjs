@@ -115,8 +115,9 @@ test('interface permite iniciar sem GPS, escolher centro no mapa e apresenta fal
  assert.match(admin,/aria-label="Abrir menu administrativo"/);
  assert.match(admin,/xl:sticky/);
  assert.match(admin,/className="mx-auto w-full min-w-0 max-w-6xl/);
- assert.match(admin,/\(section==='Visão geral'\|\|section==='Inteligência'\)&&<AdminCrowd/);
- assert.equal((admin.match(/<AdminCrowd /g)||[]).length,1);
+ assert.match(admin,/section==='Visão geral'&&<AdminCrowd/);
+ assert.match(admin,/editing&&venueTab==='crowd'&&<AdminCrowd/);
+ assert.equal((admin.match(/<AdminCrowd /g)||[]).length,2);
 });
 test('não permite posição GPS inválida nem mapa sem nome',()=>{
  assert.throws(()=>createGpsSimulation({lat:91,lng:0},zones,'abc'),/inválida/);
