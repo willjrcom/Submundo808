@@ -73,8 +73,8 @@ test('movimentação altera posições e registros a cada etapa sem sair dos lim
 test('dados mockados pertencem somente ao navegador, não são misturados aos dados reais da API',()=>{
  const component=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
  assert.match(component,/navigator\.geolocation\.getCurrentPosition\(/);
- assert.match(component,/createGpsSimulation\(\{lat:position\.coords\.latitude,lng:position\.coords\.longitude\}/);
- assert.match(component,/SIMULAÇÃO GPS ATIVA/);
+ assert.match(component,/startSimulationAt\(\{lat:position\.coords\.latitude,lng:position\.coords\.longitude\},'gps'\)/);
+ assert.match(component,/SIMULAÇÃO ATIVA/);
  assert.match(component,/setSimulation\(null\)/);
  assert.match(component,/Nenhuma posição é enviada ao servidor/);
  assert.match(component,/simulation\?simulation\.history\.map\(/);
@@ -85,4 +85,54 @@ test('dados mockados pertencem somente ao navegador, não são misturados aos da
 test('não permite posição GPS inválida nem mapa sem nome',()=>{
  assert.throws(()=>createGpsSimulation({lat:91,lng:0},zones,'abc'),/inválida/);
  assert.throws(()=>createGpsSimulation(center,zones,''),/mapa/);
+});
+
+
+test('fallback gera as mesmas movimentações sem GPS e com coordenadas manuais',()=>{
+ const virtual={lat:0,lng:0};
+ const fictitious=createGpsSimulation(virtual,zones,'mapa-pista',50,123);
+ const manual=createGpsSimulation({lat:-23.5,lng:-47.45},zones,'mapa-pista',50,123);
+ assert.equal(fictitious.people.length,50);
+ assert.equal(manual.people.length,50);
+ // O deslocamento virtual permanece até 20 metros do centro definido,
+ // independentemente de o navegador ter acesso ao GPS.
+ for(const p of fictitious.people){
+  const {east,north}=metersFromFakeGps(virtual,p);
+  assert.ok(Math.abs(east)<=20.001&&Math.abs(north)<=20.001);
+ }
+ assert.deepEqual(fictitious.history[0],manual.history[0]);
+ const moving=advanceGpsSimulation(fictitious,zones);
+ assert.equal(moving.tick,1);
+ assert.ok(moving.people.some((p,i)=>p.x!==fictitious.people[i].x));
+});
+
+test('dashboard oferece fallback de um toque, centro manual e tratamento de timeout',()=>{
+ const admin=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
+ assert.match(admin,/function startVirtualSimulation\(\)/);
+ assert.match(admin,/startSimulationAt\(\{lat:0,lng:0\},'virtual'\)/);
+ assert.match(admin,/function startManualSimulation\(\)/);
+ assert.match(admin,/startSimulationAt\(\{lat:latitude,lng:longitude\},'manual'\)/);
+ assert.match(admin,/Simular sem GPS/);
+ assert.match(admin,/Coordenadas manuais/);
+ assert.match(admin,/Simular neste ponto/);
+ assert.match(admin,/error\.code===3\?'O GPS demorou para responder/);
+ assert.match(admin,/timeout:10000,maximumAge:60000/);
+ assert.match(admin,/aria-label=\{'Centro '/);
+ assert.match(admin,/SIMULAÇÃO ATIVA/);
+ assert.match(admin,/setSimulation\(result\)/);
+ assert.doesNotMatch(admin,/fetch\(['"]\/api\/location\/update/);
+});
+
+test('menu administrativo não comprime o mapa nas telas mobile e tablet',()=>{
+ const admin=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-shell.tsx',import.meta.url),'utf8');
+ const crowd=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-crowd.tsx',import.meta.url),'utf8');
+ assert.match(admin,/mobileMenuOpen,setMobileMenuOpen/);
+ assert.match(admin,/aria-label="Abrir menu administrativo"/);
+ assert.match(admin,/role="dialog" aria-modal="true" aria-label="Navegação administrativa"/);
+ assert.match(admin,/setMobileMenuOpen\(false\)/);
+ assert.match(admin,/className="hidden shrink-0 border-r border-white\/10/);
+ assert.match(admin,/xl:flex xl:min-h-dvh xl:w-64/);
+ assert.match(admin,/min-w-0 max-w-6xl p-3 pb-8/);
+ assert.match(crowd,/xl:grid-cols-\[minmax\(0,1\.3fr\)_minmax\(0,\.7fr\)\]/);
+ assert.match(crowd,/min-w-0 basis-full/);
 });
