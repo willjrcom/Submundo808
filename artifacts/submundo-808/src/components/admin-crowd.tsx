@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {advanceGpsSimulation,createGpsSimulation,simulationHotspots,SIMULATION_INTERVAL_MS,SIMULATION_RADIUS_METERS,SIMULATION_STEP_MINUTES,type CrowdGpsSimulation,type SimulationZone} from './crowd-gps-simulator';
-import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints} from 'lucide-react';
+import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Square,LocateFixed,Footprints,MapPinned,Navigation2} from 'lucide-react';
 import {AreaChart,Area,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 
 type EventItem={id:string;name:string;starts_at?:string;location_sharing_enabled?:number};
@@ -46,6 +46,10 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const [example,setExample]=useState(false);
  const [simulation,setSimulation]=useState<CrowdGpsSimulation|null>(null);
  const [simulatingGps,setSimulatingGps]=useState(false);
+ const [simulationCenter,setSimulationCenter]=useState<'gps'|'virtual'|'manual'>('virtual');
+ const [manualCenterOpen,setManualCenterOpen]=useState(false);
+ const [manualLat,setManualLat]=useState('');
+ const [manualLng,setManualLng]=useState('');
  const gpsRequestId=useRef(0);
  const [simulationSize,setSimulationSize]=useState(140);
  const [live,setLive]=useState<Live|null>(null),[history,setHistory]=useState<History|null>(null);
@@ -54,7 +58,7 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const currentEvent=eventOptions.some(e=>e.id===eventId)?eventId:eventOptions[0]?.id||'';
  useEffect(()=>{
   gpsRequestId.current++;
-  setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);
+  setSimulatingGps(false);setManualCenterOpen(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);
  },[currentEvent]);
  useEffect(()=>{
   if(!currentEvent)return;
@@ -108,35 +112,59 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
    }))
    :example?maps.flatMap(m=>m.areas.map(a=>({id:a.id,mapId:m.id,name:a.name,mapName:m.name,average:Math.round((a.count||0)*.66),peak:a.count||0,samples:12}))):history?.hotspots||[]
   ).sort((a,b)=>b.average-a.average);
+ // Os três caminhos usam o mesmo motor de movimento. O GPS real é apenas
+ // um centro inicial: os pontos criados são fictícios e ficam no estado React.
+ function startSimulationAt(origin:{lat:number;lng:number},center:'gps'|'virtual'|'manual'){
+  try{
+   const availableMaps=live?.maps||[];
+   const map=availableMaps.find(m=>m.id===selectedMapId)||availableMaps[0]||virtualMap;
+   const zones:SimulationZone[]=map.areas.map(a=>({id:a.id,x:a.x,y:a.y,width:a.width,height:a.height}));
+   const result=createGpsSimulation(origin,zones,map.id,simulationSize);
+   gpsRequestId.current++;
+   setSimulatingGps(false);setSelectedMapId(map.id);setExample(false);
+   setSimulationCenter(center);setManualCenterOpen(false);setView('live');setSimulation(result);setError('');
+  }catch(e){setSimulatingGps(false);setError(e instanceof Error?e.message:'Falha ao criar a simulação.');}
+ }
+ function startVirtualSimulation(){
+  // Centro matemático, sem afirmar ou estimar a localização real do usuário.
+  startSimulationAt({lat:0,lng:0},'virtual');
+ }
+ function startManualSimulation(){
+  const latitude=Number(manualLat.trim().replace(',','.'));
+  const longitude=Number(manualLng.trim().replace(',','.'));
+  if(!manualLat.trim()||!manualLng.trim()||!Number.isFinite(latitude)||!Number.isFinite(longitude)||
+   latitude < -89||latitude > 89||longitude < -180||longitude > 180){
+   setError('Informe latitude entre -89 e 89 e longitude entre -180 e 180. Ex.: -23,5000 e -47,4500.');
+   return;
+  }
+  startSimulationAt({lat:latitude,lng:longitude},'manual');
+ }
  function beginGpsSimulation(){
   if(simulatingGps)return;
   setError('');
-  if(!navigator.geolocation){setError('GPS indisponível. Use o botão Ver exemplo fictício para visualizar uma demonstração sem localização.');return;}
-  if(!window.isSecureContext){setError('A simulação com GPS precisa de HTTPS.');return;}
+  if(!navigator.geolocation){
+   setError('GPS indisponível. Use Simular sem GPS ou escolha coordenadas manuais.');
+   return;
+  }
+  if(!window.isSecureContext){
+   setError('GPS exige HTTPS. Você ainda pode usar o centro virtual ou as coordenadas manuais.');
+   return;
+  }
   setSimulatingGps(true);
   const request=++gpsRequestId.current;
-  // getCurrentPosition somente no clique: nunca solicitar GPS em segundo plano.
+  // Precisão aproximada e cache recente são suficientes para esta simulação.
+  // GPS só é solicitado após o clique; não há coleta em segundo plano.
   navigator.geolocation.getCurrentPosition(position=>{
-   if(request!==gpsRequestId.current)return; // Evento ou modal alterado durante a permissão.
-   setSimulatingGps(false);
-   try{
-    // "Ver exemplo fictício" não pode virar a origem dos mocks do GPS.
-    // Usa somente a planta real cadastrada ou a grade virtual independente.
-    const availableMaps=live?.maps||[];
-    const map=availableMaps.find(m=>m.id===selectedMapId)||availableMaps[0]||virtualMap;
-    const zones:SimulationZone[]=map.areas.map(a=>({id:a.id,x:a.x,y:a.y,width:a.width,height:a.height}));
-    const result=createGpsSimulation({lat:position.coords.latitude,lng:position.coords.longitude},
-     zones,map.id,simulationSize);
-    setSelectedMapId(map.id);setExample(false);setView('live');setSimulation(result);
-   }catch(e){setError(e instanceof Error?e.message:'Falha ao criar a simulação.');}
+   if(request!==gpsRequestId.current)return;
+   startSimulationAt({lat:position.coords.latitude,lng:position.coords.longitude},'gps');
   },error=>{
    if(request!==gpsRequestId.current)return;
    setSimulatingGps(false);
    setError(error.code===1
-    ?'A localização foi bloqueada. Libere o GPS nas configurações do navegador ou use Ver exemplo fictício.'
-    :error.code===3?'O GPS demorou para responder. Tente novamente em um local com sinal.'
-    :'Não foi possível obter seu GPS. Confira a conexão e tente novamente.');
-  },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+    ?'Localização bloqueada. Use Simular sem GPS ou informe o centro manualmente.'
+    :error.code===3?'O GPS demorou para responder. Use Simular sem GPS para iniciar imediatamente.'
+    :'Não foi possível obter sua localização. Você pode simular sem GPS ou definir coordenadas.');
+  },{enableHighAccuracy:false,timeout:10000,maximumAge:60000});
  }
  useEffect(()=>{
   if(!simulation)return;
