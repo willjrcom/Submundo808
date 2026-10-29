@@ -46,7 +46,7 @@ jobs:
           node --check server/crowd-analytics.mjs
       - name: Run SQLite and frontend safety regressions
         run: |
-          node --test tests/crowd-analytics.test.mjs tests/location-sharing.test.mjs tests/real-tour-reset.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs
+          node --test tests/crowd-gps-simulator.test.mjs tests/crowd-analytics.test.mjs tests/location-sharing.test.mjs tests/real-tour-reset.test.mjs tests/public-event-navigation.test.mjs tests/native-confirmations.test.mjs
       - name: Compile frontend preview
         env:
           PORT: '3000'
