@@ -580,7 +580,7 @@ http.createServer(async (req,res)=>{
         if(req.method==='GET'&&key==='search-venues'){
           const q=String(url.searchParams.get('q')||'').trim().slice(0,100);
           const text='%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%';
-          const items=db.prepare("SELECT * FROM venues WHERE ?='' OR name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR street LIKE ? ESCAPE '\\' OR neighborhood LIKE ? ESCAPE '\\' OR postal_code LIKE ? ESCAPE '\\' ORDER BY name COLLATE NOCASE LIMIT 200").all(q,text,text,text,text,text);
+          const items=db.prepare("SELECT * FROM venues WHERE ?='' OR name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR street LIKE ? ESCAPE '\\' OR neighborhood LIKE ? ESCAPE '\\' OR postal_code LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' ORDER BY name COLLATE NOCASE LIMIT 200").all(q,text,text,text,text,text,text);
           return json(res,200,{items});
         }
         if(req.method==='GET'&&key==='products'){
