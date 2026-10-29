@@ -3,13 +3,13 @@ import {advanceGpsSimulation,createGpsSimulation,simulationHotspots,SIMULATION_I
 import {Activity,BarChart3,MapPin,RefreshCw,Eye,EyeOff,AlertTriangle,Users,TrendingUp,Play,Square,LocateFixed,Footprints} from 'lucide-react';
 import {AreaChart,Area,CartesianGrid,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 
-type EventItem={id:string;name:string;starts_at?:string;location_sharing_enabled?:number};
+type EventItem={id:string;name:string;starts_at?:string;location_sharing_enabled?:number;map_ids?:string[]};
 type Zone={id:string;name:string;x:number;y:number;width:number;height:number;count:number|null};
 type MapInfo={id:string;name:string;calibrated:boolean;areas:Zone[]};
 type Live={event:{id:string;name:string};updatedAt:number;minimumGroup:number;participants:number|null;classified:number|null;unclassified:number|null;maps:MapInfo[];refreshSeconds:number};
 type Hotspot={id:string;mapId:string;name:string;mapName:string;average:number;peak:number;samples:number};
 type History={period:string;series:{at:number;participants:number|null}[];hotspots:Hotspot[];snapshotCount:number;lastSnapshotAt:number|null;minimumGroup:number};
-type Props={events:EventItem[];compact?:boolean;onOpenReports?:()=>void};
+type Props={events:EventItem[];venueMaps:{id:string;name:string}[];compact?:boolean;onOpenReports?:()=>void};
 
 const noData='Amostra insuficiente';
 function countText(n:number|null|undefined){return n===null||n===undefined?noData:new Intl.NumberFormat('pt-BR').format(n);}
@@ -38,7 +38,7 @@ function congestionColor(n:number|null,peak:number){
  if(ratio>=.25)return 'rgba(234,179,8,.29)';
  return 'rgba(132,204,22,.22)';
 }
-export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
+export default function AdminCrowd({events,venueMaps,compact=false,onOpenReports}:Props){
  const [eventId,setEventId]=useState('');
  const [selectedMapId,setSelectedMapId]=useState('');
  const [view,setView]=useState<'live'|'history'>('live');
@@ -54,8 +54,11 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
  const [gpsFailed,setGpsFailed]=useState(false);
  const [live,setLive]=useState<Live|null>(null),[history,setHistory]=useState<History|null>(null);
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
- const eventOptions=useMemo(()=>[...events].sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')),[events]);
+ const eventOptions=useMemo(()=>events.filter(e=>e.map_ids?.some(id=>venueMaps.some(m=>m.id===id))).sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')),[events,venueMaps]);
  const currentEvent=eventOptions.some(e=>e.id===eventId)?eventId:eventOptions[0]?.id||'';
+  const activeEvent=eventOptions.find(e=>e.id===currentEvent);
+  const linkedMaps=venueMaps.filter(m=>activeEvent?.map_ids?.includes(m.id));
+  const scopedMapId=linkedMaps.some(m=>m.id===selectedMapId)?selectedMapId:linkedMaps[0]?.id||'';
  useEffect(()=>{
   gpsRequestId.current++;
   setSimulatingGps(false);setSelectedMapId('');setError('');setLive(null);setHistory(null);setSimulation(null);setExample(false);setGpsFailed(false);setPickingCenter(false);setCenterChosen(false);setManualCenter({x:50,y:50});
@@ -79,16 +82,16 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
   return()=>{alive=false;window.clearInterval(timer);document.removeEventListener('visibilitychange',visible);};
  },[currentEvent]);
  useEffect(()=>{
-  if(!currentEvent||compact||view!=='history')return;
+  if(!currentEvent||!scopedMapId||compact||view!=='history')return;
   let alive=true;
-  void get<History>('crowd-history?event_id='+encodeURIComponent(currentEvent)+'&period='+period)
+  void get<History>('crowd-history?event_id='+encodeURIComponent(currentEvent)+'&map_id='+encodeURIComponent(scopedMapId)+'&period='+period)
    .then(data=>{if(alive){setHistory(data);setError('');}})
    .catch(e=>{if(alive)setError(e instanceof Error?e.message:'Erro no histórico.');});
   return()=>{alive=false;};
- },[currentEvent,compact,view,period]);
+ },[currentEvent,scopedMapId,compact,view,period]);
  // Somente a apresentação é mockada. A API real e os snapshots do banco
  // permanecem inteiramente separados e não recebem nenhuma posição fictícia.
- const sourceMaps=example?exampleMaps(live?.maps||[]):live?.maps||[];
+ const sourceMaps=(live?.maps||[]).filter(m=>m.id===scopedMapId);
  const virtualMap:MapInfo={...exampleMaps([])[0],id:'virtual-map',name:'Mapa virtual (40 × 40 m)'};
  const baseMaps=simulation?.mapId==='virtual-map'||((simulation||pickingCenter||centerChosen)&&!sourceMaps.length)?[virtualMap]:sourceMaps;
  const latest=simulation?.history.at(-1);
@@ -171,46 +174,35 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
   },SIMULATION_INTERVAL_MS);
   return()=>window.clearInterval(timer);
  },[simulation?.seed,simulation?.mapId,live?.maps]);
- if(!eventOptions.length)return <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.035] p-5"><p className="font-bold">Inteligência do evento</p><p className="mt-2 text-sm text-white/60">Cadastre um evento com mapa para iniciar a análise de movimentação.</p></div>;
- return <section className="mt-7 space-y-4" aria-label="Inteligência do evento">
+ if(!eventOptions.length)return <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.035] p-5"><p className="font-bold">Análise de Ocupação</p><p className="mt-2 text-sm text-white/60">Vincule uma planta deste estabelecimento a um evento para acompanhar sua movimentação.</p></div>;
+ return <section className="mt-7 space-y-4" aria-label="Análise de Ocupação">
   <div className="flex flex-wrap items-center justify-between gap-3">
-   <div><p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#c4ff40]"><Activity size={16}/> Inteligência do evento <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-[10px] text-amber-200">Prévia</span></p><h3 className="mt-2 text-xl font-black">{compact?'Concentração ao vivo':'Movimentação e ocupação por ambiente'}</h3><p className="mt-1 text-xs text-white/55">Amostra voluntária de participantes com GPS ativo, não a lotação total da festa.</p></div>
+   <div><p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#c4ff40]"><Activity size={16}/> Análise de Ocupação </p><h3 className="mt-2 text-xl font-black">{compact?'Concentração ao vivo':'Movimentação por planta'}</h3><p className="mt-1 text-xs text-white/55">Amostra voluntária de GPS. Não representa lotação total nem taxa de pessoas por metro quadrado.</p></div>
    {compact&&onOpenReports&&<button type="button" onClick={onOpenReports} className="rounded-xl border border-[#c4ff40]/50 px-3 py-2.5 text-xs font-bold text-[#c4ff40]">Ver relatórios <BarChart3 size={14} className="ml-1 inline"/></button>}
   </div>
   <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-white/10 bg-white/[.035] p-4">
    <label className="w-full min-w-0 flex-1 space-y-1 text-xs text-white/65 sm:min-w-[220px]">Evento
     <select aria-label="Evento para análise de movimento" value={currentEvent} onChange={e=>{setEventId(e.target.value);setSelectedMapId('');}} className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">{eventOptions.map(ev=><option key={ev.id} value={ev.id}>{ev.name}</option>)}</select>
    </label>
-   <button type="button" onClick={()=>{gpsRequestId.current++;setSimulatingGps(false);setSimulation(null);setPickingCenter(false);setCenterChosen(false);setGpsFailed(false);setError('');setExample(v=>!v);}} className={'flex items-center gap-2 rounded-xl border px-3 py-3 text-xs font-bold '+(example?'border-amber-400/50 bg-amber-400/10 text-amber-200':'border-white/20 text-white/70')}>{example?<EyeOff size={16}/>:<Eye size={16}/>} {example?'Ocultar exemplo':'Ver exemplo fictício'}</button>
-   {simulation?<button type="button" onClick={()=>{gpsRequestId.current++;setSimulation(null);setGpsFailed(false);setError('');}} className="flex items-center gap-2 rounded-xl border border-red-400/40 bg-red-400/10 px-3 py-3 text-xs font-bold text-red-200"><Square size={15}/> Parar simulação</button>
-    :<div className="flex flex-wrap items-end gap-2">
-     <label className="space-y-1 text-xs text-white/60">Pessoas fictícias
-      <select aria-label="Quantidade de pessoas simuladas" value={simulationSize} onChange={e=>setSimulationSize(Number(e.target.value))} className="block rounded-xl border border-white/20 bg-[#211829] px-3 py-3 text-xs text-white"><option value={50}>50</option><option value={140}>140</option><option value={250}>250</option></select>
-     </label>
-     <button type="button" disabled={simulatingGps} onClick={beginGpsSimulation} className="flex items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-3 py-3 text-xs font-black text-black disabled:opacity-50"><LocateFixed size={16}/>{simulatingGps?'Obtendo GPS...':'Usar meu GPS'}</button>
-     <button type="button" onClick={beginVirtualSimulation} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/50 bg-[#c4ff40]/10 px-3 py-3 text-xs font-bold text-[#c4ff40]"><Play size={15}/> Simular sem GPS</button>
-     <button type="button" onClick={chooseManualCenter} className="flex items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-3 text-xs font-bold text-white/80"><MapPin size={15}/> Marcar centro no mapa</button>
-    </div>}
-   {!compact&&<div role="tablist" aria-label="Modo de análise" className="flex gap-1 rounded-xl border border-white/10 p-1">
+   <label className="w-full min-w-0 flex-1 space-y-1 text-xs text-white/65 sm:min-w-[220px]">Planta
+     <select aria-label="Planta para análise" value={scopedMapId} onChange={e=>{setSelectedMapId(e.target.value);setHistory(null);}} className="w-full rounded-xl border border-white/15 bg-[#211829] px-3 py-3 text-sm text-white">{linkedMaps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>
+    </label>
+    {!compact&&<div role="tablist" aria-label="Modo de análise" className="flex gap-1 rounded-xl border border-white/10 p-1">
     {(['live','history'] as const).map(tab=><button type="button" key={tab} role="tab" aria-selected={view===tab} onClick={()=>setView(tab)} className={'rounded-lg px-3 py-2 text-xs font-bold '+(view===tab?'bg-[#c4ff40] text-black':'text-white/70')}>{tab==='live'?'Ao vivo':'Histórico'}</button>)}
    </div>}
   </div>
-  {centerChosen&&!simulation&&!pickingCenter&&<div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-400/35 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100"><span>Centro selecionado no mapa. Agora gere os participantes fictícios ao redor dele.</span><button type="button" onClick={beginVirtualSimulation} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-black text-black">Simular sem GPS</button></div>}
-  {pickingCenter&&<div role="status" className="rounded-xl border border-blue-400/45 bg-blue-400/10 p-3 text-xs font-semibold text-blue-100">Toque em qualquer ponto do mapa abaixo para escolher o centro. Depois clique em <strong>Simular sem GPS</strong>. Sua posição real não será usada.</div>}
-  {simulation&&<div role="note" className="flex items-start gap-2 rounded-xl border border-amber-400/60 bg-amber-400/10 p-3 text-xs font-semibold leading-relaxed text-amber-100"><Footprints size={17} className="mt-0.5 shrink-0"/> SIMULAÇÃO {simulation.source==='gps'?'GPS':'VIRTUAL'} ATIVA — {simulation.people.length} pessoas fictícias em uma área virtual de 40 × 40 metros, centrada {simulation.source==='gps'?'na posição obtida do seu aparelho':'no ponto virtual escolhido no mapa'}. O mapa é esquemático, não usa a escala real do local. Cada 3 segundos avançam 5 minutos fictícios. Nenhuma posição é enviada ao servidor ou salva em relatórios reais.</div>}
-  {example&&<div role="note" className="flex gap-2 rounded-xl border border-amber-400/45 bg-amber-400/10 p-3 text-xs font-semibold text-amber-200"><AlertTriangle size={16} className="shrink-0"/> EXEMPLO FICTÍCIO — números e cores inventados para visualizar a interface. Não representam pessoas reais nem medições do evento.</div>}
   {error&&<div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-sm text-amber-100"><span className="flex-1">{error}</span>{gpsFailed&&<button type="button" onClick={beginVirtualSimulation} className="rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-black text-black">Iniciar sem GPS</button>}</div>}
   {(view==='live'||compact)?<>
    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
     {[
-     {label:simulation?'Pessoas fictícias em movimento':'Participantes detectados',value:simulation?latest?.participants:example?428:live?.participants,icon:Users,hint:simulation?'Simulação local, sem pessoas reais':'Consentimento ativo e GPS recente'},
-     {label:simulation?'Simulados dentro dos ambientes':'Identificados em ambientes',value:simulation?latest?.classified:example?392:live?.classified,icon:MapPin,hint:simulation?'Contagem fictícia por área no mapa':'Localização com precisão suficiente'},
-     {label:simulation?'Simulados fora dos ambientes':'Sem ambiente confiável',value:simulation?latest?.unclassified:example?36:live?.unclassified,icon:Activity,hint:simulation?'Pessoas fictícias em circulação':'GPS impreciso, fora da área ou planta sem calibração'}
+     {label:simulation?'Pessoas fictícias em movimento':'Participantes detectados no evento',value:simulation?latest?.participants:example?428:live?.participants,icon:Users,hint:simulation?'Simulação local, sem pessoas reais':'Consentimento ativo e GPS recente'},
+     {label:simulation?'Simulados dentro dos ambientes':'Identificados no evento',value:simulation?latest?.classified:example?392:live?.classified,icon:MapPin,hint:simulation?'Contagem fictícia por área no mapa':'Localização com precisão suficiente'},
+     {label:simulation?'Simulados fora dos ambientes':'Sem ambiente confiável no evento',value:simulation?latest?.unclassified:example?36:live?.unclassified,icon:Activity,hint:simulation?'Pessoas fictícias em circulação':'GPS impreciso, fora da área ou planta sem calibração'}
     ].map(({label,value,icon:Icon,hint})=><div key={label} className={'rounded-2xl border border-white/10 bg-[#1c1424] p-3 sm:p-4 '+(label.includes('fora')||label.includes('Sem ambiente')?'col-span-2 sm:col-span-1':'')}><Icon size={18} className="text-[#c4ff40]"/><p className="mt-3 text-xs text-white/60">{label}</p><p className="mt-2 text-2xl font-black">{countText(value)}</p><p className="mt-1 text-[11px] text-white/40">{hint}</p></div>)}
    </div>
    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,.7fr)]">
     <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4">
-     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração relativa no mapa</div>{maps.length>1&&<select aria-label="Mapa da concentração" value={chosenMap?.id||''} onChange={e=>{gpsRequestId.current++;setSimulation(null);setSimulatingGps(false);setSelectedMapId(e.target.value);}} className="rounded-lg border border-white/20 bg-[#211829] px-2 py-2 text-xs">{maps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}</div>
+     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-sm font-bold"><MapPin size={17} className="text-[#c4ff40]"/> Concentração relativa na planta</div>{maps.length>1&&<select aria-label="Mapa da concentração" value={chosenMap?.id||''} onChange={e=>{gpsRequestId.current++;setSimulation(null);setSimulatingGps(false);setSelectedMapId(e.target.value);}} className="rounded-lg border border-white/20 bg-[#211829] px-2 py-2 text-xs">{maps.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select>}</div>
      {!chosenMap?<p className="rounded-xl border border-white/10 p-6 text-sm text-white/55">O evento ainda não possui mapa cadastrado.</p>:<div id="crowd-map-canvas" className="relative aspect-[6/5] w-full overflow-hidden rounded-xl border border-white/15 bg-[#0e0c14]" style={{backgroundImage:'linear-gradient(#ffffff0d 1px,transparent 1px),linear-gradient(90deg,#ffffff0d 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
       {chosenMap.areas.map(a=><div key={a.id} className="absolute flex flex-col items-center justify-center overflow-hidden border-2 border-white/25 p-1 text-center" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',backgroundColor:congestionColor(a.count,peak)}} title={a.name+' · '+(a.count===null?'amostra protegida':String(a.count)+' detectados')}><span className="max-w-full truncate text-[10px] font-bold text-white drop-shadow-md">{a.name}</span><span className="mt-0.5 text-[10px] text-white/80">{a.count===null?'< 5':String(a.count)}</span></div>)}
       {pickingCenter&&<button type="button" aria-label="Escolher centro da simulação neste ponto do mapa" className="absolute inset-0 z-[45] cursor-crosshair bg-blue-400/[.035]" onClick={event=>{
@@ -238,11 +230,11 @@ export default function AdminCrowd({events,compact=false,onOpenReports}:Props){
     </div>
    </div>
   </>:<div className="space-y-4">
-   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-white/60">{simulation?'Histórico simulado: cada etapa representa 5 minutos fictícios. Não é salvo no banco.':'Série de registros agregados a cada 5 minutos. A média de 7/30 dias é exibida por hora.'}</p><select aria-label="Período do relatório" disabled={!!simulation} value={period} onChange={e=>setPeriod(e.target.value as '24h'|'7d'|'30d')} className="rounded-xl border border-white/20 bg-[#211829] px-3 py-2.5 text-sm"><option value="24h">Últimas 24 horas</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option></select></div>
-   <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4"><h4 className="text-sm font-bold">{simulation?'Pessoas fictícias ao longo da simulação':'Participantes detectados ao longo do tempo'}</h4>{chartPoints.length===0?<p className="py-12 text-center text-sm text-white/55">Nenhuma amostra consolidada para este período. A coleta começa após participantes autorizarem as estatísticas.</p>:<div className="mt-5 h-64 w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartPoints}><defs><linearGradient id="crowd-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#c4ff40" stopOpacity={0.35}/><stop offset="95%" stopColor="#c4ff40" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#ffffff15" vertical={false}/><XAxis dataKey="label" tick={{fill:'#ada2b5',fontSize:10}} tickLine={false} axisLine={false} minTickGap={24}/><YAxis tick={{fill:'#ada2b5',fontSize:10}} tickLine={false} axisLine={false} width={35}/><Tooltip contentStyle={{background:'#211829',border:'1px solid #ffffff33',borderRadius:12,color:'#fff'}} labelStyle={{color:'#fff'}}/><Area name="Participantes detectados" type="monotone" dataKey="participants" stroke="#c4ff40" fill="url(#crowd-fill)" strokeWidth={3} connectNulls={false}/></AreaChart></ResponsiveContainer></div>}<p className="mt-2 text-[11px] text-white/45">{simulation?'Simulação local em ciclos acelerados. Os dados fictícios desaparecem ao clicar em Parar.':'Lacunas podem indicar falta de participantes, GPS indisponível ou amostras menores que 5.'}</p></div>
+   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-white/60">{simulation?'Histórico simulado: cada etapa representa 5 minutos fictícios. Não é salvo no banco.':'Histórico agregado desta planta a cada 5 minutos. A média de 7/30 dias é exibida por hora.'}</p><select aria-label="Período do relatório" disabled={!!simulation} value={period} onChange={e=>setPeriod(e.target.value as '24h'|'7d'|'30d')} className="rounded-xl border border-white/20 bg-[#211829] px-3 py-2.5 text-sm"><option value="24h">Últimas 24 horas</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option></select></div>
+   <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4"><h4 className="text-sm font-bold">{simulation?'Pessoas fictícias ao longo da simulação':'Participantes detectados nesta planta ao longo do tempo'}</h4>{chartPoints.length===0?<p className="py-12 text-center text-sm text-white/55">Nenhuma amostra consolidada para este período. A coleta começa após participantes autorizarem as estatísticas.</p>:<div className="mt-5 h-64 w-full"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartPoints}><defs><linearGradient id="crowd-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#c4ff40" stopOpacity={0.35}/><stop offset="95%" stopColor="#c4ff40" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#ffffff15" vertical={false}/><XAxis dataKey="label" tick={{fill:'#ada2b5',fontSize:10}} tickLine={false} axisLine={false} minTickGap={24}/><YAxis tick={{fill:'#ada2b5',fontSize:10}} tickLine={false} axisLine={false} width={35}/><Tooltip contentStyle={{background:'#211829',border:'1px solid #ffffff33',borderRadius:12,color:'#fff'}} labelStyle={{color:'#fff'}}/><Area name="Participantes detectados" type="monotone" dataKey="participants" stroke="#c4ff40" fill="url(#crowd-fill)" strokeWidth={3} connectNulls={false}/></AreaChart></ResponsiveContainer></div>}<p className="mt-2 text-[11px] text-white/45">{simulation?'Simulação local em ciclos acelerados. Os dados fictícios desaparecem ao clicar em Parar.':'Lacunas podem indicar falta de participantes, GPS indisponível ou amostras menores que 5.'}</p></div>
    <div className="rounded-2xl border border-white/10 bg-[#17111d] p-4"><div className="flex items-center gap-2"><TrendingUp size={17} className="text-[#c4ff40]"/><h4 className="font-bold">Locais que ficaram mais movimentados</h4></div><p className="mt-1 text-xs text-white/50">Média por snapshot e maior pico de participantes por ambiente</p>{fakeHotspots.length===0?<p className="mt-5 text-sm text-white/55">Ainda não existem ambientes com amostras suficientes para calcular o histórico.</p>:<div className="mt-4 space-y-2">{fakeHotspots.slice(0,10).map((h,i)=><div key={h.mapId+':'+h.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.025] px-3 py-3"><span className="w-6 text-center text-sm font-black text-[#c4ff40]">{i+1}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{h.name}</p><p className="truncate text-[11px] text-white/50">{h.mapName}</p></div><div className="text-right"><p className="text-sm font-bold">Média {h.average.toLocaleString('pt-BR')}</p><p className="text-[11px] text-white/50">Pico {h.peak}</p></div></div>)}</div>}</div>
    <p className="text-xs text-white/50">{simulation?'Dados 100% simulados, temporários e locais. Não aparecem nos relatórios reais.':'Dados históricos consolidados, retenção de até 30 dias. Nenhum registro identifica indivíduos; médias não equivalem à lotação do evento.'}</p>
   </div>}
-  <p className="flex items-start gap-2 text-[11px] leading-relaxed text-white/45"><AlertTriangle size={15} className="mt-0.5 shrink-0"/> A análise utiliza somente GPS recente de participantes que autorizaram explicitamente estatísticas anônimas. Áreas com amostras entre 1 e 4 participantes são ocultadas, e posições de precisão insuficiente não são atribuídas a ambientes. Mapas demonstrativos não produzem leituras reais.</p>
+  <p className="flex items-start gap-2 text-[11px] leading-relaxed text-white/45"><AlertTriangle size={15} className="mt-0.5 shrink-0"/> A análise utiliza somente GPS recente de participantes que autorizaram explicitamente estatísticas anônimas. Áreas com amostras entre 1 e 4 participantes são ocultadas, e posições de precisão insuficiente não são atribuídas a ambientes. A concentração é relativa e não representa capacidade máxima.</p>
  </section>;
 }
