@@ -50,7 +50,7 @@ export default function AdminVenueMaps({
     <input autoFocus required maxLength={100} className="w-full rounded-xl border border-white/20 bg-[#241b2c] px-3 py-3 text-sm text-white"
      placeholder="Ex.: Planta principal, Área externa" value={newName} onChange={event=>setNewName(event.target.value)}/>
    </label>
-   <p className="text-xs text-white/50">O mapa começa com ambientes e pontos de exemplo, que você pode editar ou remover.</p>
+   <p className="text-xs text-white/50">O mapa inicia com ambientes e pontos editáveis.</p>
    <button disabled={busy||!newName.trim()} type="submit" className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">Criar e abrir editor</button>
   </form>}
   {ownMaps.length===0?<div className="rounded-xl border border-dashed border-white/20 p-6 text-center">
