@@ -1,7 +1,7 @@
 import {createRequire} from 'node:module';
 
 const require=createRequire(import.meta.url);
-const INT_FIELD=/^(?:id_numeric|ok|n|count|total|recipients|(?:push_(?:tracked|accepted|pending|failed|expired))|attempts|minimum_age|rating|default_price_cents|effective_price_cents|price_cents|is_published|location_sharing_enabled|gps_enabled|share_enabled|token_version|first_selected_at|last_selected_at|last_seen|expires_at|created_at|updated_at|sent_at|read_at|scheduled_at|next_attempt_at|lease_until|accepted_at|share_expires_at|lat|lng|accuracy|x|y|width|height|size|spacingMeters|accuracyMeters|quantity|amount)$/;
+const INT_FIELD=/^(?:id_numeric|ok|n|count|total|recipients|(?:push_(?:tracked|accepted|pending|failed|expired))|attempts|minimum_age|rating|default_price_cents|effective_price_cents|price_cents|is_published|location_sharing_enabled|gps_enabled|share_enabled|analytics_enabled|people_count|bucket_at|token_version|first_selected_at|last_selected_at|last_seen|expires_at|created_at|updated_at|sent_at|read_at|scheduled_at|next_attempt_at|lease_until|accepted_at|share_expires_at|lat|lng|accuracy|x|y|width|height|size|spacingMeters|accuracyMeters|quantity|amount)$/;
 const INTEGER=/^-?(?:0|[1-9]\d*)$/;
 const FLOAT=/^-?(?:\d+\.\d+|\d+\.\d*[eE][+-]?\d+|\d+[eE][+-]?\d+)$/;
 
