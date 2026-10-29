@@ -9,6 +9,7 @@ export const REAL_TOUR_RESET_KEY='meaple808-clean-initialization-v1';
 // friendships, group memberships, group alerts, notification history/receipts,
 // push subscriptions and the push queue.
 const EVENT_TABLES=[
+ 'event_crowd_snapshots',
  'event_reviews',
  'event_participants',
  'event_products',
@@ -30,7 +31,7 @@ function resetOldEvents(db,{defaultEventPreferences}={}){
  // A shared event was selected by this participant, not a friend-group setting.
  // Revoke only event-scoped live sharing, without losing friendships or accounts.
  db.prepare('DELETE FROM live_locations WHERE user_id IN (SELECT user_id FROM location_preferences WHERE share_event_id IS NOT NULL)').run();
- db.prepare('UPDATE location_preferences SET gps_enabled=0,share_enabled=0,share_expires_at=NULL,share_event_id=NULL,share_with_groups=0,updated_at=? WHERE share_event_id IS NOT NULL').run(Date.now());
+ db.prepare('UPDATE location_preferences SET gps_enabled=0,share_enabled=0,share_expires_at=NULL,share_event_id=NULL,share_with_groups=0,analytics_enabled=0,analytics_event_id=NULL,updated_at=? WHERE share_event_id IS NOT NULL').run(Date.now());
 
  // Keep notification records and receipts intact. Prevent pending messages
  // relating to deleted events from firing after the reset.
