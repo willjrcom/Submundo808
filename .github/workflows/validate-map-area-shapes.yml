@@ -17,3 +17,8 @@ jobs:
       - run: pnpm --filter @workspace/submundo-808 typecheck
       - run: node --test tests/map-area-shapes.test.mjs tests/map-area-editor.test.mjs tests/map-layout-geometry.test.mjs tests/map-frame-geometry.test.mjs tests/map-label-layout.test.mjs
       - run: node --check server/index.mjs && node --check server/map-area-geometry.mjs
+      - name: Diagnose production container boot without DATABASE_URL
+        run: |
+          docker build --target runner --tag submundo808-smoke-debug .
+          docker run --rm --network none -e NODE_ENV=production -e APP_ENV=production -e DATA_DIR=/tmp/submundo-prod-guard submundo808-smoke-debug > /tmp/submundo-prod-debug.log 2>&1 || true
+          sed -n '1,50p' /tmp/submundo-prod-debug.log
