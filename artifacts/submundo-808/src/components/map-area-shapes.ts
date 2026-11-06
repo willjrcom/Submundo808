@@ -1,0 +1,123 @@
+import {intersects,moveArea,sharesBorder,limit,type MapRect} from './map-layout-geometry';
+
+export type AreaShape='rect'|'ellipse';
+export type CurveSide='top'|'right'|'bottom'|'left';
+export type CurveDirection='in'|'out';
+export type AreaCurve={side:CurveSide;direction:CurveDirection;depth:number};
+export type AreaGeometry={shape?:AreaShape;curve?:AreaCurve|null;groupId?:string|null};
+export type GeometricArea=MapRect&{geometry?:AreaGeometry};
+const EPS=0.001;
+const snap=(n:number)=>Math.round(n*10000)/10000;
+const eq=(a:number,b:number)=>Math.abs(a-b)<EPS;
+const key=(x:number,y:number)=>snap(x)+','+snap(y);
+const geometryOf=(a:GeometricArea)=>a.geometry||{};
+export const rootAreaId=(a:GeometricArea)=>geometryOf(a).groupId||a.id;
+export const visibleAreas=<T extends GeometricArea>(areas:T[])=>areas.filter(a=>!geometryOf(a).groupId);
+export const groupMembers=<T extends GeometricArea>(areas:T[],rootId:string)=>areas.filter(a=>a.id===rootId||geometryOf(a).groupId===rootId);
+export const isGrouped=(areas:GeometricArea[],rootId:string)=>areas.some(a=>geometryOf(a).groupId===rootId);
+export const canGroup=(areas:GeometricArea[],rootId:string,childId:string)=>{
+ const root=areas.find(a=>a.id===rootId),child=areas.find(a=>a.id===childId);
+ if(!root||!child||root.id===child.id||geometryOf(root).groupId||geometryOf(child).groupId)return false;
+ if(geometryOf(child).shape==='ellipse'||geometryOf(root).shape==='ellipse')return false;
+ return groupMembers(areas,rootId).some(member=>sharesBorder(member,child)||intersects(member,child));
+};
+export function groupWith<T extends GeometricArea>(areas:T[],rootId:string,childId:string):T[]{
+ if(!canGroup(areas,rootId,childId))return areas;
+ return areas.map(a=>a.id===childId?{...a,geometry:{...geometryOf(a),groupId:rootId}}:a);
+}
+export function ungroup<T extends GeometricArea>(areas:T[],rootId:string):T[]{
+ return areas.map(a=>geometryOf(a).groupId===rootId?{...a,geometry:{...geometryOf(a),groupId:null}}:a);
+}
+export function moveAreaGroup<T extends GeometricArea>(areas:T[],rootId:string,x:number,y:number,snapEdges=true):T[]{
+ const members=groupMembers(areas,rootId),root=areas.find(a=>a.id===rootId);
+ if(!root||!members.length)return areas;
+ if(members.length===1)return moveArea(areas,rootId,x,y,snapEdges);
+ const others=areas.filter(a=>!members.some(m=>m.id===a.id));
+ const lowX=Math.min(...members.map(a=>a.x)),lowY=Math.min(...members.map(a=>a.y));
+ const highX=Math.max(...members.map(a=>a.x+a.width)),highY=Math.max(...members.map(a=>a.y+a.height));
+ const desiredX=limit(x-root.x,-35-lowX,135-highX);
+ const desiredY=limit(y-root.y,-35-lowY,135-highY);
+ const ref=moveArea([...others,root],rootId,root.x+desiredX,root.y+desiredY,snapEdges).find(a=>a.id===rootId)!;
+ const dx=ref.x-root.x,dy=ref.y-root.y;
+ const moved=members.map(a=>({...a,x:snap(a.x+dx),y:snap(a.y+dy)}));
+ if(moved.some(a=>a.x< -35-EPS||a.y< -35-EPS||a.x+a.width>135+EPS||a.y+a.height>135+EPS||others.some(b=>intersects(a,b))))return areas;
+ return areas.map(a=>moved.find(m=>m.id===a.id)||a);
+}
+
+type Pt={x:number;y:number};
+type Segment={from:Pt;to:Pt};
+const onSegment=(from:Pt,to:Pt,area:GeometricArea,side:CurveSide)=>{
+ if(side==='top')return eq(from.y,area.y)&&eq(to.y,area.y)&&Math.min(from.x,to.x)>=area.x-EPS&&Math.max(from.x,to.x)<=area.x+area.width+EPS;
+ if(side==='bottom')return eq(from.y,area.y+area.height)&&eq(to.y,area.y+area.height)&&Math.min(from.x,to.x)>=area.x-EPS&&Math.max(from.x,to.x)<=area.x+area.width+EPS;
+ if(side==='left')return eq(from.x,area.x)&&eq(to.x,area.x)&&Math.min(from.y,to.y)>=area.y-EPS&&Math.max(from.y,to.y)<=area.y+area.height+EPS;
+ return eq(from.x,area.x+area.width)&&eq(to.x,area.x+area.width)&&Math.min(from.y,to.y)>=area.y-EPS&&Math.max(from.y,to.y)<=area.y+area.height+EPS;
+};
+const point=(p:Pt)=>snap(p.x)+' '+snap(p.y);
+function curveFor(from:Pt,to:Pt,areas:GeometricArea[]){
+ return areas.find(a=>{const curve=geometryOf(a).curve;return curve&&onSegment(from,to,a,curve.side);});
+}
+function drawSegment(from:Pt,to:Pt,areas:GeometricArea[]){
+ const area=curveFor(from,to,areas),curve=area&&geometryOf(area).curve;
+ if(!area||!curve||curve.depth<=0)return 'L'+point(to);
+ const dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy);
+ if(len<EPS)return '';
+ const depth=Math.min(Math.min(area.width,area.height)*curve.depth/100,len/3);
+ const sign=curve.direction==='in'?1:-1;
+ const center={x:(from.x+to.x)/2-sign*(dy/len)*depth*2,y:(from.y+to.y)/2+sign*(dx/len)*depth*2};
+ return 'Q'+point(center)+' '+point(to);
+}
+function ellipsePath(a:GeometricArea){
+ const midX=a.x+a.width/2,midY=a.y+a.height/2,rx=a.width/2,ry=a.height/2;
+ return 'M'+point({x:midX+rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX-rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX+rx,y:midY})+' Z';
+}
+function unionPath(areas:GeometricArea[]){
+ const xs=[...new Set(areas.flatMap(a=>[snap(a.x),snap(a.x+a.width)]))].sort((a,b)=>a-b);
+ const ys=[...new Set(areas.flatMap(a=>[snap(a.y),snap(a.y+a.height)]))].sort((a,b)=>a-b);
+ const inside=(i:number,j:number)=>{
+  if(i<0||j<0||i>=xs.length-1||j>=ys.length-1)return false;
+  const x=(xs[i]+xs[i+1])/2,y=(ys[j]+ys[j+1])/2;
+  return areas.some(a=>x>a.x-EPS&&x<a.x+a.width+EPS&&y>a.y-EPS&&y<a.y+a.height+EPS);
+ };
+ const edges:Segment[]=[];
+ for(let j=0;j<ys.length-1;j++)for(let i=0;i<xs.length-1;i++){
+  if(!inside(i,j))continue;
+  const x=xs[i],right=xs[i+1],y=ys[j],bottom=ys[j+1];
+  if(!inside(i,j-1))edges.push({from:{x,y},to:{x:right,y}});
+  if(!inside(i+1,j))edges.push({from:{x:right,y},to:{x:right,y:bottom}});
+  if(!inside(i,j+1))edges.push({from:{x:right,y:bottom},to:{x,y:bottom}});
+  if(!inside(i-1,j))edges.push({from:{x,y:bottom},to:{x,y}});
+ }
+ const starts=new Map<string,number[]>();
+ edges.forEach((e,i)=>{const k=key(e.from.x,e.from.y);starts.set(k,[...(starts.get(k)||[]),i]);});
+ const used=new Set<number>(),paths:string[]=[];
+ for(let i=0;i<edges.length;i++){
+  if(used.has(i))continue;
+  const loop:Segment[]=[];let cursor=i;
+  while(!used.has(cursor)){
+   used.add(cursor);const edge=edges[cursor];loop.push(edge);
+   const next=(starts.get(key(edge.to.x,edge.to.y))||[]).find(candidate=>!used.has(candidate));
+   if(next===undefined)break;cursor=next;
+  }
+  if(!loop.length)continue;
+  // Mesclar segmentos contíguos colineares, preservando curvas contínuas.
+  const merged:Segment[]=[];
+  for(const e of loop){
+   const last=merged[merged.length-1];
+   if(last&&eq(last.to.x,e.from.x)&&eq(last.to.y,e.from.y)&&
+      eq((last.to.x-last.from.x)*(e.to.y-e.from.y),(last.to.y-last.from.y)*(e.to.x-e.from.x))&&
+      (last.to.x-last.from.x)*(e.to.x-e.from.x)+(last.to.y-last.from.y)*(e.to.y-e.from.y)>0&&
+      curveFor(last.from,last.to,areas)?.id===curveFor(e.from,e.to,areas)?.id){
+    last.to=e.to;
+   }else merged.push({from:e.from,to:e.to});
+  }
+  paths.push('M'+point(merged[0].from)+' '+merged.map(e=>drawSegment(e.from,e.to,areas)).join(' ')+' Z');
+ }
+ return paths.join(' ');
+}
+// Uma única silhueta por ambiente lógico, sem bordas internas entre partes.
+export function areaPath(areas:GeometricArea[],rootId:string){
+ const members=groupMembers(areas,rootId);
+ if(!members.length)return '';
+ if(members.length===1&&geometryOf(members[0]).shape==='ellipse')return ellipsePath(members[0]);
+ return unionPath(members);
+}

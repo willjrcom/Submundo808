@@ -159,3 +159,11 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - Somente `DATABASE_URL` explicitamente configurada seleciona PostgreSQL; não criar nem importar dados do SQLite. Em banco novo, seeding demo fica desativado por padrão, salvo `AUTO_SEED_DEMO=true` explícito.
 - Sem verificação de e-mail, não atribuir admin automaticamente pela variável `ADMIN_EMAIL` quando PostgreSQL está ativo; papel do primeiro admin deve ser concedido manualmente após conferir a identidade.
 - O CI deve executar teste de inicialização e CRUD contra PostgreSQL 16 isolado **antes da publicação Docker/Dokploy**; preservar também o conjunto legado SQLite.
+
+## Ambientes agrupados e curvas do mapa
+- Editor de plantas em `src/components/admin-map-workspace.tsx`. A geometria usa `src/components/map-area-shapes.ts`; a visualização pública em `src/components/venue-map.tsx` deve usar a **mesma** função `areaPath`.
+- `map_areas.geometry_json`: JSON opcional `{shape:'rect'|'ellipse',groupId?:id,curve?:{side:'top'|'right'|'bottom'|'left',direction:'in'|'out',depth:1..40}}`. Ausência de valor mantém o retângulo legado.
+- O agrupamento preserva os registros originais: filho aponta `groupId` para o ambiente principal, deve estar conectado a ele e não pode formar ciclo. O editor exibe uma silhueta externa sem bordas internas, permite mover o grupo em conjunto e desagrupar sem perder as peças.
+- Partes agrupadas só podem ser redimensionadas/excluídas após desagrupar. Formas ovais não participam de grupos retangulares; uma borda curva interna não é desenhada.
+- `POST /api/admin/save-layout` valida a geometria do grupo no servidor e persiste os metadados. `GET /api/admin/areas` e `GET /api/public/map-detail` retornam `geometry` JSON, sem remover nem alterar o GPS dos ambientes.
+- Testes obrigatórios: `tests/map-area-shapes.test.mjs` e `tests/map-area-editor.test.mjs`.
