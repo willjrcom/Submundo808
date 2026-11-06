@@ -14,13 +14,18 @@ import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './loc
 import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,readCrowdHourly,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
-import webpush from 'web-push';
+import * as webpushModule from 'web-push';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PostgresSync } from './postgres-sync.mjs';
 import {databaseMode} from './database-mode.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
+
+const webpush = webpushModule.default ?? webpushModule;
+if(typeof webpush.setVapidDetails!=='function'||typeof webpush.sendNotification!=='function'){
+ throw Error('A instalação de web-push não disponibiliza as funções necessárias para notificações.');
+}
 
 const PORT = Number(process.env.PORT || 80);
 const DATA = process.env.DATA_DIR || '/data';
