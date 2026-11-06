@@ -1,4 +1,4 @@
-import {intersects,moveArea,sharesBorder,limit,type MapRect} from './map-layout-geometry';
+import {intersects,moveArea,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
 
 export type AreaShape='rect'|'ellipse';
 export type CurveSide='top'|'right'|'bottom'|'left';
