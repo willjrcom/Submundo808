@@ -69,3 +69,6 @@ sem avaliar dados novos se o sistema já estiver atendendo usuários reais.
 - Backups passam a ser de PostgreSQL (ex.: `pg_dump` com política de retenção,
   armazenamento externo e teste de restauração); não configure backups SQLite
   para o novo banco.
+
+## Geometria dos ambientes (agrupamento e curvas)
+Ao iniciar uma versão que contém o editor atualizado, a tabela `map_areas` recebe automaticamente a coluna opcional `geometry_json` (texto JSON; default `{}`) tanto no SQLite de desenvolvimento quanto no PostgreSQL. Ambientes anteriores permanecem retangulares. A atualização usa DDL idempotente e **não** importa dados de SQLite. Para o PostgreSQL da empresa, valide as permissões de `ALTER TABLE` antes do deploy.

@@ -4,10 +4,11 @@ import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
- Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,
+ Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,
  Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3
 } from 'lucide-react';
-import {freeAreaPosition,moveArea,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
+import {freeAreaPosition,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
+import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
@@ -16,7 +17,7 @@ import {GPS_CAPTURE_MS,MAP_MARGIN_METERS,CORNER_KEYS,measuredCorners,allCorners,
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=CalibrationGps;
-type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;description?:string;color?:string;icon?:string};
+type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;geometry?:AreaGeometry;description?:string;color?:string;icon?:string};
 type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
@@ -43,6 +44,7 @@ function sharedEdges(areas:Area[]){
   const a=areas[i],b=areas[j],eps=.05;
   const y1=Math.max(a.y,b.y),y2=Math.min(a.y+a.height,b.y+b.height);
   const x1=Math.max(a.x,b.x),x2=Math.min(a.x+a.width,b.x+b.width);
+  if(rootAreaId(a)===rootAreaId(b))continue;
   if(y2-y1>=8&&(Math.abs(a.x+a.width-b.x)<eps||Math.abs(b.x+b.width-a.x)<eps))
    edges.push({a,b,x:Math.abs(a.x+a.width-b.x)<eps?b.x:a.x,y:(y1+y2)/2,vertical:true});
   if(x2-x1>=8&&(Math.abs(a.y+a.height-b.y)<eps||Math.abs(b.y+b.height-a.y)<eps))
@@ -56,6 +58,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
+ const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
@@ -98,12 +101,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
  const passages=sharedEdges(areas);
+ const visibleRooms=visibleAreas(areas);
+ const grouped=isGrouped(areas,active?.id||'');
+ const groupCandidates=active?visibleRooms.filter(a=>a.id!==active.id&&canGroup(areas,active.id,a.id)):[];
  const areasOutside=areas.filter(a=>a.x<0||a.y<0||a.x+a.width>100||a.y+a.height>100).length;
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
   let alive=true;setLoading(true);setInitialLoadError(false);
   Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps'),api('products')]).then(([a,m,maps,products])=>{
-   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
+   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setGroupOpen(false);setCurveOpen(false);setMarkers(m.items.map(normalizeMarker));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
    setCatalogCategories([...new Set((products.items as {category:string}[]).map(p=>p.category.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')));
    setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
@@ -159,8 +165,31 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(!p){setError('Não há espaço livre para um novo ambiente. Ajuste as divisórias antes de adicionar.');return;}
   checkpoint();setError('');
   const id=crypto.randomUUID();
-  setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},icon:'outro',color:'#9747FF',description:''}]);
+  setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},geometry:{shape:'rect'},icon:'outro',color:'#9747FF',description:''}]);
   setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Selecione Mover ou Redimensionar para ajustar o ambiente.');
+ }
+ function createRoundArea(){
+  const p=freeAreaPosition(areas,18,Math.min(35,18*mapFrameAspect(frame)));
+  if(!p){setError('Não há espaço livre para um ambiente redondo.');return;}
+  checkpoint();setError('');const id=crypto.randomUUID();
+  setAreas(v=>[...v,{id,map_id:map.id,name:'Ambiente redondo',kind:'outro',...p,gps:{},geometry:{shape:'ellipse'},icon:'outro',color:'#9747FF',description:''}]);
+  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setCurveOpen(false);
+  setNotice('Ambiente redondo criado. Desenhe o formato oval redimensionando os lados.');
+ }
+ function confirmGroup(){
+  if(!active||!groupChoice||!canGroup(areas,active.id,groupChoice)){setError('Escolha um ambiente retangular que encoste no ambiente selecionado.');return;}
+  checkpoint();setAreas(groupWith(areas,active.id,groupChoice));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(false);
+  setNotice('Ambientes agrupados em uma única silhueta, sem divisória interna. Salve o mapa para publicar.');
+ }
+ function detachGroup(){
+  if(!active||!isGrouped(areas,active.id))return;
+  checkpoint();setAreas(ungroup(areas,active.id));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(false);
+  setNotice('Ambientes desagrupados. As partes originais foram preservadas.');
+ }
+ function updateCurve(patch:Partial<NonNullable<AreaGeometry['curve']>>){
+  if(!active)return;
+  const curve={side:'top' as CurveSide,direction:'in' as CurveDirection,depth:20,...active.geometry?.curve,...patch};
+  updateArea({geometry:{...active.geometry,shape:'rect',curve}});
  }
  function createPassage(a:Area,b:Area,x:number,y:number){
   checkpoint();const id=crypto.randomUUID();
@@ -174,6 +203,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Ative a movimentação antes de arrastar.');
  }
  function removeSelected(){
+  if(active&&isGrouped(areas,active.id)){setError('Desagrupe o ambiente antes de excluí-lo, para não perder as partes originais.');return;}
   const item=active?{id:active.id,name:active.name,kind:'area' as const}:selectedMarker?{id:selectedMarker.id,name:selectedMarker.name,kind:'marker' as const}:null;
   if(item)setPendingDelete(item);
  }
@@ -184,7 +214,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   checkpoint();
   if(item.kind==='area')setAreas(v=>v.filter(a=>a.id!==item.id));
   else setMarkers(v=>v.filter(m=>m.id!==item.id));
-  setSelected('');setResizeId(null);setPendingDelete(null);
+  setSelected('');setResizeId(null);setGroupOpen(false);setCurveOpen(false);setPendingDelete(null);
   setNotice('Item removido do editor. Salve o mapa para confirmar a exclusão.');
  }
  function coord(e:React.PointerEvent){
@@ -249,7 +279,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    const delta=d.edge==='left'||d.edge==='right'?p.x-d.startX:p.y-d.startY;
    setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap));
   }else{
-   setAreas(moveArea(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap));
+   setAreas(moveAreaGroup(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap));
   }
  }
  function endDrag(e:React.PointerEvent){
@@ -339,7 +369,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   await discard();
  }
  function activateResize(){
-  if(!active)return;setFrameEditing(false);if(editing&&resizeId===active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(active.id);}
+  if(!active)return;
+  if(isGrouped(areas,active.id)){setError('Desagrupe para redimensionar as partes individualmente.');return;}
+  setFrameEditing(false);if(editing&&resizeId===active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(active.id);}
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
  const showLoading=useMinimumLoading(loading);
@@ -356,6 +388,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <div className="flex flex-wrap items-center gap-2 p-2">
    <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
+   <button onClick={createRoundArea} className={button}><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current"/> Ambiente redondo</button>
+   {active&&(grouped?<button type="button" onClick={detachGroup} className={button+' border-[#c4ff40]/45 text-[#c4ff40]'}><Unplug size={16}/> Desagrupar</button>:<button type="button" onClick={()=>{setGroupOpen(v=>!v);setCurveOpen(false);setGroupChoice('');}} aria-expanded={groupOpen} className={button+' '+(groupOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Group size={16}/> Agrupar</button>)}
+   {active&&<button type="button" disabled={active.geometry?.shape==='ellipse'} title={active.geometry?.shape==='ellipse'?'O formato redondo já possui borda curva':'Curvar borda do ambiente'} aria-expanded={curveOpen} onClick={()=>{setCurveOpen(v=>!v);setGroupOpen(false);}} className={button+' '+(curveOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Blend size={16}/> Curvar</button>}
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
    <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
@@ -363,6 +398,28 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
   </div>
+  {groupOpen&&active&&!grouped&&<div className="space-y-3 border-t border-white/10 p-3">
+   <p className="text-sm font-semibold">Agrupar ao ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
+   <p className="text-xs text-white/60">Escolha outra parte que encoste neste ambiente. As bordas internas desaparecem; cada peça poderá ser recuperada ao desagrupar.</p>
+   <div className="flex flex-wrap items-end gap-2">
+    <label className="min-w-[190px] flex-1 space-y-1 text-xs text-white/65">Ambiente para agrupar
+     <select className={input} value={groupChoice} onChange={e=>setGroupChoice(e.target.value)}><option value="">Selecione um ambiente</option>{groupCandidates.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
+    </label>
+    <button type="button" disabled={!groupChoice} onClick={confirmGroup} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-40">Agrupar selecionados</button>
+    <button type="button" onClick={()=>setGroupOpen(false)} className={button}>Cancelar</button>
+   </div>
+   {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes retangulares encostados neste. Arraste a segunda parte até uma borda para habilitar o agrupamento.</p>}
+  </div>}
+  {curveOpen&&active&&active.geometry?.shape!=='ellipse'&&<div className="space-y-3 border-t border-white/10 p-3">
+   <p className="text-sm font-semibold">Curvar ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
+   <p className="text-xs text-white/60">Selecione uma lateral externa, a direção e a intensidade. A curvatura é aplicada à silhueta visível do ambiente.</p>
+   <div className="grid gap-2 sm:grid-cols-3">
+    <label className="space-y-1 text-xs text-white/65">Lateral<select className={input} value={active.geometry?.curve?.side||'top'} onChange={e=>updateCurve({side:e.target.value as CurveSide})}><option value="top">Superior</option><option value="right">Direita</option><option value="bottom">Inferior</option><option value="left">Esquerda</option></select></label>
+    <label className="space-y-1 text-xs text-white/65">Direção<select className={input} value={active.geometry?.curve?.direction||'in'} onChange={e=>updateCurve({direction:e.target.value as CurveDirection})}><option value="in">Para dentro</option><option value="out">Para fora</option></select></label>
+    <label className="space-y-1 text-xs text-white/65">Intensidade: {active.geometry?.curve?.depth||20}%<input aria-label="Intensidade da curvatura" type="range" min="1" max="40" step="1" value={active.geometry?.curve?.depth||20} onChange={e=>updateCurve({depth:Number(e.target.value)})} className="mt-3 w-full accent-[#c4ff40]"/></label>
+   </div>
+   <div className="flex gap-2"><button type="button" disabled={!active.geometry?.curve} onClick={()=>updateArea({geometry:{...active.geometry,curve:null}})} className={button}>Remover curva</button><button type="button" onClick={()=>setCurveOpen(false)} className={button}>Concluir</button></div>
+  </div>}
   {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
    <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
    <button type="submit" disabled={nameSaving||!mapName.trim()||mapName.trim()===map.name&&notice==='Nome da planta atualizado.'} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button>
@@ -378,7 +435,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      >
       {active&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
        <button type="button" title="Mover ambiente selecionado" aria-label="Mover ambiente selecionado" aria-pressed={editing&&resizeId!==active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();if(editing&&resizeId!==active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(null);}}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/> {editing&&resizeId!==active.id?'Concluir':'Mover'}</button>
-       <button type="button" title="Redimensionar ambiente selecionado" aria-label="Redimensionar ambiente selecionado" aria-pressed={editing&&resizeId===active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();activateResize();}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId===active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Maximize2 size={15}/> {editing&&resizeId===active.id?'Concluir':'Redimensionar'}</button>
+       <button type="button" aria-label="Redimensionar ambiente selecionado" aria-pressed={editing&&resizeId===active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();activateResize();}} disabled={grouped} title={grouped?'Desagrupe para redimensionar as partes':'Redimensionar ambiente selecionado'} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId===active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Maximize2 size={15}/> {editing&&resizeId===active.id?'Concluir':'Redimensionar'}</button>
       </div>}
       {selectedMarker&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
        <span className="max-w-28 truncate text-xs text-white/75">{selectedMarker.name}</span>
@@ -402,19 +459,28 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         style={{left,top}}/>)}
       </>}
      {!frameEditing&&passages.map(edge=>{const already=markers.some(m=>m.type==='passagem'&&((m.from_area_id===edge.a.id&&m.to_area_id===edge.b.id)||(m.from_area_id===edge.b.id&&m.to_area_id===edge.a.id))&&Math.hypot(m.x-edge.x,m.y-edge.y)<7);return already?null:<button type="button" key={edge.a.id+'-'+edge.b.id} title={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} aria-label={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();createPassage(edge.a,edge.b,edge.x,edge.y);}} className="group absolute z-[25] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border border-[#c4ff40]/65 bg-[#17111e]/95 text-lg font-semibold text-[#c4ff40] opacity-75 shadow-lg transition hover:scale-110 hover:opacity-100 focus:opacity-100 sm:opacity-30 sm:hover:opacity-100" style={{left:edge.x+'%',top:edge.y+'%'}}><Plus size={18}/></button>})}
-     {areas.map(a=>{
-      const Icon=iconFor(a.icon||a.kind);const color=areaColor(a);const chosen=selected===a.id;
-      return <div key={a.id} onPointerDown={e=>startDrag(e,a.id,'area')} onClick={e=>{e.stopPropagation();if(selected!==a.id){setEditLayout(false);setResizeId(null);}setSelected(a.id);}} title={a.description||a.name}
-       className={'absolute flex min-h-0 flex-col items-center justify-center border-2 px-1 py-1 text-center '+(frameEditing?'pointer-events-none ':'')+(editing&&resizeId!==a.id?'cursor-move':'cursor-pointer')+(chosen?' z-[2]':' z-0')}
-       style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:chosen?'#c4ff40':color,backgroundColor:color+'33'}}>
-       <span className="sr-only">{a.name}</span>
-       {chosen&&!editing&&<button type="button" aria-label={'Redimensionar '+a.name} title="Redimensionar este ambiente"
-        onPointerDown={e=>e.stopPropagation()}
-        onClick={e=>{e.stopPropagation();setSelected(a.id);setEditLayout(true);setResizeId(a.id);}}
-        className="absolute right-1 top-1 z-30 rounded-md border border-[#c4ff40]/60 bg-[#17101e] p-1.5 text-[#c4ff40] shadow-lg"><Maximize2 size={12}/></button>}
-       {chosen&&editing&&resizeId===a.id&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
+     <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Silhuetas dos ambientes">
+      {visibleRooms.map(a=>{
+       const color=areaColor(a),chosen=selected===a.id;
+       return <path key={a.id} d={areaPath(areas,a.id)} fill={color+'33'} stroke={chosen?'#c4ff40':color} strokeWidth={chosen?0.7:0.45}
+        vectorEffect="non-scaling-stroke" role="button" tabIndex={frameEditing?-1:0}
+        aria-label={'Selecionar ambiente '+a.name+(isGrouped(areas,a.id)?' agrupado':'')}
+        onPointerDown={e=>startDrag(e,a.id,'area')}
+        onClick={e=>{e.stopPropagation();if(selected!==a.id){setEditLayout(false);setResizeId(null);}setSelected(a.id);}}
+        onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setSelected(a.id);setEditLayout(false);setResizeId(null);}}}
+        style={{pointerEvents:frameEditing?'none':'visiblePainted',cursor:editing&&resizeId!==a.id?'move':'pointer'}}/>;
+      })}
+     </svg>
+     {visibleRooms.map(a=>{
+      const chosen=selected===a.id,canResize=!isGrouped(areas,a.id);
+      if(!chosen||frameEditing)return null;
+      return <div key={'handles-'+a.id} className="pointer-events-none absolute z-20" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%'}}>
+       {canResize&&!editing&&<button type="button" aria-label={'Redimensionar '+a.name} title="Redimensionar este ambiente"
+        onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setSelected(a.id);setEditLayout(true);setResizeId(a.id);}}
+        className="pointer-events-auto absolute right-1 top-1 z-30 rounded-md border border-[#c4ff40]/60 bg-[#17101e] p-1.5 text-[#c4ff40] shadow-lg"><Maximize2 size={12}/></button>}
+       {canResize&&editing&&resizeId===a.id&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
         onPointerDown={e=>startDrag(e,a.id,'resize',edge)}
-        className={'absolute z-20 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+((edge==='left'||edge==='right')?'cursor-ew-resize':'cursor-ns-resize')}
+        className={'pointer-events-auto absolute z-30 h-4 w-4 touch-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+((edge==='left'||edge==='right')?'cursor-ew-resize':'cursor-ns-resize')}
         style={{left:edge==='left'?'0%':edge==='right'?'100%':'50%',top:edge==='top'?'0%':edge==='bottom'?'100%':'50%'}}/>)}
       </div>;
      })}
@@ -444,7 +510,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
     <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{editing?'Arraste qualquer ambiente, inclusive para a área externa ao quadro, e depois encaixe novamente. Selecione o ambiente e clique em Redimensionar; bordas em comum alteram os dois ambientes.':'Selecione qualquer ambiente, inclusive os já salvos. Use Editar layout ou os botões do painel lateral para movê-lo ou redimensioná-lo.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
-     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({areas.length})</h3><div className="flex flex-wrap gap-2">{areas.map(a=><button key={a.id} onClick={()=>{setSelected(a.id);setResizeId(null);setEditLayout(false);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
+     <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({visibleRooms.length})</h3><div className="flex flex-wrap gap-2">{visibleRooms.map(a=><button key={a.id} onClick={()=>{setSelected(a.id);setResizeId(null);setEditLayout(false);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}{isGrouped(areas,a.id)?' · '+groupMembers(areas,a.id).length+' partes':''}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><MapPin size={16} className="text-[#c4ff40]"/> Pontos ({markers.length})</h3><div className="flex flex-wrap gap-2">{markers.map(m=><button key={m.id} onClick={()=>{setSelected(m.id);setResizeId(null);setEditLayout(false);setFrameEditing(false);}} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===m.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}>{m.name}</button>)}{markers.length===0&&<p className="text-xs text-white/45">Nenhum ponto cadastrado.</p>}</div></div>
     </div>
    </div>
@@ -457,13 +523,17 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <button className={'w-full '+button} onClick={()=>setFrameEditing(false)}>Concluir edição da área</button>
      <p className="text-xs text-amber-200/80">Depois de alterar o tamanho físico do mapa, confira a calibração GPS.</p>
     </div>:active?<div className="space-y-4">
-     <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><span className="h-5 w-5 rounded" style={{backgroundColor:areaColor(active)}}/><div><p className="text-sm font-bold">{active.name}</p><p className="text-[11px] text-white/50">Ambiente · bordas compartilhadas</p></div></div>
+     <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><span className="h-5 w-5 rounded" style={{backgroundColor:areaColor(active)}}/><div><p className="text-sm font-bold">{active.name}</p><p className="text-[11px] text-white/50">Ambiente · {grouped?groupMembers(areas,active.id).length+' partes agrupadas':'bordas compartilhadas'}</p></div></div>
+     <div className="space-y-2 text-xs text-white/65"><p>Formato do ambiente</p><div className="grid grid-cols-2 gap-2">
+       <button type="button" aria-pressed={active.geometry?.shape!=='ellipse'} disabled={grouped} onClick={()=>updateArea({geometry:{...active.geometry,shape:'rect',curve:null}})} className={button+' '+(active.geometry?.shape!=='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Retangular</button>
+       <button type="button" aria-pressed={active.geometry?.shape==='ellipse'} disabled={grouped} onClick={()=>{updateArea({geometry:{...active.geometry,shape:'ellipse',curve:null}});setCurveOpen(false);}} className={button+' '+(active.geometry?.shape==='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button>
+      </div>{grouped&&<p className="text-[11px] text-white/50">Desagrupe para alterar o formato individual das partes.</p>}</div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} value={active.name} maxLength={100} onChange={e=>updateArea({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Tipo e ícone<select className={input} value={active.icon||active.kind} onChange={e=>updateArea({kind:e.target.value,icon:e.target.value})}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(areaColor(active),color=>updateArea({color}))}</div>
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={active.description||''} onChange={e=>updateArea({description:e.target.value})} placeholder="Descreva este ambiente..."/></label>
 
-     <p className="text-[11px] text-white/45">Ao redimensionar uma borda compartilhada, o vizinho acompanha o ajuste. Arrastar o interior move somente o ambiente selecionado.</p>
+     <p className="text-[11px] text-white/45">{grouped?'Ambientes agrupados se movem juntos. Desagrupe para redimensionar cada parte.':'Ao redimensionar uma borda compartilhada, o vizinho acompanha o ajuste. Arrastar o interior move somente o ambiente selecionado.'}</p>
      {areas.some(a=>a.id!==active.id&&sharesBorder(a,active))&&<p className="text-[11px] text-[#c4ff40]">Este ambiente compartilha bordas com outros.</p>}
 
     </div> :selectedMarker?<div className="space-y-4">
@@ -520,7 +590,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <div className="sticky -top-4 z-30 flex items-center justify-between gap-2 border-b border-white/10 bg-[#17111d] py-2"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button type="button" autoFocus aria-label="Fechar calibração" className={button} onClick={()=>setCalibrationOpen(false)}>Fechar <span aria-hidden="true">×</span></button></div>
    <p className="text-xs text-white/65">Fique dentro do espaço, perto do canto correspondente, e toque diretamente no símbolo + do mapa. Aguarde 8 segundos parado; confirme ou repita a captura. A margem de 5 metros para fora será aplicada automaticamente quando os quatro cantos estiverem medidos.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração GPS aproximada ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
    <div className="relative overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(frame),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
-    {areas.map(a=><div key={a.id} className="absolute border-2 p-1 text-center text-[10px]" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:areaColor(a),backgroundColor:areaColor(a)+'22'}}>{a.name}</div>)}
+    <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Prévia dos ambientes calibrados">
+     {visibleRooms.map(a=><path key={a.id} d={areaPath(areas,a.id)} fill={areaColor(a)+'22'} stroke={areaColor(a)} strokeWidth={0.45} vectorEffect="non-scaling-stroke" fillRule="evenodd"><title>{a.name}</title></path>)}
+    </svg>
+    {visibleRooms.map(a=><span key={'cal-label-'+a.id} className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded bg-[#100d18]/85 px-1 py-0.5 text-[10px] text-white" style={{left:a.x+a.width/2+'%',top:a.y+a.height/2+'%'}}>{a.name}</span>)}
     {([['tl','top-2 left-2'],['tr','top-2 right-2'],['bl','bottom-2 left-2'],['br','bottom-2 right-2']] as const).map(([key,pos],i)=>{
      const measured=!!rawCorners[key];
      return <button key={key} type="button" title={calibrationLabels[i]+(measured?' · mapear novamente':' · capturar ponto')}

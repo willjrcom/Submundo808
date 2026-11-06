@@ -1,7 +1,8 @@
 import {useEffect,useMemo,useState} from 'react';
 import {layoutRoomLabels,layoutPointLabels} from './map-label-layout';
+import {visibleAreas,type AreaGeometry} from './map-area-shapes';
 
-type Room={id:string;name:string;x:number;y:number;width:number;height:number};
+type Room={id:string;name:string;x:number;y:number;width:number;height:number;geometry?:AreaGeometry};
 type Point={x:number;y:number;name:string;size?:number};
 
 export default function useMapLabels(rooms:Room[],points:Point[]){
@@ -22,7 +23,8 @@ export default function useMapLabels(rooms:Room[],points:Point[]){
   window.addEventListener('resize',update);
   return()=>window.removeEventListener('resize',update);
  },[mapElement]);
- const labels=useMemo(()=>layoutRoomLabels(rooms,points,dimensions.width,dimensions.height),[rooms,points,dimensions]);
- const pointLabels=useMemo(()=>layoutPointLabels(rooms,points,dimensions.width,dimensions.height),[rooms,points,dimensions]);
+ const visibleRooms=useMemo(()=>visibleAreas(rooms),[rooms]);
+ const labels=useMemo(()=>layoutRoomLabels(visibleRooms,points,dimensions.width,dimensions.height),[visibleRooms,points,dimensions]);
+ const pointLabels=useMemo(()=>layoutPointLabels(visibleRooms,points,dimensions.width,dimensions.height),[visibleRooms,points,dimensions]);
  return {labels,pointLabels,setMapElement};
 }

@@ -7,6 +7,7 @@ import {requestAudit,logServerFault,cspReportSummary} from './observability.mjs'
 import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth.mjs';
 import {DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
+import {parseAreaGeometry,validateAreaGeometries} from './map-area-geometry.mjs';
 import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
@@ -146,6 +147,7 @@ db.exec('CREATE TABLE IF NOT EXISTS event_products(event_id TEXT NOT NULL,produc
 for(const [column,definition] of [['description',"TEXT NOT NULL DEFAULT ''"],['color',"TEXT NOT NULL DEFAULT '#9747FF'"],['icon',"TEXT NOT NULL DEFAULT ''"]]){
  if(!db.prepare('PRAGMA table_info(map_areas)').all().some(c=>c.name===column))db.exec('ALTER TABLE map_areas ADD COLUMN '+column+' '+definition);
 }
+if(!db.prepare('PRAGMA table_info(map_areas)').all().some(c=>c.name==='geometry_json'))db.exec("ALTER TABLE map_areas ADD COLUMN geometry_json TEXT NOT NULL DEFAULT '{}'");
 if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='token_version'))db.exec('ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0');
 const adminEmail=String(process.env.ADMIN_EMAIL||'').trim().toLowerCase();
 // Em PostgreSQL novo não conceder admin automaticamente a e-mails não verificados.
@@ -549,7 +551,7 @@ http.createServer(async (req,res)=>{
         const id=String(url.searchParams.get('map_id')||'');
         const map=db.prepare('SELECT id,name,venue_id,frame_json FROM venue_maps WHERE id=?').get(id);
         if(!map)return json(res,404,{error:'Mapa não encontrado.'});
-        const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json,description,color,icon FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),gps_json:undefined}));
+        const areas=db.prepare('SELECT id,name,kind,x,y,width,height,gps_json,geometry_json,description,color,icon FROM map_areas WHERE map_id=?').all(id).map(a=>({...a,gps:JSON.parse(a.gps_json||'{}'),geometry:parseAreaGeometry(a.geometry_json),gps_json:undefined,geometry_json:undefined}));
         const markers=db.prepare('SELECT markers_json FROM map_markers WHERE map_id=?').get(id);
         return json(res,200,{map:{id:map.id,name:map.name,venue_id:map.venue_id,frame:frameOf(map)},areas,markers:JSON.parse(markers?.markers_json||'[]')});
       }
@@ -575,7 +577,7 @@ http.createServer(async (req,res)=>{
         const tables={venues:'venues',maps:'venue_maps',areas:'map_areas',events:'events'};
         if(req.method==='GET'&&tables[key]){
           const rows=db.prepare('SELECT * FROM '+tables[key]).all();
-          return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json)}:key==='maps'?{...row,frame:frameOf(row),frame_json:undefined}:row)});
+          return json(res,200,{items:rows.map(row=>key==='events'?{...row,lineup:JSON.parse(row.lineup_json),map_ids:db.prepare('SELECT map_id FROM event_maps WHERE event_id=?').all(row.id).map(x=>x.map_id)}:key==='areas'?{...row,gps:JSON.parse(row.gps_json),geometry:parseAreaGeometry(row.geometry_json),geometry_json:undefined}:key==='maps'?{...row,frame:frameOf(row),frame_json:undefined}:row)});
         }
         if(req.method==='GET'&&key==='search-venues'){
           const q=String(url.searchParams.get('q')||'').trim().slice(0,100);
@@ -659,6 +661,8 @@ http.createServer(async (req,res)=>{
             const existing=db.prepare('SELECT map_id FROM map_areas WHERE id=?').get(a.id);
             if(existing&&existing.map_id!==mapId)return json(res,400,{error:'Ambiente pertence a outro mapa.'});
           }
+          const geometryError=validateAreaGeometries(areas);
+          if(geometryError)return json(res,400,{error:geometryError});
           const markerIds=new Set();
           for(const m of markers){
             if(!m||typeof m.id!=='string'||!m.id||m.id.length>100||markerIds.has(m.id)||typeof m.name!=='string'||!m.name.trim()||m.name.length>100||
@@ -684,8 +688,8 @@ http.createServer(async (req,res)=>{
           db.exec('BEGIN');
           try{
             db.prepare('DELETE FROM map_areas WHERE map_id=?').run(mapId);
-            const insert=db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height,gps_json,description,color,icon) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
-            for(const a of areas)insert.run(a.id,mapId,a.name.trim(),a.kind,a.x,a.y,a.width,a.height,JSON.stringify(a.gps),String(a.description||''),String(a.color||'#9747FF'),String(a.icon||''));
+            const insert=db.prepare('INSERT INTO map_areas(id,map_id,name,kind,x,y,width,height,gps_json,geometry_json,description,color,icon) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            for(const a of areas)insert.run(a.id,mapId,a.name.trim(),a.kind,a.x,a.y,a.width,a.height,JSON.stringify(a.gps),JSON.stringify(a.geometry||{}),String(a.description||''),String(a.color||'#9747FF'),String(a.icon||''));
             db.prepare('INSERT INTO map_markers(map_id,markers_json) VALUES(?,?) ON CONFLICT(map_id) DO UPDATE SET markers_json=excluded.markers_json').run(mapId,JSON.stringify(markers));
             if(frame!==undefined)db.prepare('UPDATE venue_maps SET frame_json=? WHERE id=?').run(JSON.stringify(frame),mapId);
             db.exec('COMMIT');

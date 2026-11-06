@@ -8,6 +8,7 @@ import {mapPercentToGps} from './map-calibration-geometry';
 import {startInitialGps,gpsErrorText} from './gps-acquisition';
 import {mapFrameAspect,normalizeMapFrame,type MapFrame} from './map-frame-geometry';
 import {normalizeMarker,markerIconStyle,type MarkerAnchor} from './map-marker-geometry';
+import {areaPath,visibleAreas,type AreaGeometry} from './map-area-shapes';
 import useMapLabels from './use-map-labels';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
@@ -19,7 +20,7 @@ const eventEndLabel=(value:string)=>{
  const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
  return match?match[3]+'/'+match[2]+' às '+match[4]+':'+match[5]:'horário a definir';
 };
-type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number;rawCorners?:Partial<Bounds>;marginMeters?:number};color?:string;icon?:string;description?:string};
+type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number;rawCorners?:Partial<Bounds>;marginMeters?:number};color?:string;icon?:string;description?:string;geometry?:AreaGeometry};
 type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;shape?:'square'|'circle';size?:number;color?:string;description?:string;opens_at?:string;closes_at?:string;categories?:string[];access_type?:string};
 type MapData={map:{id:string;name:string;frame?:MapFrame};areas:Area[];markers:Marker[]};
 type PointProduct={id:string;name:string;description:string;category:string;effective_price_cents:number};
@@ -580,7 +581,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  </div>
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{publicMapName(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
- {data?.areas.map(a=>{const color=validColor(a.color),name=publicPointName(a.name,!!mapIsDemo);return <div key={a.id} role="img" aria-label={'Ambiente: '+name} title={a.description||name} className="absolute border-2" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%',borderColor:color,backgroundColor:color+'33'}}/>;})}
+ <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Ambientes da planta">
+  {data&&visibleAreas(data.areas).map(a=>{const color=validColor(a.color),name=publicPointName(a.name,!!mapIsDemo);
+   return <path key={a.id} d={areaPath(data.areas,a.id)} fill={color+'33'} stroke={color} strokeWidth={0.45} vectorEffect="non-scaling-stroke" fillRule="evenodd"><title>{a.description||name}</title></path>;
+  })}
+ </svg>
  {roomLabels.map(label=>{
   const room=data?.areas.find(a=>a.id===label.id);
   if(!room)return null;
