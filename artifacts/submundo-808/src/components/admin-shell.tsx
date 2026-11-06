@@ -112,12 +112,12 @@ export default function AdminShell(){
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
  if(!user?.isAdmin)return <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-[#0b090f] p-6 text-center text-white"><h1 className="text-2xl font-black">Painel administrativo</h1><p className="text-white/60">{user?'Sua conta não possui permissão de administrador.':'Faça login no Submundo 808 para acessar o painel.'}</p><a href="https://submundo.menudevendas.com.br/profile" className="rounded-xl bg-[#c4ff40] px-5 py-3 font-bold text-black">Ir para meu perfil</a></div>;
  return <div className="min-h-dvh min-w-0 bg-[#0b090f] text-white xl:flex">
-  <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-white/10 bg-[#17101e]/95 px-4 py-3 backdrop-blur-xl xl:hidden">
-   <div className="min-w-0">
+  <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-white/10 bg-[#17101e]/95 px-4 py-3 backdrop-blur-xl xl:hidden">
+   <button type="button" aria-label="Abrir menu administrativo" aria-controls="submundo-admin-sidebar" aria-expanded={navOpen} onClick={()=>setNavOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white"><Menu size={22}/></button>
+   <div className="min-w-0 text-left">
     <p className="text-sm font-black tracking-wide">SUBMUNDO <span className="text-[#c4ff40]">ADMIN</span></p>
     <p className="truncate text-xs text-white/60">{section}</p>
    </div>
-   <button type="button" aria-label="Abrir menu administrativo" aria-controls="submundo-admin-sidebar" aria-expanded={navOpen} onClick={()=>setNavOpen(true)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/20 text-white"><Menu size={22}/></button>
   </header>
   {navOpen&&<button type="button" aria-label="Fechar menu administrativo" onClick={()=>setNavOpen(false)} className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm xl:hidden"/>}
   <aside id="submundo-admin-sidebar" className={'fixed inset-y-0 left-0 z-50 flex w-[min(85vw,18rem)] flex-col overflow-y-auto border-r border-white/10 bg-[#17101e] p-5 shadow-2xl transition-transform duration-200 xl:sticky xl:top-0 xl:z-auto xl:h-dvh xl:w-64 xl:shrink-0 xl:translate-x-0 xl:shadow-none '+(navOpen?'visible translate-x-0':'invisible -translate-x-full xl:visible')}>
