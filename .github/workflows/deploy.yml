@@ -109,7 +109,7 @@ jobs:
           PG_TEST_DATABASE_URL: postgresql://submundo_ci:ci_password@127.0.0.1:5432/submundo_test
         run: |
           set -euo pipefail
-          docker run --rm -d --name submundo808-pg-smoke --network host \
+          docker run -d --name submundo808-pg-smoke --network host \
             -e DATABASE_URL="$PG_TEST_DATABASE_URL" \
             -e APP_ENV=production -e AUTO_SEED_DEMO=false \
             -e PORT=18080 -e DATA_DIR=/tmp/submundo-ci \
@@ -118,9 +118,18 @@ jobs:
           ready=false
           for i in $(seq 1 50); do
             if curl --silent --fail http://127.0.0.1:18080/api/health >/dev/null; then ready=true; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' submundo808-pg-smoke)" != true ]; then
+              echo "::error::submundo808-pg-smoke exited before its health check passed."
+              docker logs submundo808-pg-smoke
+              exit 1
+            fi
             sleep 2
           done
-          test "$ready" = true
+          if [ "$ready" != true ]; then
+            echo "::error::submundo808-pg-smoke did not become healthy."
+            docker logs submundo808-pg-smoke
+            exit 1
+          fi
           PG_TEST_CONTAINER=submundo808-pg-smoke \
             PG_TEST_BASE_URL=http://127.0.0.1:18080 \
             node --test tests/postgres-integration.test.mjs
@@ -148,7 +157,7 @@ jobs:
           db.close();
           JS
 
-          docker run --rm -d --name submundo808-pg-reset --network host \
+          docker run -d --name submundo808-pg-reset --network host \
             -e DATABASE_URL="$PG_TEST_DATABASE_URL" -e APP_ENV=production \
             -e AUTO_SEED_DEMO=true -e PORT=18081 -e DATA_DIR=/tmp/submundo-reset-ci \
             submundo808-pg-smoke
@@ -156,9 +165,18 @@ jobs:
           ready=false
           for i in $(seq 1 50); do
             if curl --silent --fail http://127.0.0.1:18081/api/health >/dev/null; then ready=true; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' submundo808-pg-reset)" != true ]; then
+              echo "::error::submundo808-pg-reset exited before its health check passed."
+              docker logs submundo808-pg-reset
+              exit 1
+            fi
             sleep 2
           done
-          test "$ready" = true
+          if [ "$ready" != true ]; then
+            echo "::error::submundo808-pg-reset did not become healthy."
+            docker logs submundo808-pg-reset
+            exit 1
+          fi
 
           docker run --rm -i --network host \
             -e DATABASE_URL="$PG_TEST_DATABASE_URL" --entrypoint node \
@@ -189,9 +207,18 @@ jobs:
           ready=false
           for i in $(seq 1 50); do
             if curl --silent --fail http://127.0.0.1:18081/api/health >/dev/null; then ready=true; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' submundo808-pg-reset)" != true ]; then
+              echo "::error::submundo808-pg-reset exited before its health check passed."
+              docker logs submundo808-pg-reset
+              exit 1
+            fi
             sleep 2
           done
-          test "$ready" = true
+          if [ "$ready" != true ]; then
+            echo "::error::submundo808-pg-reset did not become healthy."
+            docker logs submundo808-pg-reset
+            exit 1
+          fi
           docker run --rm -i --network host \
             -e DATABASE_URL="$PG_TEST_DATABASE_URL" --entrypoint node \
             submundo808-pg-smoke --input-type=module <<'JS'
