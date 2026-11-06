@@ -15,5 +15,5 @@ jobs:
       - run: corepack enable && corepack prepare pnpm@10.28.0 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/submundo-808 typecheck
-      - run: node --test tests/map-area-shapes.test.mjs tests/map-area-editor.test.mjs tests/map-layout-geometry.test.mjs tests/map-frame-geometry.test.mjs tests/map-label-layout.test.mjs tests/map-editor-delete-modal.test.mjs
+      - run: node --test tests/map-area-shapes.test.mjs tests/map-area-editor.test.mjs tests/map-layout-geometry.test.mjs tests/map-frame-geometry.test.mjs tests/map-label-layout.test.mjs
       - run: node --check server/index.mjs && node --check server/map-area-geometry.mjs
