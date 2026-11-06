@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {databaseMode} from '../server/database-mode.mjs';
 test('produção sem DATABASE_URL recusa SQLite em vez de criar banco alternativo',()=>{
  for(const env of [{NODE_ENV:'production'},{APP_ENV:'production'},{NODE_ENV:'production',DATABASE_URL:''}]){
@@ -20,4 +22,16 @@ test('admin consulta driver do banco sem expor credenciais',()=>{
  assert.match(server,/key==='database-status'.*engine:storageMode/);
  assert.match(ui,/Banco de dados da aplicação/);
  assert.match(ui,/api\('database-status'\)/);
+});
+
+test('bootstrap de produção recusa SQLite antes de carregar o servidor',()=>{
+ const result=spawnSync(process.execPath,[fileURLToPath(new URL('../server/bootstrap.mjs',import.meta.url))],{
+  env:{...process.env,NODE_ENV:'production',APP_ENV:'production',DATABASE_URL:''},
+  encoding:'utf8',
+  timeout:5000
+ });
+ assert.equal(result.error,undefined);
+ assert.notEqual(result.status,0);
+ assert.match(result.stderr,/DATABASE_URL é obrigatória em produção; SQLite está desabilitado/);
+ assert.doesNotMatch(result.stdout,/Submundo808 listening/);
 });

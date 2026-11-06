@@ -93,10 +93,16 @@ jobs:
              -e NODE_ENV=production -e APP_ENV=production \
              -e DATA_DIR=/tmp/submundo-prod-guard submundo808-pg-smoke \
              > /tmp/submundo-prod-guard.log 2>&1; then
-            echo "ERROR: production started without PostgreSQL"
+            echo "::error::Production started without PostgreSQL"
+            cat /tmp/submundo-prod-guard.log
             exit 1
           fi
-          grep -q "SQLite está desabilitado" /tmp/submundo-prod-guard.log
+          if ! grep -Fq "SQLite está desabilitado" /tmp/submundo-prod-guard.log; then
+            echo "::error::Container stopped before the expected PostgreSQL guard. Startup log:"
+            cat /tmp/submundo-prod-guard.log
+            exit 1
+          fi
+          echo "Production correctly refuses to start without PostgreSQL."
 
       - name: Test PostgreSQL initialization and API against isolated empty database
         env:

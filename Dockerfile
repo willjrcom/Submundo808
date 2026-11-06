@@ -37,9 +37,9 @@ COPY --from=builder /app/artifacts/submundo-808/dist/public/ /app/public/
 COPY --from=native-deps /app/node_modules /app/node_modules
 COPY server/ /app/server/
 COPY --from=native-deps /app/package.json /app/package.json
-RUN node --check /app/server/index.mjs && node --check /app/server/auth.mjs && node --check /app/server/oauth.mjs && node --check /app/server/postgres-sync.mjs
+RUN node --check /app/server/bootstrap.mjs && node --check /app/server/index.mjs && node --check /app/server/auth.mjs && node --check /app/server/oauth.mjs && node --check /app/server/postgres-sync.mjs
 RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 VOLUME ["/data"]
 EXPOSE 80
-CMD ["node", "--disable-warning=ExperimentalWarning", "/app/server/index.mjs"]
+CMD ["node", "--disable-warning=ExperimentalWarning", "/app/server/bootstrap.mjs"]
