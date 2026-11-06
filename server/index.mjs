@@ -14,7 +14,7 @@ import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './loc
 import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,readCrowdHourly,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
