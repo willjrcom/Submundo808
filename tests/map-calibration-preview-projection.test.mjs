@@ -7,13 +7,13 @@ const code=readFileSync(new URL('../artifacts/submundo-808/src/components/map-ca
 const compiled=ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const {calibrationPreviewProjection,projectEditorAreaPath,coordinateString}=await import('data:text/javascript;base64,'+Buffer.from(compiled).toString('base64'));
 
-// These are the measured four corners from the Uzna calibration screenshot,
-// not a hard-coded perspective that could accidentally flip the room layout.
+// Synthetic, translated coordinates preserving the real-world diagonal orientation.
+// No venue-specific GPS coordinates are stored in the public test suite.
 const uzna={
- tl:{lat:-23.451854,lng:-47.398631},
- tr:{lat:-23.451190,lng:-47.398921},
- br:{lat:-23.450266,lng:-47.397799},
- bl:{lat:-23.450876,lng:-47.397462}
+ tl:{lat:-23.000000,lng:-47.000000},
+ tr:{lat:-22.999336,lng:-47.000290},
+ br:{lat:-22.998412,lng:-46.999168},
+ bl:{lat:-22.999022,lng:-46.998831}
 };
 const distance=(a,b)=>Math.hypot((b.lng-a.lng)*111320*Math.cos(a.lat*Math.PI/180),(b.lat-a.lat)*111320);
 const screenDistance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
