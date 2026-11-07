@@ -70,7 +70,7 @@ export default function AdminShell(){
   setRoute(next);
  },[section,route.id,listsLoaded,maps]);
  useEffect(()=>{
-   if(section!=='Inteligência')return;
+   if(section!=='Estatísticas')return;
    const next:AdminRoute={section:'Estabelecimentos',id:null,creating:false};
    const path=adminRoutePath(next);
    window.history.replaceState({},'',path);
@@ -144,7 +144,7 @@ export default function AdminShell(){
     {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
    </form>);
  const pathParts=currentPath.split('/').filter(Boolean);
- const knownAdminRoute=(pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
+ const knownAdminRoute=(pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','statistics','estatisticas','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
@@ -204,7 +204,7 @@ export default function AdminShell(){
      <AdminVenueDashboard venue={editing} maps={maps} events={events} onEdit={()=>openVenueEdit(editing)} onOpenMap={openMap} onChanged={reload}
       onOpenEvent={eventId=>go({section:'Eventos',id:eventId,creating:false})}
       onViewAnalytics={eventId=>go({section:'Estabelecimentos',id:editing.id,creating:false,eventId})}/>
-     <button type="button" onClick={()=>setExampleOpen(true)} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold text-white/70">Ver exemplo de inteligência</button>
+     <button type="button" onClick={()=>setExampleOpen(true)} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold text-white/70">Ver exemplo de estatísticas</button>
     </div>
   :<div className="mt-8 space-y-4">
     <div className="flex items-center justify-between gap-3">
@@ -237,7 +237,7 @@ export default function AdminShell(){
  )}
  {editing&&section==='Estabelecimentos'&&exampleOpen&&<div role="dialog" aria-modal="true" aria-label="Exemplo de análise do evento" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3" onClick={()=>setExampleOpen(false)}>
    <div className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/20 bg-[#17111d] p-4 sm:p-6" onClick={e=>e.stopPropagation()}>
-    <div className="mb-5 flex items-center justify-between gap-2"><h3 className="font-bold">Exemplo de inteligência</h3><button type="button" onClick={()=>setExampleOpen(false)} aria-label="Fechar exemplo" className="rounded-lg border border-white/20 p-2"><X size={18}/></button></div>
+    <div className="mb-5 flex items-center justify-between gap-2"><h3 className="font-bold">Exemplo de estatísticas</h3><button type="button" onClick={()=>setExampleOpen(false)} aria-label="Fechar exemplo" className="rounded-lg border border-white/20 p-2"><X size={18}/></button></div>
     <AdminCrowd example event={{id:'example',name:'Exemplo de movimentação',map_ids:[]}} venueMaps={[]}/>
    </div>
   </div>}

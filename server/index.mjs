@@ -354,7 +354,7 @@ http.createServer(async (req,res)=>{
         if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
         return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,shareWithGroups:b.shareEnabled&&b.shareWithGroups===true,analyticsEnabled:b.shareEnabled&&b.analyticsEnabled===true,expiresAt:choice?.expiresAt||null});
       }
-      // Consent for event intelligence is independent from friend sharing
+      // Consent for aggregate event statistics is independent from friend sharing
       // and can be switched off at any time without stopping location with friends.
       if(url.pathname==='/api/location/analytics-consent'&&req.method==='POST'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});

@@ -1,20 +1,20 @@
-# Inteligência de público (prévia em branch isolada)
+# Estatísticas de público (prévia histórica em branch isolada)
 
 Branch: `feature/event-crowd-intelligence-preview`
 
-> **Somente protótipo para aprovação.** Não há merge em `main`, publicação no GHCR de produção nem deploy automático no Dokploy. O workflow `crowd-preview-ci.yml` valida a branch sem publicar imagens.
+> **Registro histórico de uma prévia isolada.** As instruções de simulação abaixo descrevem a branch experimental, não o fluxo atual em produção. Na interface atual, as estatísticas são acessadas pelo botão **Ver estatísticas do evento** no dashboard do evento. A branch de prévia não publica imagens de produção.
 
 ## Como experimentar o painel
 
 1. Execute **esta branch** em um ambiente de preview, **com PostgreSQL e domínio distintos dos de produção** (ou em desenvolvimento local). Não reutilize o banco de produção.
-2. Abra o painel do administrador e selecione **Visão geral**. O bloco **Inteligência do evento** mostra concentrações e indicadores atualizados a cada 30 segundos.
-3. Abra a nova seção **Inteligência** (`/intelligence`) para os modos **Ao vivo** e **Histórico** (24 horas, 7 dias, 30 dias).
+2. Abra o painel do administrador e selecione **Visão geral**. O bloco **Estatísticas do evento** mostrava concentrações e indicadores atualizados a cada 30 segundos.
+3. Na prévia histórica, a seção **Estatísticas** (rota legada `/intelligence`) oferecia os modos **Ao vivo** e **Histórico** (24 horas, 7 dias, 30 dias).
 4. Clique em **Ver exemplo fictício** para visualizar o mapa de calor e gráficos mesmo sem GPS/participantes. O aviso amarelo diferencia claramente os dados fictícios das leituras reais; a prévia não insere dados de exemplo no banco.
 5. Para obter leituras reais, é necessário publicar um evento, configurar `location_sharing_enabled=true`, vincular um mapa com quatro cantos **calibrados manualmente** e ter participantes autorizando localização **e** estatísticas no mapa.
 
 ## Simulação com GPS (nova)
 
-1. Em **Visão geral** ou **Inteligência**, selecione o evento e o mapa desejados.
+1. Na prévia, em **Visão geral** ou **Estatísticas**, selecione o evento e o mapa desejados.
 2. Escolha **50**, **140** ou **250 pessoas fictícias** e pressione **Simular ±20 m do meu GPS**.
 3. O navegador solicita sua posição atual **somente após o clique**. O app cria um mapa virtual de **40 × 40 metros**, com seu GPS como centro e localizações fictícias até **20 metros em cada direção**. A planta do estabelecimento é usada apenas como **representação esquemática**, não como medida física do local.
 4. Os pontos rosas se movem automaticamente a cada **3 segundos**; cada etapa representa **5 minutos simulados**. Os cards, as zonas do mapa e a aba **Histórico** apresentam os números simulados em tempo real.
