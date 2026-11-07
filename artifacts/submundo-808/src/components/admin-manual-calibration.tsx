@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {ArrowLeft,CheckCircle2,ExternalLink,MapPin,Satellite,X} from 'lucide-react';
+import MapCalibrationOrientation,{CALIBRATION_POINT_NAMES} from './map-calibration-orientation';
 import {type CalibrationGps,type CornerKey} from './map-calibration-geometry';
 import {
  buildManualCalibration,CORNER_LABELS,googleMapsLink,googleSatelliteEmbedUrl,
@@ -39,6 +40,8 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
  onApply:(value:Extract<ManualCalibrationResult,{ok:true}>)=>void;
 }){
  const [review,setReview]=useState(false),[error,setError]=useState('');
+ const [selectedCorner,setSelectedCorner]=useState<CornerKey>('tl');
+ const selectCorner=(key:CornerKey)=>{setSelectedCorner(key);document.getElementById('cal-lat-'+key)?.focus();};
  const result=buildManualCalibration(values,mode);
  const position=mapPreviewPosition(values,existingGps);
  const url=googleSatelliteEmbedUrl(position,mapName);
@@ -64,7 +67,8 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
    </header>
    <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[1.08fr_.92fr] lg:gap-5 lg:p-6">
     <div className="space-y-4">
-     <p className="text-sm text-white/70">Informe as coordenadas geográficas de cada canto da <strong className="text-white">planta do mapa</strong>, usando latitude e longitude em graus decimais.</p>
+     <p className="text-sm text-white/70">Oriente o desenho pela parte de cima da planta e escolha os pontos numerados. Depois, informe as coordenadas dos quatro cantos em latitude e longitude.</p>
+     <MapCalibrationOrientation selected={selectedCorner} mode={mode} values={values} onSelect={selectCorner}/>
      <div className="flex gap-2" role="group" aria-label="Quantidade de pontos de calibração">
       <button type="button" aria-pressed={mode==='4'} onClick={()=>{setReview(false);setError('');onModeChange('4');}} className={outline+' flex-1 '+(mode==='4'?'border-[#c4ff40] bg-[#c4ff40] font-black text-black':'')}>4 cantos · recomendado</button>
       <button type="button" aria-pressed={mode==='3'} onClick={()=>{setReview(false);setError('');onModeChange('3');}} className={outline+' flex-1 '+(mode==='3'?'border-[#c4ff40] bg-[#c4ff40] font-black text-black':'')}>3 pontos</button>
@@ -74,17 +78,17 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-1 text-[11px] font-semibold text-white/45"><span>Latitude</span><span>Longitude</span></div>
       {order.map((key,i)=>{
        const estimated=mode==='3'&&key==='br';
-       return <div key={key} className="rounded-xl border border-white/10 bg-white/[.025] p-2.5">
-        <div className="mb-2 flex items-center justify-between gap-2"><label className="text-xs font-semibold text-white" htmlFor={'cal-lat-'+key}><span className="mr-2 rounded-full bg-[#c4ff40]/15 px-2 py-0.5 text-[#c4ff40]">{i+1}</span>{CORNER_LABELS[key]}</label>
+       return <div key={key} className={'rounded-xl border bg-white/[.025] p-2.5 '+(selectedCorner===key?'border-[#c4ff40]/60':'border-white/10')}>
+        <div className="mb-2 flex items-center justify-between gap-2"><label className="text-xs font-semibold text-white" htmlFor={'cal-lat-'+key}><span className="mr-2 rounded-full bg-[#c4ff40]/15 px-2 py-0.5 text-[#c4ff40]">{i+1}</span>{'Ponto '+(i+1)}<span className="ml-2 text-[10px] font-normal text-white/50">{CALIBRATION_POINT_NAMES[key]}</span></label>
          {estimated&&<span className="text-[10px] text-amber-200">Estimado</span>}</div>
         <div className="grid grid-cols-2 gap-2">
-         <input id={'cal-lat-'+key} aria-label={'Latitude '+CORNER_LABELS[key]} className={field} type="text" inputMode="decimal" placeholder="-23.450459" disabled={estimated} value={estimated&&result.ok?result.raw.br.lat.toFixed(6):values[key].lat} onChange={e=>change(key,'lat',e.target.value)}/>
-         <input aria-label={'Longitude '+CORNER_LABELS[key]} className={field} type="text" inputMode="decimal" placeholder="-47.397806" disabled={estimated} value={estimated&&result.ok?result.raw.br.lng.toFixed(6):values[key].lng} onChange={e=>change(key,'lng',e.target.value)}/>
+         <input id={'cal-lat-'+key} aria-label={'Latitude '+CORNER_LABELS[key]} onFocus={()=>setSelectedCorner(key)} className={field} type="text" inputMode="decimal" placeholder="-23.450459" disabled={estimated} value={estimated&&result.ok?result.raw.br.lat.toFixed(6):values[key].lat} onChange={e=>change(key,'lat',e.target.value)}/>
+         <input aria-label={'Longitude '+CORNER_LABELS[key]} className={field} onFocus={()=>setSelectedCorner(key)} type="text" inputMode="decimal" placeholder="-47.397806" disabled={estimated} value={estimated&&result.ok?result.raw.br.lng.toFixed(6):values[key].lng} onChange={e=>change(key,'lng',e.target.value)}/>
         </div>
        </div>;
       })}
      </div>
-     <p className="text-xs text-white/50">A latitude e a longitude podem ser copiadas do Google Maps. Confira se cada ponto pertence ao canto correto da planta; os pinos das capturas anteriores são referências, não necessariamente cantos reais.</p>
+     <p className="text-xs text-white/50">A latitude e a longitude podem ser copiadas do Google Maps. Os números identificam os cantos técnicos do desenho: botões nas bordas servem só para selecionar, não para registrar o ponto médio de um lado.</p>
      {result.ok&&<div role="status" className="rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/5 p-3 text-xs text-[#c4ff40]"><CheckCircle2 size={15} className="mr-1 inline"/> Geometria consistente · aproximadamente {result.width.toFixed(1)} m × {result.height.toFixed(1)} m.</div>}
      {error&&<p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
      {review&&result.ok&&<div className="space-y-2 rounded-xl border-2 border-[#c4ff40]/60 bg-[#251d30] p-4">
