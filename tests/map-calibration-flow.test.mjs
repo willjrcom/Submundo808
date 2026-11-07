@@ -8,7 +8,8 @@ const geometry=read('artifacts/submundo-808/src/components/map-calibration-geome
 const csp=read('server/request-security.mjs');
 
 test('Calibrar mapa opens a choice, preserving original GPS workflow',()=>{
- assert.match(editor,/onClick=\{chooseCalibrationMode\}/);
+ assert.match(editor,/function chooseCalibrationMode\(\)/);
+ assert.match(editor,/onClick=\{openCalibrationOverview\}/);
  assert.match(editor,/aria-label="Escolher modo de calibração"/);
  assert.match(editor,/Calibrar usando GPS/);
  assert.match(editor,/Inserir coordenadas manualmente/);
@@ -18,6 +19,37 @@ test('Calibrar mapa opens a choice, preserving original GPS workflow',()=>{
  assert.match(editor,/GPS_CAPTURE_MS/);
  assert.match(editor,/confirmCapturedPoint/);
  assert.match(editor,/Voltar aos métodos/);
+});
+test('calibrated maps show a read-only perspective overview and recalibration option',()=>{
+ const overview=read('artifacts/submundo-808/src/components/admin-calibration-overview.tsx');
+ assert.match(editor,/const calibrationComplete=geometryValid&&corners\?\.mode!=='demo-auto'/);
+ assert.match(editor,/calibrationComplete\?'Ver calibração':'Calibrar mapa'/);
+ assert.match(editor,/<AdminCalibrationOverview/);
+ assert.match(editor,/onRecalibrate=\{recalibrateMap\}/);
+ assert.match(editor,/setCalibrationOverviewOpen\(false\)/);
+ assert.match(editor,/setManualStarted\(false\)/);
+ assert.match(overview,/aria-label="Ver calibração do mapa"/);
+ assert.match(overview,/Perspectiva da planta/);
+ assert.match(overview,/areaPath\(areas,area\.id\)/);
+ assert.match(overview,/measuredCorners\(gps\)/);
+ assert.match(overview,/googleMapsLink\(position,mapName\)/);
+ assert.match(overview,/Margem externa registrada: 5 metros/);
+ assert.match(overview,/Recalibrar/);
+ assert.match(overview,/hasUnsavedChanges/);
+});
+test('manual calibration uses four numbered border selectors and a top-of-plan arrow',()=>{
+ const orientation=read('artifacts/submundo-808/src/components/map-calibration-orientation.tsx');
+ assert.match(manual,/<MapCalibrationOrientation/);
+ assert.match(manual,/selectedCorner/);
+ assert.match(manual,/selectCorner=\(key:CornerKey\)/);
+ assert.match(orientation,/TOPO DO DESENHO/);
+ assert.match(orientation,/não o norte geográfico/);
+ assert.match(orientation,/cada número representa um/);
+ assert.match(orientation,/onSelect\(key\)/);
+ for(const position of ['left-[27%] top-[15%]','left-[85%] top-[30%]','left-[73%] top-[85%]','left-[15%] top-[70%]']){
+  assert.ok(orientation.includes(position),position);
+ }
+ assert.match(manual,/value=\{estimated&&result\.ok\?result\.raw\.br\.lat/);
 });
 test('manual modal offers four-corner or marked 3-point estimation and a real satellite iframe',()=>{
  assert.match(editor,/<AdminManualCalibration mapName=\{mapName\}/);
