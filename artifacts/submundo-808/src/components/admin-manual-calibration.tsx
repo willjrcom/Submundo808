@@ -84,7 +84,7 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
   if(nextMethod==='map'&&mode==='3')onModeChange('4');
  }
  return <div role="presentation" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-2 sm:p-4">
-  <section role="dialog" aria-modal="true" aria-label="Calibração manual de mapa" className={'flex max-h-[calc(100dvh-1rem)] w-full flex-col '+(method==='map'?'max-w-7xl':'max-w-5xl')+' overflow-hidden rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] shadow-2xl">
+  <section role="dialog" aria-modal="true" aria-label="Calibração manual de mapa" className={'flex max-h-[calc(100dvh-1rem)] w-full flex-col '+(method==='map'?'max-w-7xl':'max-w-5xl')+' overflow-hidden rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] shadow-2xl'}>
    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 p-4 sm:px-6">
     <div className="flex items-center gap-3"><MapPin className="text-[#c4ff40]" size={22}/><div><h3 className="text-lg font-black">Calibração manual</h3><p className="text-xs text-white/55">{mapName} · marque os cantos da planta</p></div></div>
     <button type="button" onClick={onClose} aria-label="Fechar calibração manual" className={outline}><X size={18}/></button>
