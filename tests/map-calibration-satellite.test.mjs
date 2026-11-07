@@ -13,7 +13,7 @@ test('manual mode preserves coordinate inputs and offers a satellite tab with 4 
  assert.match(manual,/Ajustar pelo mapa/);
  assert.match(manual,/method==='map'/);
  assert.match(manual,/onModeChange\('4'\)/);
- assert.match(manual,/selecionado/);
+ assert.match(map,/selecionado/);
  assert.match(manual,/Selecionar ponto/);
  assert.match(manual,/onMove=\{setMapCorner\}/);
  assert.match(manual,/onSelect=\{setSelectedCorner\}/);
