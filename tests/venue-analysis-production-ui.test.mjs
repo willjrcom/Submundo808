@@ -3,16 +3,18 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {parseAdminRoute,adminRoutePath} from '../artifacts/submundo-808/src/components/admin-route.ts';
 const file=name=>readFileSync(new URL('../artifacts/submundo-808/src/components/'+name,import.meta.url),'utf8');
-const shell=file('admin-shell.tsx'),crowd=file('admin-crowd.tsx');
+const shell=file('admin-shell.tsx'),crowd=file('admin-crowd.tsx'),dashboard=file('admin-venue-dashboard.tsx');
 
-test('estabelecimento tem aba Eventos e análise individual por evento',()=>{
+test('dashboard do estabelecimento mantém inteligência individual por evento, sem abas',()=>{
  const route=parseAdminRoute('/venues/venue-1/events/event-9/analysis');
  assert.deepEqual(route,{section:'Estabelecimentos',id:'venue-1',creating:false,eventId:'event-9'});
  assert.equal(adminRoutePath(route),'/venues/venue-1/events/event-9/analysis');
- assert.match(shell,/Eventos deste estabelecimento/);
- assert.match(shell,/Ver análise/);
- assert.match(shell,/Ver exemplo/);
- assert.doesNotMatch(shell,/Análise de público<\/button>|venueTab==='occupancy'/);
+ assert.match(shell,/route\.eventId&&selectedVenueEvent/);
+ assert.match(shell,/<AdminCrowd key=\{selectedVenueEvent\.id\}/);
+ assert.match(shell,/Ver exemplo de inteligência/);
+ assert.match(dashboard,/Eventos do local/);
+ assert.match(dashboard,/onViewAnalytics\(event\.id\)/);
+ assert.doesNotMatch(shell,/venueTab|role="tablist" aria-label="Seções do estabelecimento"/);
  assert.doesNotMatch(shell,/\{name:'Inteligência',Icon:BarChart3\}/);
 });
 test('a análise só mostra histórico por hora e mapa de calor',()=>{

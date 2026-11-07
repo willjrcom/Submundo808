@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const shell=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-shell.tsx',import.meta.url),'utf8');
 const venueMaps=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-venue-maps.tsx',import.meta.url),'utf8');
+const dashboard=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-venue-dashboard.tsx',import.meta.url),'utf8');
 const eventList=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-event-list.tsx',import.meta.url),'utf8');
 
 test('main administrative menu has no standalone Maps and Ambientes tab',()=>{
@@ -11,19 +12,19 @@ test('main administrative menu has no standalone Maps and Ambientes tab',()=>{
  assert.match(shell,/\{name:'Estabelecimentos',Icon:Building2\}/);
  assert.match(shell,/\{name:'Eventos',Icon:CalendarDays\}/);
 });
-test('venue detail owns its maps and opens the editor in a nested route',()=>{
- assert.match(shell,/<AdminVenueMaps key=\{editing.id\}/);
- assert.match(shell,/onOpen=\{openMap\}/);
+test('venue dashboard owns its maps and opens editor via nested route',()=>{
+ assert.match(shell,/<AdminVenueDashboard venue=\{editing\}/);
+ assert.match(shell,/onOpenMap=\{openMap\}/);
  assert.match(shell,/mapId\}\)/);
  assert.match(shell,/openedMap\?<AdminMapWorkspace/);
- assert.match(shell,/item\.venue_id===route\.id/);
+ assert.match(dashboard,/AdminVenueMaps venue=\{venue\}/);
  assert.match(venueMaps,/maps\.filter\(map=>map\.venue_id===venue\.id\)/);
 });
-test('adding and renaming maps never changes venue association',()=>{
+test('creating maps always ties them to the venue and opens the editor',()=>{
  assert.match(venueMaps,/adminRequest\('maps',\{name,venue_id:venue\.id\}\)/);
- assert.match(venueMaps,/adminRequest\('edit-map',\{id:map\.id,name,venue_id:venue\.id\}\)/);
  assert.match(venueMaps,/onOpen\(result\.id\)/);
  assert.match(venueMaps,/events\.filter\(event=>event\.map_ids\?\.includes\(map\.id\)\)/);
+ assert.match(venueMaps,/aria-label="Carrossel de plantas do local"/);
 });
 test('legacy links redirect to the matching venue and map',()=>{
  assert.match(shell,/section!=='Mapas e ambientes'\|\|!listsLoaded/);
