@@ -167,3 +167,8 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - Partes agrupadas podem ser redimensionadas individualmente usando apenas bordas externas inteiras de cada retângulo original. Bordas internas ou parcialmente compartilhadas não têm alças; uma tentativa que desconectaria o grupo é bloqueada. Para excluir uma parte ainda é necessário desagrupar. Formas ovais não participam de grupos retangulares; uma borda curva interna não é desenhada.
 - `POST /api/admin/save-layout` valida a geometria do grupo no servidor e persiste os metadados. `GET /api/admin/areas` e `GET /api/public/map-detail` retornam `geometry` JSON, sem remover nem alterar o GPS dos ambientes.
 - Testes obrigatórios: `tests/map-area-shapes.test.mjs` e `tests/map-area-editor.test.mjs`.
+
+## Ícones dos pontos do mapa
+- O campo `type` do ponto define comportamento, posicionamento/âncora e catálogo (p. ex. entrada, bar, palco). O campo opcional `icon` é apenas uma escolha visual entre os nomes de `src/components/map-point-icon-catalog.ts`.
+- O seletor exibe SVG e nome, permite voltar ao padrão do tipo e mantém o tipo inalterado. O padrão de `palco` é um microfone (não uma garagem); pontos legados sem `icon` continuam funcionando.
+- O mesmo resolvedor `pointIconFor(type, icon)` deve ser usado no editor e na tela do participante. `POST /api/admin/save-layout` salva `icon` no JSON do ponto, sem alterar seu significado. Verificar `tests/map-point-icons.test.mjs`.

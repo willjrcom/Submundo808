@@ -6,7 +6,7 @@ const workspace=readFileSync(new URL('../artifacts/submundo-808/src/components/a
 test('edição de pontos recarrega os detalhes e categorias salvos no mapa',()=>{
  assert.match(workspace,/api\('markers\?map_id='\+encodeURIComponent\(map.id\)\)/);
  assert.match(workspace,/setMarkers\(m.items.map\(normalizeMarker\).map\(\(point:Marker\)=>associateMarkerWithRoom\(point,roomAreas\)\)\)/);
- for(const item of ['selectedMarker.name','selectedMarker.description','selectedMarker.opens_at','selectedMarker.closes_at','selectedMarker.categories','selectedMarker.size'])assert.ok(workspace.includes(item),'Campo do ponto deve ser recuperado: '+item);
+ for(const item of ['selectedMarker.name','selectedMarker.description','selectedMarker.opens_at','selectedMarker.closes_at','selectedMarker.categories','selectedMarker.size','selectedMarker.icon'])assert.ok(workspace.includes(item),'Campo do ponto deve ser recuperado: '+item);
 });
 test('categorias de ponto salvas continuam visíveis quando deixam de existir no catálogo',()=>{
  assert.match(workspace,/\.\.\.catalogCategories,\.\.\.\(selectedMarker.categories\|\|\[\]\)/);
