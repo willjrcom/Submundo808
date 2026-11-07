@@ -12,3 +12,8 @@ test('listing differentiates opening event dashboard from editing it',()=>{
  assert.match(listing,/onClick=\{\(\)=>onOpen\(event\)\}/);
  assert.match(listing,/onClick=\{\(\)=>onEdit\(event\)\}/);
 });
+
+test('event analytics button uses a clear statistics label',()=>{
+ assert.match(dashboard,/>Ver estatísticas do evento<\/button>/);
+ assert.doesNotMatch(dashboard,/>Ver inteligência do evento<\/button>/);
+});

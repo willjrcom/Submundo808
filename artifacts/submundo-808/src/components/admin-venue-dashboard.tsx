@@ -52,7 +52,7 @@ export default function AdminVenueDashboard({venue,maps,events,onEdit,onOpenMap,
      <div className="space-y-2 p-3"><p className="truncate text-sm font-bold">{displayLabel(event.name)}</p><p className="text-xs text-white/55">{formatDate(event.starts_at)} · {event.map_ids?.length||0} planta(s)</p>
       <div className="flex flex-wrap gap-2 pt-1">
        <button type="button" onClick={()=>onOpenEvent(event.id)} className="rounded-lg border border-[#c4ff40]/40 px-3 py-2 text-xs font-semibold text-[#c4ff40]">Ver evento</button>
-       <button type="button" onClick={()=>onViewAnalytics(event.id)} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">Inteligência</button>
+       <button type="button" onClick={()=>onViewAnalytics(event.id)} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">Ver estatísticas</button>
       </div>
      </div>
     </article>)}

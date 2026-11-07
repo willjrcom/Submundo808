@@ -14,3 +14,8 @@ test('map card preview is grounded in saved rooms rather than fabricated images'
  assert.match(maps,/areas.filter\(area=>area.map_id===map.id\)/);
  assert.doesNotMatch(maps,/Unsplash|placehold\.co|demo.*image/);
 });
+
+test('venue event cards use a statistics label',()=>{
+ assert.match(venue,/>Ver estatísticas<\/button>/);
+ assert.doesNotMatch(venue,/>Inteligência<\/button>/);
+});

@@ -56,7 +56,7 @@ export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,
    {linkedMaps.length?<div className="flex flex-wrap gap-3">
     {linkedMaps.map(map=><button key={map.id} type="button" onClick={()=>map.venue_id&&onOpenMap(map.id,map.venue_id)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[.035] px-4 py-3 text-sm font-semibold transition hover:border-[#c4ff40]"><MapIcon size={16} className="text-[#c4ff40]"/>{displayLabel(map.name)}</button>)}
    </div>:<p className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-white/55">Nenhuma planta vinculada ao evento.</p>}
-   {venue&&<button type="button" onClick={()=>onOpenAnalytics(venue.id,event.id)} className="text-sm font-bold text-[#c4ff40]">Ver inteligência do evento</button>}
+   {venue&&<button type="button" onClick={()=>onOpenAnalytics(venue.id,event.id)} className="text-sm font-bold text-[#c4ff40]">Ver estatísticas do evento</button>}
   </section>
   {event.services&&<section className="rounded-xl border border-white/10 bg-white/[.035] p-4"><p className="mb-2 text-sm font-bold">Serviços extras</p><p className="whitespace-pre-line text-sm text-white/65">{event.services}</p></section>}
  </div>;
