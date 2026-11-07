@@ -96,6 +96,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const projectedWalk=ready?walkPoints.map(p=>gpsToMap(p,corners as MapCorners)).filter((x):x is NonNullable<typeof x>=>!!x):[];
  
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
+ const [snapGuide,setSnapGuide]=useState<{x?:number;y?:number}|null>(null);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
  const skipClickAfterDrag=useRef(false);
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
@@ -320,13 +321,22 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    setAreas(updated);setMarkers(moveRoomMarkers(d.snapshot.markers,d.snapshot.areas,updated));
   }else{
    const updated=moveAreaGroup(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap);
+   if(snap){
+    const moving=groupMembers(updated,d.id);
+    const others=updated.filter(a=>!moving.some(m=>m.id===a.id));
+    const targetsX=[0,100,...others.flatMap(a=>[a.x,a.x+a.width])];
+    const targetsY=[0,100,...others.flatMap(a=>[a.y,a.y+a.height])];
+    const edgeX=moving.flatMap(a=>[a.x,a.x+a.width]).find(x=>targetsX.some(target=>Math.abs(x-target)<.01));
+    const edgeY=moving.flatMap(a=>[a.y,a.y+a.height]).find(y=>targetsY.some(target=>Math.abs(y-target)<.01));
+    setSnapGuide(edgeX!==undefined||edgeY!==undefined?{x:edgeX,y:edgeY}:null);
+   }else setSnapGuide(null);
    setAreas(updated);setMarkers(moveRoomMarkers(d.snapshot.markers,d.snapshot.areas,updated));
   }
  }
  function endDrag(e:React.PointerEvent){
   const previous=drag.current;
   if(!previous)return;
-  drag.current=null;
+  drag.current=null;setSnapGuide(null);
   if(pasteboard.current?.hasPointerCapture(e.pointerId))pasteboard.current.releasePointerCapture(e.pointerId);
   if(previous.kind==='area'||previous.kind==='marker'){
    // Pointer capture may retarget a tap's click to the parent. Toggle on pointerup
@@ -531,6 +541,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');}}
       onClick={e=>{if(e.target!==e.currentTarget)return;setSelected('');setResizeId(null);setEditLayout(false);setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);}}
      ><span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-bold text-[#c4ff40]/80">Área do mapa</span>
+      {snapGuide?.x!==undefined&&<span aria-hidden="true" className="pointer-events-none absolute inset-y-0 z-[18] w-px bg-[#c4ff40]/70 shadow-[0_0_5px_#c4ff40]" style={{left:snapGuide.x+'%'}}/>}
+      {snapGuide?.y!==undefined&&<span aria-hidden="true" className="pointer-events-none absolute inset-x-0 z-[18] h-px bg-[#c4ff40]/70 shadow-[0_0_5px_#c4ff40]" style={{top:snapGuide.y+'%'}}/>}
       {editing&&frameEditing&&<>
        <button type="button" onPointerDown={e=>startFrameDrag(e,'frame-move')} className="absolute left-2 top-2 z-40 flex touch-none items-center gap-1 rounded-lg border border-[#c4ff40]/50 bg-[#191321] px-2 py-1 text-[11px] font-bold text-[#c4ff40]"><Move size={13}/> Mover área</button>
        {([
