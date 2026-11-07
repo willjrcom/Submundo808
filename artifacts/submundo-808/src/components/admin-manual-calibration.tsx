@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {ArrowLeft,CheckCircle2,ExternalLink,MapPin,Satellite,X} from 'lucide-react';
-import {CORNER_KEYS,type CalibrationGps,type CornerKey} from './map-calibration-geometry';
+import {type CalibrationGps,type CornerKey} from './map-calibration-geometry';
 import {
  buildManualCalibration,CORNER_LABELS,googleMapsLink,googleSatelliteEmbedUrl,
  mapPreviewPosition,type ManualPointMode,type ManualValues,type ManualCalibrationResult

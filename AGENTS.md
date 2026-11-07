@@ -57,7 +57,7 @@ Idiomas/UX: interface em **português brasileiro**; visual escuro, identidade da
 - Evento ativo no participante é guardado em `localStorage` (ver `active-event.ts`), **mas o backend não lê localStorage**.
 - Usuários autenticados que selecionam eventos sincronizam seu vínculo na tabela `event_participants`. **Estar vinculado não prova presença física nem ingresso pago.**
 - Compartilhamento de localização e permissão de GPS são controles separados e opt-in. Não ativar divulgação da posição automaticamente.
-- Calibração usa quatro cantos com medição GPS; qualidade do sinal e geometria precisam ser verificadas; nunca prometer precisão 100% em ambientes pequenos.
+- Calibração aceita GPS (quatro cantos medidos por ~8 s cada) ou entrada manual de quatro cantos. O modo manual opcional de três pontos estima o quarto (paralelogramo), identificado como aproximação; não equivale a medição GPS. Ambos validam a geometria, mantêm 5 m de margem externa e só persistem após **Salvar mapa**. O Google Maps é incorporado como referência de satélite com link externo de contingência; não há sobreposição georreferenciada dos cantos no iframe. Nunca prometer precisão 100% nem inventar estimativas de precisão manual.
 
 ### Notificações
 - Só **administradores** criam/disparam notificações.
