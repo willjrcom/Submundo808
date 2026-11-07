@@ -29,7 +29,14 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.match(editor,/setCalibrationOverviewOpen\(false\)/);
  assert.match(editor,/setManualStarted\(false\)/);
  assert.match(overview,/aria-label="Ver calibração do mapa"/);
- assert.match(overview,/Perspectiva da planta/);
+ assert.match(overview,/Planta na orientação geográfica real/);
+ assert.match(overview,/calibrationPreviewProjection\(frame/);
+ assert.match(overview,/projectEditorAreaPath\(areaPath\(areas,area\.id\)/);
+ assert.match(overview,/projection\.projectGps\(raw\[key\]\)/);
+ assert.match(overview,/Norte para cima/);
+ assert.match(overview,/seta verde aponta para o topo/);
+ assert.doesNotMatch(overview,/matrix\(2\.7 0\.85 -1 1\.5/);
+ assert.doesNotMatch(overview,/const markers=\[/);
  assert.match(overview,/areaPath\(areas,area\.id\)/);
  assert.match(overview,/measuredCorners\(gps\)/);
  assert.match(overview,/googleMapsLink\(position,mapName\)/);
