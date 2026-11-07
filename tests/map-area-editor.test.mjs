@@ -8,7 +8,7 @@ const labels=read('artifacts/submundo-808/src/components/use-map-labels.ts');
 const server=read('server/index.mjs');
 
 test('editor expõe Agrupar/Desagrupar, formato oval e curvas independentes',()=>{
- for(const label of ['Agrupar','Desagrupar','Formato e curvatura','Oval / redondo','Intensidade da curvatura','Ambiente para agrupar']){
+ for(const label of ['Agrupar','Desagrupar','Formato','Oval / redondo','Intensidade da curvatura','Ambiente para agrupar']){
   assert.ok(editor.includes(label),label);
  }
  assert.doesNotMatch(editor,/createRoundArea|Ambiente redondo<\/button>/);
@@ -24,9 +24,10 @@ test('editor e mapa público usam a mesma silhueta e omitem divisórias internas
  assert.match(publicMap,/d=\{areaPath\(data\.areas,a\.id\)\}/);
  assert.match(labels,/visibleAreas\(rooms\)/);
 });
-test('grupo move junto e impede remover/redimensionar partes sem desagrupar',()=>{
+test('grupo move junto e permite redimensionar bordas externas de cada parte',()=>{
  assert.match(editor,/moveAreaGroup\(d\.snapshot\.areas/);
- assert.match(editor,/Desagrupe para redimensionar/);
+ assert.match(editor,/outerResizeHandles\(areas,a\.id\)/);
+ assert.match(editor,/resizeOuterGroupEdge\(d\.snapshot\.areas/);
  assert.match(editor,/Desagrupe o ambiente antes de excluí-lo/);
 });
 test('backend mantém geometrias no banco inclusive após recarregar e valida relações',()=>{

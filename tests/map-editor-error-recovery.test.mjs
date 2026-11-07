@@ -62,7 +62,7 @@ test('selected rooms move by dragging and resize via handles without a mode menu
  assert.doesNotMatch(editor,/Concluir movimento|Concluir redimensionamento/);
  const menu=editor.slice(editor.indexOf('{editMenuOpen&&<div role="menu"'),editor.indexOf('</div>}',editor.indexOf('{editMenuOpen&&<div role="menu"')));
  assert.match(menu,/> Agrupar<\/button>|> Desagrupar<\/button>/);
- assert.match(menu,/Formato e curvatura/);
+ assert.match(menu,/Formato<\/button>/);
  assert.doesNotMatch(menu,/> Mover<\/button>|> Redimensionar<\/button>/);
 });
 test('the Edit menu closes on outside pointer click and Escape',()=>{
