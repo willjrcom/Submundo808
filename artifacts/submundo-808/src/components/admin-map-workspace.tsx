@@ -162,7 +162,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function updateArea(patch:Partial<Area>){if(!active)return;checkpoint();setAreas(v=>v.map(a=>a.id===active.id?{...a,...patch}:a));}
  function updateMarker(patch:Partial<Marker>){if(!selectedMarker)return;checkpoint();setMarkers(v=>v.map(m=>m.id===selectedMarker.id?{...m,...patch}:m));}
  function createArea(){
-  const p=freeAreaPosition(areas);
+  // O ambiente começa maior sem sobrepor ambientes já cadastrados.
+  const p=freeAreaPosition(areas,30,24);
   if(!p){setError('Não há espaço livre para um novo ambiente. Ajuste as divisórias antes de adicionar.');return;}
   checkpoint();setError('');
   const id=crypto.randomUUID();

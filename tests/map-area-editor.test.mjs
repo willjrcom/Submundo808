@@ -35,3 +35,8 @@ test('backend mantém geometrias no banco inclusive após recarregar e valida re
  assert.match(server,/const geometryError=validateAreaGeometries\(areas\)/);
  assert.match(server,/JSON\.stringify\(a\.geometry\|\|\{\}\)/);
 });
+
+test('novo ambiente inicia maior respeitando busca por área livre',()=>{
+ assert.match(editor,/function createArea\(\)\{[\s\S]*?freeAreaPosition\(areas,30,24\)/);
+ assert.match(editor,/Não há espaço livre para um novo ambiente/);
+});
