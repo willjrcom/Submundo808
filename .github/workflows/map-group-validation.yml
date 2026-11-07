@@ -20,4 +20,8 @@ jobs:
       - name: Map geometry and UI regression
         run: node --test tests/map-area-shapes.test.mjs tests/map-area-editor.test.mjs tests/map-editor-curve-preview.test.mjs
       - name: Compile frontend
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
         run: pnpm --filter @workspace/submundo-808 build
