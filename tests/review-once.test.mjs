@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
 import {hasSubmittedReview,insertReviewOnce} from '../server/review-once.mjs';
 
 test('participant can evaluate an event only once, without updating the first answer',()=>{
@@ -20,7 +21,7 @@ test('participant can evaluate an event only once, without updating the first an
  }finally{db.close();}
 });
 test('API returns conflict for a second evaluation instead of upserting',()=>{
- const source=await import('node:fs').then(fs=>fs.readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8'));
+ const source=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
  assert.match(source,/if\(!inserted\)return json\(res,409,/);
  assert.doesNotMatch(source,/ON CONFLICT\(event_id,user_id\) DO UPDATE/);
 });
