@@ -38,7 +38,7 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.doesNotMatch(overview,/matrix\(2\.7 0\.85 -1 1\.5/);
  assert.doesNotMatch(overview,/const markers=\[/);
  assert.match(overview,/areaPath\(areas,area\.id\)/);
- assert.match(overview,/measuredCorners\(gps\)/);
+ assert.match(overview,/measuredCorners\(displayGps\)/);
  assert.match(overview,/googleMapsLink\(position,mapName\)/);
  assert.match(overview,/Margem externa registrada: 5 metros/);
  assert.match(overview,/Recalibrar/);
