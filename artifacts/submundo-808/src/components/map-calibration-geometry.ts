@@ -6,7 +6,7 @@ export const MAP_MARGIN_METERS=5;
 export const GPS_CAPTURE_MS=8000;
 export type MeasuredCorners=Partial<Record<CornerKey,GpsFix>>;
 export type CalibrationGps=MeasuredCorners&{
- mode?:'manual'|'demo-auto';rawCorners?:MeasuredCorners;marginMeters?:number;
+ mode?:'manual'|'demo-auto';origin?:'coordinates'|'gps';rawCorners?:MeasuredCorners;marginMeters?:number;
  spacingMeters?:number;accuracyMeters?:number;
 };
 type Vec={x:number;y:number};

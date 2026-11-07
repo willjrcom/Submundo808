@@ -1,6 +1,8 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import {readMapDraft,persistMapDraft,removeMapDraft} from './map-edit-draft';
+import AdminManualCalibration from './admin-manual-calibration';
+import {emptyManualValues,manualValuesFromGps,type ManualValues,type ManualPointMode,type ManualCalibrationResult} from './map-calibration-manual';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
@@ -68,6 +70,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [draftUnavailable,setDraftUnavailable]=useState(false);
  const draftReady=useRef(false),editRevision=useRef(0);
+ const [calibrationChoiceOpen,setCalibrationChoiceOpen]=useState(false);
+ const [manualCalibrationOpen,setManualCalibrationOpen]=useState(false);
+ const [manualValues,setManualValues]=useState<ManualValues>(emptyManualValues);
+ const [manualMode,setManualMode]=useState<ManualPointMode>('4');
+ const [manualStarted,setManualStarted]=useState(false);
+ const [manualApplied,setManualApplied]=useState<{width:number;height:number;derived:boolean}|null>(null);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
  const gpsWatch=useRef<number|null>(null),walkActive=useRef(false);
@@ -189,6 +197,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    if(event.key==='Escape'&&editMenuOpen){event.preventDefault();setEditMenuOpen(false);return;}
    if(event.key==='Escape'&&pendingDiscardAction){event.preventDefault();event.stopPropagation();if(!loading&&!saving)setPendingDiscardAction(null);return;}
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
+   if(event.key==='Escape'&&manualCalibrationOpen){event.preventDefault();event.stopPropagation();setManualCalibrationOpen(false);return;}
+   if(event.key==='Escape'&&calibrationChoiceOpen){event.preventDefault();event.stopPropagation();setCalibrationChoiceOpen(false);return;}
+   if(event.key==='Escape'&&manualApplied){event.preventDefault();event.stopPropagation();setManualApplied(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
     event.preventDefault();event.stopPropagation();
     if(captureReview)cancelCapture();else setCalibrationOpen(false);
@@ -206,7 +217,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[editMenuOpen,calibrationOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
+ },[editMenuOpen,calibrationOpen,manualCalibrationOpen,calibrationChoiceOpen,manualApplied,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){editRevision.current+=1;setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;editRevision.current+=1;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -409,6 +420,29 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    return false;
   }finally{setSaving(false);}
  }
+ function chooseCalibrationMode(){
+  setError('');setManualApplied(null);setCalibrationChoiceOpen(true);
+ }
+ function startManualCalibration(){
+  if(!calibrationArea){setError('Crie um ambiente antes de calibrar a planta.');return;}
+  if(!manualStarted){setManualValues(manualValuesFromGps(corners));setManualStarted(true);}
+  setCalibrationChoiceOpen(false);setManualCalibrationOpen(true);
+ }
+ function startGpsCalibration(){
+  if(!calibrationArea){setError('Crie um ambiente antes de calibrar a planta.');return;}
+  setCalibrationChoiceOpen(false);setCalibrationOpen(true);
+ }
+ function confirmManualCalibration(result:Extract<ManualCalibrationResult,{ok:true}>){
+  if(!calibrationArea)return;
+  // A complete, validated four-corner set replaces the previous calibration
+  // atomically in the editor. There is no server write until Salvar mapa.
+  checkpoint();
+  setAreas(old=>old.map(a=>({...a,gps:a.id===calibrationArea.id?result.gps:{}})));
+  setManualCalibrationOpen(false);
+  setManualApplied({width:result.width,height:result.height,derived:result.derived});
+  setError('');
+  setNotice('Calibração manual aplicada ao rascunho. Clique em Salvar mapa para publicar as coordenadas.');
+ }
  function requestCalibrationSave(){
   if(!ready){setError('Registre os quatro cantos antes de salvar.');return;}
   if(!geometryValid){setError('Os cantos parecem invertidos ou cruzados. Confira os quatro pontos.');return;}
@@ -503,7 +537,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
-   <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
+   <button onClick={chooseCalibrationMode} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
    <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
@@ -758,8 +792,36 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      </div>
     </div>
    </div>}
+  {calibrationChoiceOpen&&<div role="presentation" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-3" onMouseDown={e=>{if(e.target===e.currentTarget)setCalibrationChoiceOpen(false);}}>
+   <section role="dialog" aria-modal="true" aria-label="Escolher modo de calibração" className="w-full max-w-xl space-y-4 rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] p-4 shadow-2xl sm:p-6">
+    <div className="flex items-center justify-between gap-3"><h3 className="flex items-center gap-2 text-lg font-black"><MapPin className="text-[#c4ff40]" size={21}/> Calibrar mapa</h3><button type="button" onClick={()=>setCalibrationChoiceOpen(false)} aria-label="Fechar escolha de calibração" className={button}><X size={17}/></button></div>
+    <p className="text-sm text-white/65">Escolha como posicionar geograficamente os quatro cantos da planta. A calibração anterior permanece intacta até você aplicar a nova e salvar o mapa.</p>
+    <div className="space-y-3">
+     <button type="button" disabled={!calibrationArea} onClick={startGpsCalibration} className="flex min-h-24 w-full items-center gap-4 rounded-xl border border-white/15 bg-white/[.035] p-4 text-left transition hover:border-[#c4ff40]/60 disabled:opacity-40"><MapPin size={26} className="shrink-0 text-[#c4ff40]"/><span><strong className="block text-sm">Calibrar usando GPS</strong><span className="mt-1 block text-xs text-white/55">Vá até cada canto com o celular e registre sua posição. Utiliza a medição existente.</span></span></button>
+     <button type="button" disabled={!calibrationArea} onClick={startManualCalibration} className="flex min-h-24 w-full items-center gap-4 rounded-xl border border-[#c4ff40]/45 bg-[#c4ff40]/5 p-4 text-left transition hover:border-[#c4ff40] disabled:opacity-40"><Grid3X3 size={26} className="shrink-0 text-[#c4ff40]"/><span><strong className="block text-sm">Inserir coordenadas manualmente</strong><span className="mt-1 block text-xs text-white/55">Preencha os cantos com o Google Maps por referência, sem precisar estar no local.</span></span></button>
+    </div>
+    {!calibrationArea&&<p role="alert" className="text-xs text-amber-200">Crie ao menos um ambiente antes de calibrar a planta.</p>}
+    <p className="text-xs text-white/50">Os dois métodos utilizam a mesma calibração do mapa e preservam a margem externa de 5 m.</p>
+   </section>
+  </div>}
+  {manualCalibrationOpen&&<AdminManualCalibration mapName={mapName} existingGps={corners}
+   values={manualValues} mode={manualMode}
+   onChange={(key,field,value)=>setManualValues(previous=>({...previous,[key]:{...previous[key],[field]:value}}))}
+   onModeChange={setManualMode}
+   onBack={()=>{setManualCalibrationOpen(false);setCalibrationChoiceOpen(true);}}
+   onClose={()=>setManualCalibrationOpen(false)}
+   onApply={confirmManualCalibration}/>}
+  {manualApplied&&<div role="presentation" className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3">
+   <section role="dialog" aria-modal="true" aria-label="Calibração pronta para salvar" className="w-full max-w-md space-y-4 rounded-2xl border border-[#c4ff40]/45 bg-[#17111e] p-5 shadow-2xl sm:p-6">
+    <div className="flex items-center gap-3 text-[#c4ff40]"><MapPin size={26}/><h3 className="text-lg font-black">Calibração preparada!</h3></div>
+    <p className="text-sm text-white/70">Os cantos foram aplicados à planta localmente. Dimensões aproximadas: {manualApplied.width.toFixed(1)} m × {manualApplied.height.toFixed(1)} m.</p>
+    {manualApplied.derived&&<p className="text-xs text-amber-200">O quarto canto foi estimado; confira sua posição antes de publicar.</p>}
+    <p className="text-xs text-white/65">A alteração ainda não foi publicada. Para salvar no servidor, utilize <strong className="text-white">Salvar mapa</strong> na parte superior do editor.</p>
+    <button type="button" autoFocus onClick={()=>setManualApplied(null)} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-black text-black">Voltar ao editor e salvar mapa</button>
+   </section>
+  </div>}
   {calibrationOpen&&<div role="dialog" aria-modal="true" aria-label="Calibrar mapa" onMouseDown={e=>{if(e.target===e.currentTarget)setCalibrationOpen(false);}} className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-3"><div className="max-h-[calc(100dvh-1.5rem)] w-full max-w-xl space-y-4 overflow-y-auto overscroll-contain rounded-2xl border border-[#c4ff40]/40 bg-[#17111d] p-4 shadow-2xl">
-   <div className="sticky -top-4 z-30 flex items-center justify-between gap-2 border-b border-white/10 bg-[#17111d] py-2"><h3 className="text-lg font-black">Calibrar mapa inteiro</h3><button type="button" autoFocus aria-label="Fechar calibração" className={button} onClick={()=>setCalibrationOpen(false)}>Fechar <span aria-hidden="true">×</span></button></div>
+   <div className="sticky -top-4 z-30 flex items-center justify-between gap-2 border-b border-white/10 bg-[#17111d] py-2"><h3 className="text-lg font-black">Calibração por GPS</h3><div className="flex flex-wrap gap-2"><button type="button" className={button} disabled={calibrationBusy||!!captureReview} onClick={()=>{setCalibrationOpen(false);setCalibrationChoiceOpen(true);}}>Voltar aos métodos</button><button type="button" autoFocus aria-label="Fechar calibração" className={button} onClick={()=>setCalibrationOpen(false)}>Fechar <span aria-hidden="true">×</span></button></div></div>
    <p className="text-xs text-white/65">Fique dentro do espaço, perto do canto correspondente, e toque diretamente no símbolo + do mapa. Aguarde 8 segundos parado; confirme ou repita a captura. A margem de 5 metros para fora será aplicada automaticamente quando os quatro cantos estiverem medidos.</p>{calibrationArea?.gps?.mode==='demo-auto'&&<p role="status" className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-xs text-amber-100">Calibração GPS aproximada ativa (grade estimada de {calibrationArea.gps.spacingMeters||10} m). Os quatro cantos foram calculados a partir de uma única leitura e não medidos no local. Ao registrar o primeiro canto manual, os quatro pontos estimados serão descartados para evitar misturar referências.</p>}
    <div className="relative overflow-hidden rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(frame),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
     <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Prévia dos ambientes calibrados">

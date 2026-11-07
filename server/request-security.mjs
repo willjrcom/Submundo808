@@ -51,7 +51,7 @@ export function contentSecurityPolicy(){
   "connect-src 'self' https://api.meaple.com.br https://whitelabel.meaple.app",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
-  "frame-src 'self' https://accounts.google.com https://whitelabel.meaple.app",
+  "frame-src 'self' https://accounts.google.com https://www.google.com https://maps.google.com https://whitelabel.meaple.app",
   "report-uri /api/csp-report"
  ].join('; ');
 }
