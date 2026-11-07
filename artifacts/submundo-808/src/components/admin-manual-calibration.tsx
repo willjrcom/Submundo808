@@ -1,9 +1,11 @@
 import {useEffect,useState} from 'react';
-import {ArrowLeft,CheckCircle2,ExternalLink,MapPin,Satellite,X} from 'lucide-react';
+import {ArrowLeft,CheckCircle2,ExternalLink,MapPin,Satellite,X,SlidersHorizontal,Plus,Navigation} from 'lucide-react';
 import MapCalibrationOrientation,{CALIBRATION_POINT_NAMES} from './map-calibration-orientation';
+import AdminCalibrationSatelliteMap from './admin-calibration-satellite-map';
+import {distanceMeters} from './map-location-utils';
 import {type CalibrationGps,type CornerKey} from './map-calibration-geometry';
 import {
- buildManualCalibration,CORNER_LABELS,googleMapsLink,googleSatelliteEmbedUrl,
+ buildManualCalibration,CORNER_LABELS,googleMapsLink,googleSatelliteEmbedUrl,parseManualCoordinate,
  mapPreviewPosition,type ManualPointMode,type ManualValues,type ManualCalibrationResult
 } from './map-calibration-manual';
 
@@ -41,6 +43,11 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
 }){
  const [review,setReview]=useState(false),[error,setError]=useState('');
  const [selectedCorner,setSelectedCorner]=useState<CornerKey>('tl');
+ const [method,setMethod]=useState<'coordinates'|'map'>('coordinates');
+ const [mapType,setMapType]=useState<'satellite'|'roadmap'>('satellite');
+ const [opacity,setOpacity]=useState(55);
+ const [showOutline,setShowOutline]=useState(true);
+ const [showMeasures,setShowMeasures]=useState(true);
  const selectCorner=(key:CornerKey)=>{setSelectedCorner(key);document.getElementById('cal-lat-'+key)?.focus();};
  const result=buildManualCalibration(values,mode);
  const position=mapPreviewPosition(values,existingGps);
@@ -59,13 +66,87 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
   if(!result.ok){setError(result.error);return;}
   setError('');setReview(true);
  };
+ const setMapCorner=(key:CornerKey,lat:number,lng:number)=>{
+  setReview(false);setError('');
+  // Each move updates both coordinates in the parent draft; React batches them.
+  onChange(key,'lat',lat.toFixed(7));
+  onChange(key,'lng',lng.toFixed(7));
+ };
+ const measured=order.map((key,i)=>{
+  const other=order[(i+1)%order.length];
+  const start={lat:parseManualCoordinate(values[key].lat,90),lng:parseManualCoordinate(values[key].lng,180)};
+  const end={lat:parseManualCoordinate(values[other].lat,90),lng:parseManualCoordinate(values[other].lng,180)};
+  if(start.lat===null||start.lng===null||end.lat===null||end.lng===null)return {key,other,meters:null};
+  return {key,other,meters:distanceMeters({...start,accuracy:0} as {lat:number;lng:number;accuracy:number},{...end,accuracy:0} as {lat:number;lng:number;accuracy:number})};
+ });
+ function switchMethod(nextMethod:'coordinates'|'map'){
+  setReview(false);setError('');setMethod(nextMethod);
+  if(nextMethod==='map'&&mode==='3')onModeChange('4');
+ }
  return <div role="presentation" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 p-2 sm:p-4">
-  <section role="dialog" aria-modal="true" aria-label="Calibração manual de mapa" className="flex max-h-[calc(100dvh-1rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] shadow-2xl">
+  <section role="dialog" aria-modal="true" aria-label="Calibração manual de mapa" className={'flex max-h-[calc(100dvh-1rem)] w-full flex-col '+(method==='map'?'max-w-7xl':'max-w-5xl')+' overflow-hidden rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] shadow-2xl">
    <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 p-4 sm:px-6">
     <div className="flex items-center gap-3"><MapPin className="text-[#c4ff40]" size={22}/><div><h3 className="text-lg font-black">Calibração manual</h3><p className="text-xs text-white/55">{mapName} · marque os cantos da planta</p></div></div>
     <button type="button" onClick={onClose} aria-label="Fechar calibração manual" className={outline}><X size={18}/></button>
    </header>
-   <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[1.08fr_.92fr] lg:gap-5 lg:p-6">
+   <nav className="flex shrink-0 flex-wrap gap-2 border-b border-white/10 p-3 sm:px-6" aria-label="Método de calibração manual">
+    <button type="button" aria-pressed={method==='coordinates'} onClick={()=>switchMethod('coordinates')} className={outline+' min-h-11 '+(method==='coordinates'?'border-[#c4ff40] bg-[#c4ff40]/10 text-[#c4ff40]':'')}>Por coordenadas (lat/lng)</button>
+    <button type="button" aria-pressed={method==='map'} onClick={()=>switchMethod('map')} className={outline+' inline-flex min-h-11 items-center gap-2 '+(method==='map'?'border-[#c4ff40] bg-[#c4ff40]/10 text-[#c4ff40]':'')}><MapPin size={16}/> Ajustar pelo mapa</button>
+   </nav>
+   {method==='map'?<div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 lg:grid-cols-[minmax(250px,310px)_minmax(0,1fr)] lg:gap-5 lg:p-6">
+    <div className="space-y-4">
+     <section className="space-y-3 rounded-xl border border-white/15 bg-[#110e17] p-3">
+      <h4 className="text-sm font-bold text-white">Pontos do mapa</h4>
+      <p className="text-xs leading-relaxed text-white/60">Selecione o <strong className="text-[#c4ff40]">+</strong> do ponto desejado e toque no satélite para posicioná-lo. Para ajustes finos, arraste o ponto.</p>
+      <div className="space-y-1">
+       {order.map((key,i)=>{
+        const lat=parseManualCoordinate(values[key].lat,90),lng=parseManualCoordinate(values[key].lng,180);
+        const filled=lat!==null&&lng!==null;
+        return <button key={key} type="button" aria-pressed={selectedCorner===key} aria-label={'Selecionar ponto '+(i+1)+' para marcar no satélite'} onClick={()=>setSelectedCorner(key)} className={'flex min-h-14 w-full items-center gap-3 rounded-xl border p-2.5 text-left transition '+(selectedCorner===key?'border-[#c4ff40] bg-[#c4ff40]/10':'border-transparent bg-white/[.035] hover:border-white/20')}>
+         <span className={'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-sm font-black '+(selectedCorner===key?'border-white bg-[#c4ff40] text-[#17111e]':'border-[#c4ff40] text-[#c4ff40]')}>{filled?i+1:<Plus size={17}/>}</span>
+         <span className="min-w-0 flex-1"><strong className="block text-xs text-white">{'Ponto '+(i+1)} · {CALIBRATION_POINT_NAMES[key]}</strong><span className="block truncate text-[11px] text-white/50">{filled?lat!.toFixed(6)+', '+lng!.toFixed(6):'Toque no satélite para definir'}</span></span>
+         <MapPin size={15} className={selectedCorner===key?'text-[#c4ff40]':'text-white/35'}/>
+        </button>;
+       })}
+      </div>
+     </section>
+     <section className="space-y-3 rounded-xl border border-white/15 bg-[#110e17] p-3">
+      <h4 className="flex items-center gap-2 text-sm font-bold"><SlidersHorizontal size={16} className="text-[#c4ff40]"/> Visualização</h4>
+      <label className="flex items-center justify-between text-xs text-white/70" htmlFor="satellite-calibration-opacity"><span>Opacidade da planta</span><span>{opacity}%</span></label>
+      <input id="satellite-calibration-opacity" aria-label="Opacidade da planta" type="range" min="0" max="100" step="5" value={opacity} onChange={e=>setOpacity(Number(e.target.value))} className="w-full accent-[#c4ff40]"/>
+      <label className="flex items-center gap-2 text-xs text-white/75"><input type="checkbox" checked={showOutline} onChange={e=>setShowOutline(e.target.checked)} className="accent-[#c4ff40]"/> Mostrar contorno da planta</label>
+      <label className="flex items-center gap-2 text-xs text-white/75"><input type="checkbox" checked={showMeasures} onChange={e=>setShowMeasures(e.target.checked)} className="accent-[#c4ff40]"/> Mostrar medidas (m)</label>
+     </section>
+     <p className="rounded-lg border border-white/10 bg-white/[.03] p-3 text-[11px] leading-relaxed text-white/60"><Navigation size={13} className="mr-1 inline text-[#c4ff40]"/> O mapa mantém o norte para cima. A direção do topo da planta é indicada pela linha verde entre os pontos 1 e 2.</p>
+    </div>
+    <div className="min-w-0 space-y-3">
+     <div className="rounded-xl border border-white/15 bg-[#110e17] p-2.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+       <p className="flex items-center gap-2 text-xs font-bold"><Satellite size={16} className="text-[#c4ff40]"/> Mapa geográfico para calibração</p>
+       <div role="group" aria-label="Tipo de mapa" className="flex rounded-lg border border-white/15 p-1">
+        <button type="button" aria-pressed={mapType==='roadmap'} onClick={()=>setMapType('roadmap')} className={'rounded-md px-2 py-1 text-xs '+(mapType==='roadmap'?'bg-[#c4ff40] font-bold text-black':'text-white/60')}>Mapa</button>
+        <button type="button" aria-pressed={mapType==='satellite'} onClick={()=>setMapType('satellite')} className={'rounded-md px-2 py-1 text-xs '+(mapType==='satellite'?'bg-[#c4ff40] font-bold text-black':'text-white/60')}>Satélite</button>
+       </div>
+      </div>
+      <AdminCalibrationSatelliteMap mapName={mapName} values={values} selected={selectedCorner} onSelect={setSelectedCorner}
+       onMove={setMapCorner} opacity={opacity} showOutline={showOutline} showMeasures={showMeasures} mapKind={mapType}/>
+     </div>
+     <section className="rounded-xl border border-white/15 bg-[#110e17] p-3">
+      <h4 className="mb-3 text-sm font-bold">Medidas atuais da planta</h4>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+       {measured.map(({key,other,meters})=><div key={key} className="rounded-lg bg-white/[.035] p-2 text-xs"><p className="text-white/55">{order.indexOf(key)+1} → {order.indexOf(other)+1}</p><strong className="block pt-1 text-sm text-[#c4ff40]">{meters===null?'—':meters.toLocaleString('pt-BR',{maximumFractionDigits:1,minimumFractionDigits:1})+' m'}</strong></div>)}
+      </div>
+     </section>
+     {result.ok?<p role="status" className="rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/5 px-3 py-2.5 text-xs text-[#c4ff40]">Geometria válida. A margem externa de 5 metros será reaplicada ao confirmar.</p>
+      :<p className="rounded-xl border border-white/15 bg-white/[.025] px-3 py-2.5 text-xs text-white/60">Posicione os quatro pontos no satélite para validar a calibração.</p>}
+     {error&&<p role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{error}</p>}
+     {review&&result.ok&&<div className="space-y-3 rounded-xl border border-[#c4ff40]/50 bg-[#251d30] p-4">
+      <h4 className="text-sm font-black">Confirmar calibração</h4>
+      <p className="text-xs leading-relaxed text-white/75">As novas coordenadas e a margem de 5 metros serão aplicadas ao rascunho. Para publicar, ainda será necessário clicar em <strong>Salvar mapa</strong>.</p>
+      <button type="button" onClick={()=>onApply(result)} className="w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black">Confirmar e aplicar ao rascunho</button>
+     </div>}
+    </div>
+   </div>:<div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[1.08fr_.92fr] lg:gap-5 lg:p-6">
     <div className="space-y-4">
      <p className="text-sm text-white/70">Oriente o desenho pela parte de cima da planta e escolha os pontos numerados. Depois, informe as coordenadas dos quatro cantos em latitude e longitude.</p>
      <MapCalibrationOrientation selected={selectedCorner} mode={mode} values={values} onSelect={selectCorner}/>
@@ -107,11 +188,11 @@ export default function AdminManualCalibration({mapName,values,mode,existingGps,
      <div className="space-y-2 rounded-xl border border-white/15 bg-[#110e17] p-3"><h4 className="text-xs font-semibold">Prévia dos quatro cantos · contorno estimado</h4><CornerSketch result={result}/><p className="text-[11px] text-white/50">Esboço matemático orientado pelas coordenadas, não sobreposto à imagem do Google Maps. A área real precisa ser conferida.</p></div>
      <div className="rounded-xl border border-white/10 bg-white/[.025] p-3 text-xs text-white/60">A calibração só substituirá a anterior após sua confirmação e será enviada ao servidor quando você clicar em <strong className="text-white">Salvar mapa</strong> no editor.</div>
     </div>
-   </div>
+   </div>}
    <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-[#17111e] p-4 sm:px-6">
     <button type="button" onClick={onBack} className={outline+' inline-flex items-center gap-2'}><ArrowLeft size={15}/> Escolher outro método</button>
     <div className="flex gap-2"><button type="button" onClick={onClose} className={outline}>Fechar</button>
-     {!review&&<button type="button" onClick={next} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-black text-black">Revisar calibração</button>}
+     {!review&&<button type="button" onClick={next} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-black text-black">{method==='map'?'Aplicar calibração':'Revisar calibração'}</button>}
      {review&&<button type="button" onClick={()=>setReview(false)} className={outline}>Corrigir pontos</button>}
     </div>
    </footer>
