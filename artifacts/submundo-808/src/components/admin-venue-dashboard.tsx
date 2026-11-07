@@ -1,6 +1,7 @@
 import {Building2,CalendarDays,MapPin,Pencil,ArrowUpRight,Music2,ExternalLink} from 'lucide-react';
 import {displayLabel} from './display-label';
 import AdminVenueMaps from './admin-venue-maps';
+import AdminDashboardReviews from './admin-dashboard-reviews';
 
 type Venue={id:string;name:string;city?:string;street?:string;neighborhood?:string;address?:string;address_url?:string;services?:string;cover_image?:string;logo_image?:string};
 type VenueMap={id:string;name:string;venue_id?:string};
@@ -58,5 +59,6 @@ export default function AdminVenueDashboard({venue,maps,events,onEdit,onOpenMap,
     </article>)}
    </div>:<p className="rounded-xl border border-dashed border-white/20 p-5 text-sm text-white/60">Nenhum evento vinculado ao estabelecimento.</p>}
   </section>
+  <AdminDashboardReviews venueId={venue.id}/>
  </div>;
 }

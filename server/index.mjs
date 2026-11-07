@@ -1,6 +1,7 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
 import {venueMediaFields} from './venue-media.mjs';
 import {insertReviewOnce} from './review-once.mjs';
+import {getAdminReviewStats} from './review-summary.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
@@ -422,8 +423,9 @@ http.createServer(async (req,res)=>{
       if(url.pathname==='/api/admin/reviews'&&req.method==='GET'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
         const eventId=String(url.searchParams.get('event_id')||'');
-        const items=eventId?db.prepare('SELECT r.*,e.name AS event_name FROM event_reviews r JOIN events e ON e.id=r.event_id WHERE r.event_id=? ORDER BY r.updated_at DESC').all(eventId):db.prepare('SELECT r.*,e.name AS event_name FROM event_reviews r JOIN events e ON e.id=r.event_id ORDER BY r.updated_at DESC LIMIT 500').all();
-        return json(res,200,{items:items.map(x=>({...x,tags:JSON.parse(x.tags_json||'[]'),tags_json:undefined}))});
+        const venueId=String(url.searchParams.get('venue_id')||'');
+        if(eventId&&venueId)return json(res,400,{error:'Selecione evento ou estabelecimento para filtrar avaliações.'});
+        return json(res,200,getAdminReviewStats(db,{eventId,venueId}));
       }
       if(url.pathname==='/api/admin/notifications/save'&&req.method==='POST'){
         const u=getUser(req);if(!isAdmin(u))return json(res,403,{error:'Acesso restrito.'});
