@@ -1,10 +1,11 @@
-import {useState,type FormEvent} from 'react';
-import {Map,Plus,Pencil,X,CalendarDays} from 'lucide-react';
+import {useEffect,useState,type FormEvent} from 'react';
+import {Map,Plus,Pencil,X,CalendarDays,ArrowUpRight} from 'lucide-react';
 import {displayLabel} from './display-label';
 
 type Venue={id:string;name:string};
 type MapItem={id:string;name:string;venue_id?:string};
 type EventItem={id:string;venue_id?:string;map_ids?:string[]};
+type AreaPreview={id:string;map_id:string;x:number;y:number;width:number;height:number;color?:string;geometry?:{shape?:string}};
 
 async function adminRequest(route:string,payload:object){
  const response=await fetch('/api/admin/'+route,{method:'POST',credentials:'same-origin',
@@ -21,6 +22,15 @@ export default function AdminVenueMaps({
 }){
  const [creating,setCreating]=useState(false),[newName,setNewName]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [areas,setAreas]=useState<AreaPreview[]>([]);
+ useEffect(()=>{
+  let active=true;
+  void fetch('/api/admin/areas',{credentials:'same-origin'})
+   .then(async response=>{if(!response.ok)throw Error('Mapas indisponíveis');return response.json();})
+   .then(data=>{if(active)setAreas(data.items||[]);})
+   .catch(()=>{});
+  return()=>{active=false;};
+ },[maps]);
  const ownMaps=maps.filter(map=>map.venue_id===venue.id).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
  async function create(event:FormEvent){
   event.preventDefault();
@@ -56,20 +66,25 @@ export default function AdminVenueMaps({
   {ownMaps.length===0?<div className="rounded-xl border border-dashed border-white/20 p-6 text-center">
    <Map className="mx-auto text-white/35"/><p className="mt-2 text-sm font-semibold">Nenhum mapa cadastrado</p>
    <p className="mt-1 text-xs text-white/50">Crie uma planta para organizar os ambientes, pontos de apoio e entradas deste estabelecimento.</p>
-  </div>:<div className="space-y-2">
+  </div>:<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-3" aria-label="Carrossel de plantas do local">
    {ownMaps.map(map=>{
     const usages=events.filter(event=>event.map_ids?.includes(map.id)).length;
-    return <div key={map.id} className="rounded-xl border border-white/10 bg-[#110d17]/70 p-3">
-     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="min-w-0">
-       <p className="break-words text-sm font-bold">{displayLabel(map.name)}</p>
-       <p className="mt-1 flex items-center gap-1 text-xs text-white/50"><CalendarDays size={12}/>{usages} {usages===1?'evento vinculado':'eventos vinculados'}</p>
-      </div>
-      <div className="flex items-center gap-2">
-       <button type="button" onClick={()=>onOpen(map.id)} aria-label={'Editar planta '+map.name} title="Editar planta" className="inline-flex items-center justify-center rounded-lg border border-[#c4ff40]/40 p-3 text-[#c4ff40]"><Pencil size={18}/></button>
-      </div>
+    const rooms=areas.filter(area=>area.map_id===map.id);
+    return <article key={map.id} className="w-[min(76vw,17rem)] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/15 bg-[#110d17]/90 sm:w-64">
+     <button type="button" onClick={()=>onOpen(map.id)} aria-label={'Abrir planta '+map.name} className="relative flex h-36 w-full items-center justify-center overflow-hidden bg-[linear-gradient(#ffffff0a_1px,transparent_1px),linear-gradient(90deg,#ffffff0a_1px,transparent_1px),linear-gradient(135deg,#0f111b,#27203a)] [background-size:17px_17px,17px_17px,auto]">
+      {rooms.length?<svg viewBox="0 0 100 100" aria-hidden="true" className="h-full w-full p-4">
+       {rooms.map(area=>area.geometry?.shape==='ellipse'
+        ?<ellipse key={area.id} cx={area.x+area.width/2} cy={area.y+area.height/2} rx={area.width/2} ry={area.height/2} fill={area.color||'#474d9c'} fillOpacity={.35} stroke="#c4ff40" strokeWidth={.75}/>
+        :<rect key={area.id} x={area.x} y={area.y} width={area.width} height={area.height} rx="1" fill={area.color||'#474d9c'} fillOpacity={.35} stroke="#c4ff40" strokeWidth={.75}/>)}
+      </svg>:<Map size={39} className="text-[#c4ff40]/70"/>}
+      <span className="absolute bottom-2 right-2 rounded-lg border border-white/15 bg-[#100d18]/90 p-1.5 text-[#c4ff40]"><ArrowUpRight size={15}/></span>
+     </button>
+     <div className="space-y-2 p-3">
+      <p className="truncate text-sm font-bold">{displayLabel(map.name)}</p>
+      <p className="text-xs text-white/50">{rooms.length} ambientes · {usages} eventos vinculados</p>
+      <button type="button" onClick={()=>onOpen(map.id)} aria-label={'Editar planta '+map.name} className="inline-flex items-center gap-1.5 rounded-lg border border-[#c4ff40]/30 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Pencil size={13}/> Abrir editor</button>
      </div>
-    </div>;
+    </article>;
    })}
   </div>}
   {error&&<p role="alert" className="text-xs text-red-300">{error}</p>}
