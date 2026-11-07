@@ -27,7 +27,7 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.match(editor,/<AdminCalibrationOverview/);
  assert.match(editor,/onRecalibrate=\{recalibrateMap\}/);
  assert.match(editor,/setCalibrationOverviewOpen\(false\)/);
- assert.match(editor,/setManualStarted\(false\)/);
+ assert.doesNotMatch(editor,/setManualStarted\(false\)/);
  assert.match(overview,/aria-label="Ver calibração do mapa"/);
  assert.match(overview,/Planta na orientação geográfica real/);
  assert.match(overview,/calibrationPreviewProjection\(frame/);
