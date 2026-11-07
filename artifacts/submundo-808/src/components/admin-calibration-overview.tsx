@@ -71,7 +71,7 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-white">Planta na orientação geográfica real</p><span className="text-[10px] font-semibold text-[#c4ff40]">Norte para cima · escala proporcional</span></div>
       {preview.editing&&<p role="status" className={'mb-2 rounded-lg border px-3 py-2 text-xs '+(preview.valid?'border-[#c4ff40]/30 bg-[#c4ff40]/5 text-[#c4ff40]':'border-amber-400/30 bg-amber-400/5 text-amber-200')}>
        {preview.valid?'Prévia em tempo real · alterações ainda não aplicadas.':'Coordenadas incompletas ou inválidas · mantendo a última prévia válida.'}
-      </p>
+      </p>}
       <svg viewBox={'0 0 '+WIDTH+' '+HEIGHT} role="img" aria-label="Vista geográfica com norte para cima, limites e ambientes nas coordenadas calibradas" className="w-full">
        <rect width={WIDTH} height={HEIGHT} rx="10" fill="#130f1b"/>
        {Array.from({length:9},(_,i)=><g key={i} stroke="#ffffff0b" strokeWidth="1"><path d={'M'+(i*50)+' 0V'+HEIGHT}/><path d={'M0 '+(i*38)+' H'+WIDTH}/></g>)}
