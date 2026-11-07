@@ -214,20 +214,16 @@ export default function AdminShell(){
     <label className="block space-y-2 text-xs text-white/60">Buscar por nome, cidade, rua, bairro ou CEP<input value={venueSearch} onChange={e=>setVenueSearch(e.target.value)} placeholder="Digite uma cidade ou outro termo..." className={input}/></label>
     {searchBusy&&<p className="text-xs text-white/50">Buscando no servidor...</p>}
     {(filteredVenues??venues).length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
-     :<div className="grid gap-3 md:grid-cols-2">{(filteredVenues??venues).map(item=><article key={item.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.035]">
-       <button type="button" onClick={()=>go({section:'Estabelecimentos',id:item.id,creating:false})} className="relative block h-28 w-full overflow-hidden bg-[radial-gradient(circle_at_80%_20%,#53406f,transparent_50%),#20182b] text-left">
+     :<div className="grid gap-3 md:grid-cols-2">{(filteredVenues??venues).map(item=><button key={item.id} type="button" aria-label={'Abrir estabelecimento '+item.name} onClick={()=>go({section:'Estabelecimentos',id:item.id,creating:false})} className="group block w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[.035] text-left transition-colors hover:border-[#c4ff40]/55 hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4ff40]">
+       <div className="relative block h-28 w-full overflow-hidden bg-[radial-gradient(circle_at_80%_20%,#53406f,transparent_50%),#20182b]">
         {item.cover_image?<img src={item.cover_image} alt="" className="h-full w-full object-cover"/>:<Building2 size={32} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c4ff40]/55"/>}
-       </button>
+       </div>
        <div className="space-y-2 p-4">
         <p className="font-bold">{displayLabel(item.name)}</p>
         <p className="text-xs text-white/55">{[item.city,item.neighborhood,item.street||item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
         <p className="flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{maps.filter(map=>map.venue_id===item.id).length} plantas</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{events.filter(event=>event.venue_id===item.id).length} eventos</span></p>
-        <div className="flex flex-wrap gap-2 pt-2">
-         <button type="button" onClick={()=>go({section:'Estabelecimentos',id:item.id,creating:false})} className="flex-1 rounded-xl border border-[#c4ff40]/40 px-3 py-2.5 text-xs font-bold text-[#c4ff40]">Abrir estabelecimento</button>
-         <button type="button" onClick={()=>openVenueEdit(item)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2.5 text-xs font-bold"><Pencil size={14}/> Editar</button>
-        </div>
        </div>
-      </article>)}</div>}
+      </button>)}</div>}
    </div>
  )}
  {section==='Eventos'&&(
@@ -237,8 +233,7 @@ export default function AdminShell(){
      onOpenMap={(mapId,venueId)=>go({section:'Estabelecimentos',id:venueId,creating:false,mapId})}
      onOpenAnalytics={(venueId,eventId)=>go({section:'Estabelecimentos',id:venueId,creating:false,eventId})}/>
    :<AdminEventList events={events} venues={venues} onCreate={()=>go({section:'Eventos',id:null,creating:true})}
-     onOpen={item=>go({section:'Eventos',id:item.id,creating:false})}
-     onEdit={item=>setEventModalId(item.id)}/>
+     onOpen={item=>go({section:'Eventos',id:item.id,creating:false})}/>
  )}
  {editing&&section==='Estabelecimentos'&&exampleOpen&&<div role="dialog" aria-modal="true" aria-label="Exemplo de análise do evento" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3" onClick={()=>setExampleOpen(false)}>
    <div className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/20 bg-[#17111d] p-4 sm:p-6" onClick={e=>e.stopPropagation()}>

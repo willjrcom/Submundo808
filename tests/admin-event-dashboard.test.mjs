@@ -7,10 +7,11 @@ test('event has its own dashboard with cover, dates, lineup, linked maps and Edi
  for(const s of ['event.cover_image','event.starts_at','event.ends_at','event.lineup','linkedMaps','onEdit','onOpenMap','onOpenAnalytics'])assert.ok(dashboard.includes(s),s);
  assert.doesNotMatch(dashboard,/Excluir evento|onDelete/);
 });
-test('listing differentiates opening event dashboard from editing it',()=>{
+test('entire event card opens dashboard while Edit remains in its dashboard',()=>{
  assert.match(listing,/onOpen:\(event:EventItem\)=>void/);
- assert.match(listing,/onClick=\{\(\)=>onOpen\(event\)\}/);
- assert.match(listing,/onClick=\{\(\)=>onEdit\(event\)\}/);
+ assert.match(listing,/button key=\{event\.id\} type="button" aria-label=\{'Visualizar evento '\+event\.name\} onClick=\{\(\)=>onOpen\(event\)\}/);
+ assert.doesNotMatch(listing,/onEdit\(event\)|>Ver evento<\/button>/);
+ assert.match(dashboard,/onClick=\{onEdit\}/);
 });
 
 test('event analytics button uses a clear statistics label',()=>{

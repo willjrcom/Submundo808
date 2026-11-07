@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {CalendarDays,Clock3,Map as MapIcon,MapPin,Music2,Plus,Search,Pencil,X} from 'lucide-react';
+import {CalendarDays,Clock3,Map as MapIcon,MapPin,Music2,Plus,Search,X} from 'lucide-react';
 import {displayLabel} from './display-label';
 import {filterAdminEvents,groupAdminEvents,eventStatus,availableEventMonths,type EventPeriod,type EventRecord} from './admin-event-filters';
 
@@ -23,9 +23,9 @@ const periodChoices:{value:EventPeriod;label:string}[]=[
  {value:'all',label:'Todos'}
 ];
 const selectClass='w-full rounded-xl border border-white/15 bg-[#241b2c] px-3 py-2.5 text-sm text-white';
-export default function AdminEventList({events,venues,onCreate,onOpen,onEdit}:{
+export default function AdminEventList({events,venues,onCreate,onOpen}:{
  events:EventItem[];venues:Venue[];
- onCreate:()=>void;onOpen:(event:EventItem)=>void;onEdit:(event:EventItem)=>void;
+ onCreate:()=>void;onOpen:(event:EventItem)=>void;
 }){
  const [period,setPeriod]=useState<EventPeriod>('upcoming');
  const [search,setSearch]=useState(''),[venueId,setVenueId]=useState(''),[month,setMonth]=useState(''),[publication,setPublication]=useState('all');
@@ -82,7 +82,7 @@ export default function AdminEventList({events,venues,onCreate,onOpen,onEdit}:{
      {group.items.map(event=>{
       const status=eventStatus(event,now);
       const when=event.starts_at?datetime(event.starts_at)+(event.ends_at?' – '+datetime(event.ends_at):''):'Horário a definir';
-      return <article key={event.id} className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4 sm:flex-row sm:items-center sm:justify-between">
+      return <button key={event.id} type="button" aria-label={'Visualizar evento '+event.name} onClick={()=>onOpen(event)} className="flex w-full flex-col gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4 text-left transition-colors hover:border-[#c4ff40]/55 hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4ff40] sm:flex-row sm:items-center sm:justify-between">
        <div className="min-w-0 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
          <h4 className="break-words text-sm font-bold">{displayLabel(event.name)}</h4>
@@ -97,11 +97,7 @@ export default function AdminEventList({events,venues,onCreate,onOpen,onEdit}:{
          <span className="inline-flex items-center gap-1"><Music2 size={13}/>{event.lineup?.length||0} DJs</span>
         </div>
        </div>
-       <div className="flex shrink-0 gap-2">
-        <button type="button" onClick={()=>onOpen(event)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-[#c4ff40]/30 px-3 py-2.5 text-xs font-bold text-[#c4ff40] sm:flex-none">Ver evento</button>
-        <button type="button" onClick={()=>onEdit(event)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/20 px-3 py-2.5 text-xs font-bold sm:flex-none"><Pencil size={13}/> Editar</button>
-       </div>
-      </article>;
+      </button>;
      })}
     </div>
    </section>)}

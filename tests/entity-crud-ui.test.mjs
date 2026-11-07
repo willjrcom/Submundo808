@@ -9,8 +9,10 @@ const server=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8')
 test('listing venues, events and maps does not show delete actions',()=>{
  for(const source of [mapUI,eventUI,shell])assert.doesNotMatch(source,/onDelete=|onDelete\(|Excluir planta|Excluir estabelecimento|setConfirmDelete/);
  assert.match(mapUI,/aria-label=\{'Editar planta '\+map\.name\}/);
- assert.match(eventUI,/onClick=\{\(\)=>onEdit\(event\)\}/);
- assert.match(shell,/Abrir estabelecimento/);
+ assert.match(eventUI,/button key=\{event\.id\} type="button" aria-label=\{'Visualizar evento '\+event\.name\}/);
+ assert.match(shell,/button key=\{item\.id\} type="button" aria-label=\{'Abrir estabelecimento '\+item\.name\}/);
+ assert.doesNotMatch(eventUI,/onEdit\(event\)|>Ver evento<\/button>/);
+ assert.doesNotMatch(shell,/onClick=\{\(\)=>openVenueEdit\(item\)\}/);
 });
 test('backend still protects related venues and maps against direct delete requests',()=>{
  assert.match(server,/entity==='map'&&db.prepare\('SELECT 1 FROM event_maps WHERE map_id=\?'/);
