@@ -5,7 +5,7 @@ import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
  Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,ChevronDown,
- Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3
+ Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3,X
 } from 'lucide-react';
 import {freeAreaPosition,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
@@ -98,6 +98,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const [snapGuide,setSnapGuide]=useState<{x?:number;y?:number}|null>(null);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
+ const editMenuRef=useRef<HTMLDivElement>(null);
  const skipClickAfterDrag=useRef(false);
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
  const setCanvasRef=useCallback((element:HTMLDivElement|null)=>{canvas.current=element;setMapElement(element);},[setMapElement]);
@@ -143,8 +144,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  },[calibrationOpen]);
  
  useEffect(()=>{const guard=(e:BeforeUnloadEvent)=>{if(!dirty)return;e.preventDefault();e.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
+ // Close the small Edit menu when tapping anywhere outside, without discarding the selected room.
+ useEffect(()=>{
+  if(!editMenuOpen)return;
+  const outside=(event:PointerEvent)=>{
+   if(event.target instanceof Node&&!editMenuRef.current?.contains(event.target))setEditMenuOpen(false);
+  };
+  document.addEventListener('pointerdown',outside);
+  return()=>document.removeEventListener('pointerdown',outside);
+ },[editMenuOpen]);
  useEffect(()=>{
   const onKeyboard=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'&&editMenuOpen){event.preventDefault();setEditMenuOpen(false);return;}
    if(event.key==='Escape'&&pendingDiscardAction){event.preventDefault();event.stopPropagation();if(!loading&&!saving)setPendingDiscardAction(null);return;}
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
@@ -164,7 +175,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[calibrationOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
+ },[editMenuOpen,calibrationOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -182,16 +193,16 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   checkpoint();setError('');
   const id=crypto.randomUUID();
   setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},geometry:{shape:'rect'},icon:'outro',color:'#9747FF',description:''}]);
-  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Selecione Mover ou Redimensionar para ajustar o ambiente.');
+  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(id);setNotice('Ambiente selecionado. Arraste o interior para mover ou as alças para redimensionar.');
  }
  function confirmGroup(){
   if(!active||!groupChoice||!canGroup(areas,active.id,groupChoice)){setError('Escolha um ambiente retangular que encoste no ambiente selecionado.');return;}
-  checkpoint();setAreas(groupWith(areas,active.id,groupChoice));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(false);
+  checkpoint();setAreas(groupWith(areas,active.id,groupChoice));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(true);
   setNotice('Ambientes agrupados em uma única silhueta, sem divisória interna. Salve o mapa para publicar.');
  }
  function detachGroup(){
   if(!active||!isGrouped(areas,active.id))return;
-  checkpoint();setAreas(ungroup(areas,active.id));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(false);
+  checkpoint();setAreas(ungroup(areas,active.id));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(active.id);setEditLayout(true);
   setNotice('Ambientes desagrupados. As partes originais foram preservadas.');
  }
  function openCurveEditor(){
@@ -221,14 +232,14 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function createPassage(a:Area,b:Area,x:number,y:number){
   checkpoint();const id=crypto.randomUUID();
   setMarkers(v=>[...v,{id,name:'Passagem '+a.name+' / '+b.name,type:'passagem',x,y,from_area_id:a.id,to_area_id:b.id,access_type:'livre',shape:'square',size:30,color:'#C4FF40',description:''}]);
-  setSelected(id);setEditLayout(false);setResizeId(null);setFrameEditing(false);setNotice('Passagem criada sobre a divisão. Ajuste o tipo de acesso e salve o mapa.');
+  setSelected(id);setEditLayout(true);setResizeId(null);setFrameEditing(false);setNotice('Passagem criada sobre a divisão. Ajuste o tipo de acesso e salve o mapa.');
  }
  function createMarker(){
   checkpoint();const id=crypto.randomUUID();
   const x=active?active.x+active.width/2:50,y=active?active.y+active.height/2:50;
   const owner=active||roomContainingPoint(areas,x,y);
   setMarkers(v=>[...v,{id,name:'Novo ponto',type:'outro',x,y,area_id:owner?.id,shape:'square',size:42,color:'#C4FF40',description:''}]);
-  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Ative a movimentação antes de arrastar.');
+  setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Arraste para reposicionar.');
  }
  function removeSelected(){
   if(active&&isGrouped(areas,active.id)){setError('Desagrupe o ambiente antes de excluí-lo, para não perder as partes originais.');return;}
@@ -254,8 +265,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
  }
  function toggleSelection(id:string){
+  const selecting=selected!==id;
   setSelected(selected===id?'':id);
-  setEditLayout(false);setFrameEditing(false);setResizeId(null);
+  setEditLayout(selecting);setFrameEditing(false);
+  setResizeId(selecting&&areas.some(a=>a.id===id)?id:null);
   setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);
  }
  function startDrag(e:React.PointerEvent,id:string,kind:Drag['kind'],edge?:Edge){
@@ -264,7 +277,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   skipClickAfterDrag.current=false;
   if(selected!==id)return;
   if(!editing)return;
-  if(kind==='area'&&resizeId===id)return;
   if(kind==='resize'&&resizeId!==id)return;
   const p=coord(e);if(!p||frameEditing)return;
   const item=kind==='marker'?markers.find(m=>m.id===id):areas.find(a=>a.id===id);if(!item)return;
@@ -349,7 +361,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(saving)return false;setSaving(true);setError('');
   try{
    await api('save-layout',{map_id:map.id,areas,markers,frame});
-   setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');setEditLayout(false);setFrameEditing(false);setResizeId(null);
+   setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');setEditLayout(!!selected);setFrameEditing(false);setResizeId(areas.some(a=>a.id===selected)?selected:null);
    return true;
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');return false;}
   finally{setSaving(false);}
@@ -428,11 +440,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   if(!pendingDiscardAction||saving||loading)return;
   if(pendingDiscardAction==='leave'){setPendingDiscardAction(null);onBack();return;}
   await discard();
- }
- function activateResize(){
-  if(!active)return;
-  if(isGrouped(areas,active.id)){setError('Desagrupe para redimensionar as partes individualmente.');return;}
-  setFrameEditing(false);if(editing&&resizeId===active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(active.id);}
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
  const showLoading=useMinimumLoading(loading);
@@ -518,22 +525,16 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      >
-      {active&&!frameEditing&&<div className="absolute left-1/2 top-2 z-[60] flex w-max max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center gap-1.5" onPointerDown={e=>e.stopPropagation()}>
+      {active&&!frameEditing&&<div ref={editMenuRef} className="absolute left-1/2 top-2 z-[60] flex w-max max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center gap-1.5" onPointerDown={e=>e.stopPropagation()}>
        <button type="button" aria-label={'Editar ambiente '+active.name} aria-haspopup="menu" aria-expanded={editMenuOpen} onClick={e=>{e.stopPropagation();setEditMenuOpen(v=>!v);}} className={'inline-flex min-h-10 items-center gap-2 rounded-full border border-[#c4ff40] bg-[#17111e] px-4 py-2 text-sm font-bold text-[#c4ff40] shadow-[0_0_15px_#c4ff4030] transition hover:bg-[#c4ff40]/10 '+(editing?'ring-2 ring-[#c4ff40]/35':'')}>
         <Pencil size={16}/> Editar <ChevronDown size={16} className={editMenuOpen?'rotate-180 transition-transform':'transition-transform'}/>
        </button>
        {editMenuOpen&&<div role="menu" aria-label={'Editar '+active.name} className="z-[70] w-52 max-w-full overflow-hidden rounded-2xl border border-[#c4ff40]/45 bg-[#1b1523] p-1.5 text-sm text-white shadow-2xl">
-        <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);if(editing&&resizeId!==active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(null);}}}><Move size={17}/>{editing&&resizeId!==active.id?'Concluir movimento':'Mover'}</button>
-        <button type="button" role="menuitem" disabled={grouped} title={grouped?'Desagrupe para redimensionar as partes':undefined} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);activateResize();}}><Maximize2 size={17}/>{editing&&resizeId===active.id?'Concluir redimensionamento':'Redimensionar'}</button>
         {grouped?
          <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>:
          <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>}
         <button type="button" role="menuitem" disabled={grouped} title={grouped?'Desagrupe para editar cada formato':'Editar formato e curvaturas'} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Formato e curvatura</button>
        </div>}
-      </div>}
-      {selectedMarker&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
-       <span className="max-w-28 truncate text-xs text-white/75">{selectedMarker.name}</span>
-       <button type="button" title="Mover ponto selecionado" aria-label={editing?'Concluir movimentação do ponto':'Mover ponto selecionado'} aria-pressed={editing} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setEditLayout(v=>!v);setResizeId(null);}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/>{editing?'Concluir':'Mover'}</button>
       </div>}
      <div ref={setCanvasRef}
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
@@ -565,14 +566,14 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         onPointerDown={e=>startDrag(e,a.id,'area')}
         onClick={e=>{e.stopPropagation();e.currentTarget.blur();if(skipClickAfterDrag.current){skipClickAfterDrag.current=false;return;}toggleSelection(a.id);}}
         onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleSelection(a.id);}}}
-        style={{pointerEvents:frameEditing?'none':'visiblePainted',cursor:editing&&resizeId!==a.id?'move':'pointer',outline:'none'}}/>;
+        style={{pointerEvents:frameEditing?'none':'visiblePainted',cursor:editing&&chosen?'move':'pointer',outline:'none'}}/>;
       })}
      </svg>
      {visibleRooms.map(a=>{
       const chosen=selected===a.id,canResize=!isGrouped(areas,a.id);
       if(!chosen||frameEditing)return null;
       return <div key={'handles-'+a.id} className="pointer-events-none absolute z-20" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%'}}>
-       {canResize&&editing&&resizeId===a.id&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
+       {canResize&&editing&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
         onPointerDown={e=>startDrag(e,a.id,'resize',edge)}
         className={'pointer-events-auto absolute z-30 h-4 w-4 touch-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+((edge==='left'||edge==='right')?'cursor-ew-resize':'cursor-ns-resize')}
         style={{left:edge==='left'?'0%':edge==='right'?'100%':'50%',top:edge==='top'?'0%':edge==='bottom'?'100%':'50%'}}/>)}
@@ -602,7 +603,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      {pointLabels.filter(label=>label.visible).map(label=>{const m=markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
     </div></div>}
     {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
-    <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{editing?'Arraste qualquer ambiente, inclusive para a área externa ao quadro, e depois encaixe novamente. Selecione o ambiente e clique em Redimensionar; bordas em comum alteram os dois ambientes.':'Selecione qualquer ambiente, inclusive os já salvos. Use Editar layout ou os botões do painel lateral para movê-lo ou redimensioná-lo.'}</p></div>
+    <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{'Clique uma vez para selecionar o ambiente. Arraste pelo interior para mover, use as alças das bordas para redimensionar. O menu Editar contém apenas Agrupar e Formato e curvatura.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({visibleRooms.length})</h3><div className="flex flex-wrap gap-2">{visibleRooms.map(a=><button key={a.id} onClick={()=>toggleSelection(a.id)} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}{isGrouped(areas,a.id)?' · '+groupMembers(areas,a.id).length+' partes':''}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><MapPin size={16} className="text-[#c4ff40]"/> Pontos ({markers.length})</h3><div className="flex flex-wrap gap-2">{markers.map(m=><button key={m.id} onClick={()=>toggleSelection(m.id)} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===m.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}>{m.name}</button>)}{markers.length===0&&<p className="text-xs text-white/45">Nenhum ponto cadastrado.</p>}</div></div>
