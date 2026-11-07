@@ -36,7 +36,7 @@ test('editor de mapas exige confirmação em modal tanto para descartar quanto p
  assert.match(s,/Descartar alterações do mapa\?/);
  assert.match(s,/Continuar editando/);
  assert.match(s,/onClick=\{\(\)=>void confirmDiscardAction\(\)\}/);
- assert.match(s,/pendingDiscardAction==='leave'\)\{setPendingDiscardAction\(null\);onBack\(\)/);
+ assert.match(s,/pendingDiscardAction==='leave'\)\{removeMapDraft\(map.id\);setPendingDiscardAction\(null\);onBack\(\)/);
  assert.match(s,/onClick=\{requestDiscard\}/);
  assert.match(s,/if\(event\.key==='Escape'&&pendingDiscardAction\)/);
 });
