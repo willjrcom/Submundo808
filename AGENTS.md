@@ -174,3 +174,5 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - O campo `type` do ponto define comportamento, posicionamento/âncora e catálogo (p. ex. entrada, bar, palco). O campo opcional `icon` é apenas uma escolha visual entre os nomes de `src/components/map-point-icon-catalog.ts`.
 - O seletor exibe SVG e nome, permite voltar ao padrão do tipo e mantém o tipo inalterado. O padrão de `palco` é um microfone (não uma garagem); pontos legados sem `icon` continuam funcionando.
 - O mesmo resolvedor `pointIconFor(type, icon)` deve ser usado no editor e na tela do participante. `POST /api/admin/save-layout` salva `icon` no JSON do ponto, sem alterar seu significado. Verificar `tests/map-point-icons.test.mjs`.
+
+- Grupos de amigos: tocar em **Convidar** abre modal responsivo com link copiável, compartilhamento e QR Code opcional. Remover o card "Convide sua galera" fixo na página. Fechar pelo X ou fundo e tratar carregamento/erros dentro do modal, respeitando a área segura de dispositivos móveis.
