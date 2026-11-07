@@ -1,0 +1,27 @@
+name: Validate compact passage control (temporary)
+on:
+  push:
+    branches:
+      - fix/map-passage-compact-on-hover
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Map controls regression
+        run: node --test tests/map-area-editor.test.mjs tests/map-editor-mobile-interactions.test.mjs tests/map-area-shapes.test.mjs tests/map-editor-curve-preview.test.mjs
+      - name: Compile frontend
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build
