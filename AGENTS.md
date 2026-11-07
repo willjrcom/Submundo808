@@ -72,6 +72,7 @@ Idiomas/UX: interface em **português brasileiro**; visual escuro, identidade da
 - Admin → **Avaliações**: indicadores, filtros por evento, notas, tags e comentários privados.
 - Participante pode avaliar evento **durante o evento e até sete dias após o encerramento**, nota de 1–5 obrigatória, tags e comentário opcionais; uma avaliação por pessoa/evento, editável dentro do prazo. A API aceita avaliações antes do encerramento do evento, desde que ele esteja publicado e o participante o tenha selecionado; a restrição de sete dias só é aplicada após seu término.
 - Ao finalizar um evento, o servidor gera convite de avaliação idempotente para participantes. Evitar convites duplicados e não reenviar para quem já avaliou.
+- Antes de abrir o formulário de avaliação da notificação, verificar o evento específico via `GET /api/reviews?event_id=...`; com resposta confirmando envio, mostrar "Sua avaliação já foi enviada."; em caso de falha, oferecer nova tentativa sem supor sucesso. O HTTP 409 só identifica avaliação duplicada quando `code='already_reviewed'`, não quando o período expirou.
 
 ### Conta e permissões
 - Perfil suporta foto otimizada para WebP 256×256, persistida no SQLite (`users.avatar_data`).
