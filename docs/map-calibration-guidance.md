@@ -32,3 +32,9 @@ O GPS pode apresentar erro sistemático em áreas internas e 8 segundos não gar
 ## Verificação
 
 `node --test tests/map-calibration-guidance.test.mjs` cobre deslocamento geográfico, rotação, cantos cruzados, preservação dos pontos originais, filtro de amostras e presença dos componentes de navegação.
+
+## Ajustar diretamente sobre o satélite
+
+Na aba **Calibração manual → Ajustar pelo mapa**, o administrador pode selecionar o ponto numerado (1 a 4), clicar no Google Maps ou arrastar um dos marcadores para atualizar sua latitude/longitude com sete casas decimais. A conexão entre os quatro pontos aparece como um polígono semitransparente; há controles para mapa/satélite, opacidade, contorno e medidas aproximadas das quatro bordas. O topo da planta é indicado pelo segmento entre os pontos 1 e 2, independentemente do norte geográfico. O modo com mapa usa quatro pontos reais, não a estimativa opcional de três pontos. Alterações permanecem no mesmo rascunho de coordenadas da entrada manual e só substituem a calibração cadastrada após Revisar → Confirmar → Salvar mapa; cancelar fecha a edição sem publicar.
+
+**Requisito operacional:** configurar `GOOGLE_MAPS_BROWSER_API_KEY` no servidor (Dokploy), uma chave de navegador habilitada para **Google Maps JavaScript API**, com cobrança configurada e restrições de domínio (`https://admin.submundo.menudevendas.com.br/*` e domínios de desenvolvimento quando necessário). O servidor disponibiliza exclusivamente essa chave pública aos administradores autenticados por `GET /api/admin/map-config`. Não reutilizar credenciais privadas de backend, não inserir a chave no Git e não permitir o uso irrestrito da chave. Sem configuração, o sistema exibe o iframe já existente do Google Maps como referência sem drag-and-drop e orienta a continuar editando as coordenadas manualmente.
