@@ -30,6 +30,22 @@ test('grupos continuam aceitando ambientes e Formato permanece acessível',()=>{
  assert.match(editor,/disabled=\{grouped\} title=\{grouped\?'O formato oval exige desagrupar/);
  assert.doesNotMatch(editor,/role="menuitem" disabled=\{grouped\}/);
 });
+test('passagem usa ícone compacto, alvo de toque grande e aparece por borda ou seleção',()=>{
+ assert.match(editor,/const \[hoveredPassageEdge,setHoveredPassageEdge\]=useState<string\|null>\(null\)/);
+ assert.match(editor,/function trackPassageHover\(e:React\.PointerEvent\)/);
+ assert.match(editor,/distance<=9&&along>=edge\.start&&along<=edge\.end/);
+ assert.match(editor,/onPointerMove=\{e=>\{move\(e\);trackPassageHover\(e\);\}\}/);
+ assert.match(editor,/onPointerLeave=\{\(\)=>setHoveredPassageEdge\(null\)\}/);
+ assert.match(editor,/const related=selected===rootAreaId\(edge\.a\)\|\|selected===rootAreaId\(edge\.b\)/);
+ assert.match(editor,/const visible=related\|\|hoveredPassageEdge===edgeId/);
+ assert.match(editor,/tabIndex=\{visible\?0:-1\}/);
+ assert.match(editor,/flex h-11 w-11 -translate-x-1\/2 -translate-y-1\/2 touch-manipulation/);
+ assert.match(editor,/flex h-6 w-6 items-center justify-center rounded-full border/);
+ assert.match(editor,/<Plus size=\{14\} strokeWidth=\{2\.5\}\/>/);
+ assert.match(editor,/if\(already\)return null/);
+ assert.match(editor,/createPassage\(edge\.a,edge\.b,edge\.x,edge\.y\)/);
+ assert.doesNotMatch(editor,/h-9 w-9 -translate-x-1\/2 -translate-y-1\/2 touch-manipulation/);
+});
 test('editor e mapa público usam a mesma silhueta e omitem divisórias internas',()=>{
  assert.match(editor,/visibleRooms\.map\(a=>/);
  assert.match(editor,/d=\{areaPath\(previewAreas,a\.id\)\}/);
