@@ -8,20 +8,20 @@ const backend=read('server/index.mjs');
 const security=read('server/request-security.mjs');
 const geometry=read('artifacts/submundo-808/src/components/map-calibration-geometry.ts');
 
-test('manual mode preserves coordinate inputs and offers a satellite tab with 4 selected corners',()=>{
- assert.match(manual,/Por coordenadas \(lat\/lng\)/);
- assert.match(manual,/Ajustar pelo mapa/);
- assert.match(manual,/method==='map'/);
- assert.match(manual,/onModeChange\('4'\)/);
- assert.match(map,/selecionado/);
+test('satellite calibration is primary, with optional compact coordinate fields and one save action',()=>{
+ assert.match(manual,/<AdminCalibrationSatelliteMap/);
+ assert.match(manual,/Editar coordenadas/);
+ assert.match(manual,/aria-expanded=\{coordinatesOpen\}/);
+ assert.match(manual,/buildManualCalibration\(values,'4'\)/);
  assert.match(manual,/Selecionar ponto/);
  assert.match(manual,/onMove=\{setMapCorner\}/);
  assert.match(manual,/onSelect=\{setSelectedCorner\}/);
  assert.match(manual,/onChange\(key,'lat',lat\.toFixed\(7\)\)/);
  assert.match(manual,/onChange\(key,'lng',lng\.toFixed\(7\)\)/);
- assert.match(manual,/buildManualCalibration\(values,mode\)/);
- assert.match(manual,/setReview\(true\)/);
- assert.match(manual,/onApply\(result\)/);
+ assert.match(manual,/await onApply\(result\)/);
+ assert.doesNotMatch(manual,/Por coordenadas \(lat\/lng\)/);
+ assert.doesNotMatch(manual,/Confirmar e aplicar ao rascunho/);
+ assert.doesNotMatch(manual,/Corrigir pontos/);
 });
 test('interactive map uses real Google Maps JS API, not a marker overlay on an iframe',()=>{
  assert.match(map,/fetch\('\/api\/admin\/map-config'/);
@@ -62,6 +62,6 @@ test('browser API key is only available to authenticated admins and CSP allows G
 });
 test('calibration still validates geometry and expands measured corners by 5 metres',()=>{
  assert.match(geometry,/export const MAP_MARGIN_METERS=5/);
- assert.match(manual,/buildManualCalibration\(values,mode\)/);
+ assert.match(manual,/buildManualCalibration\(values,'4'\)/);
  assert.match(manual,/onApply\(result\)/);
 });
