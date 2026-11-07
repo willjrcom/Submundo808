@@ -27,3 +27,18 @@ test('phone-sized map icons render smaller without persisting a different size',
  assert.match(editor,/style=\{markerIconStyle\(m,size\)\}/);
  assert.match(participant,/style=\{markerIconStyle\(m,size\)\}/);
 });
+
+test('menu único Editar substitui os botões contextuais e fecha ao desselecionar',()=>{
+ assert.match(editor,/aria-haspopup="menu" aria-expanded=\{editMenuOpen\}/);
+ assert.match(editor,/role="menu" aria-label=\{'Editar '\+active\.name\}/);
+ assert.match(editor,/setSelected\(selected===id\?'':id\)/);
+ assert.match(editor,/setEditMenuOpen\(false\)/);
+ assert.match(editor,/Desagrupar/);
+ assert.match(editor,/Curvar ambiente/);
+ assert.doesNotMatch(editor,/absolute right-3 top-3 z-\[60\] flex max-w-\[calc\(100%-24px\)\] flex-wrap gap-2/);
+});
+test('contorno de foco não permanece no SVG após a desseleção',()=>{
+ assert.match(editor,/aria-pressed=\{chosen\} tabIndex=\{frameEditing\?-1:0\}/);
+ assert.match(editor,/e\.currentTarget\.blur\(\)/);
+ assert.match(editor,/outline:'none'/);
+});

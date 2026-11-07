@@ -4,7 +4,7 @@ import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
- Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,
+ Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,ChevronDown,
  Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3
 } from 'lucide-react';
 import {freeAreaPosition,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
@@ -58,7 +58,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
- const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false);
+ const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false),[editMenuOpen,setEditMenuOpen]=useState(false);
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
@@ -226,7 +226,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function toggleSelection(id:string){
   setSelected(selected===id?'':id);
   setEditLayout(false);setFrameEditing(false);setResizeId(null);
-  setGroupOpen(false);setGroupChoice('');setCurveOpen(false);
+  setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);
  }
  function startDrag(e:React.PointerEvent,id:string,kind:Drag['kind'],edge?:Edge){
   e.stopPropagation();
@@ -408,16 +408,14 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createRoundArea} className={button}><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current"/> Ambiente redondo</button>
-   {active&&(grouped?<button type="button" onClick={detachGroup} className={button+' border-[#c4ff40]/45 text-[#c4ff40]'}><Unplug size={16}/> Desagrupar</button>:<button type="button" onClick={()=>{setGroupOpen(v=>!v);setCurveOpen(false);setGroupChoice('');}} aria-expanded={groupOpen} className={button+' '+(groupOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Group size={16}/> Agrupar</button>)}
-   {active&&<button type="button" disabled={active.geometry?.shape==='ellipse'} title={active.geometry?.shape==='ellipse'?'O formato redondo já possui borda curva':'Curvar borda do ambiente'} aria-expanded={curveOpen} onClick={()=>{setCurveOpen(v=>!v);setGroupOpen(false);}} className={button+' '+(curveOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Blend size={16}/> Curvar</button>}
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
-   <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
+   <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
    <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
    <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
   </div>
-  {groupOpen&&active&&!grouped&&<div className="space-y-3 border-t border-white/10 p-3">
+  {groupOpen&&active&&!grouped&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget)setGroupOpen(false);}}><section role="dialog" aria-modal="true" aria-label="Agrupar ambientes" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] space-y-3 overflow-y-auto rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] p-4 shadow-2xl sm:p-6">
    <p className="text-sm font-semibold">Agrupar ao ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
    <p className="text-xs text-white/60">Escolha outra parte que encoste neste ambiente. As bordas internas desaparecem; cada peça poderá ser recuperada ao desagrupar.</p>
    <div className="flex flex-wrap items-end gap-2">
@@ -428,8 +426,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     <button type="button" onClick={()=>setGroupOpen(false)} className={button}>Cancelar</button>
    </div>
    {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes retangulares encostados neste. Arraste a segunda parte até uma borda para habilitar o agrupamento.</p>}
-  </div>}
-  {curveOpen&&active&&active.geometry?.shape!=='ellipse'&&<div className="space-y-3 border-t border-white/10 p-3">
+  </section></div>}
+  {curveOpen&&active&&active.geometry?.shape!=='ellipse'&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget)setCurveOpen(false);}}><section role="dialog" aria-modal="true" aria-label="Curvar ambiente" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] space-y-3 overflow-y-auto rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] p-4 shadow-2xl sm:p-6">
    <p className="text-sm font-semibold">Curvar ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
    <p className="text-xs text-white/60">Selecione uma lateral externa, a direção e a intensidade. A curvatura é aplicada à silhueta visível do ambiente.</p>
    <div className="grid gap-2 sm:grid-cols-3">
@@ -438,7 +436,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     <label className="space-y-1 text-xs text-white/65">Intensidade: {active.geometry?.curve?.depth||20}%<input aria-label="Intensidade da curvatura" type="range" min="1" max="40" step="1" value={active.geometry?.curve?.depth||20} onChange={e=>updateCurve({depth:Number(e.target.value)})} className="mt-3 w-full accent-[#c4ff40]"/></label>
    </div>
    <div className="flex gap-2"><button type="button" disabled={!active.geometry?.curve} onClick={()=>updateArea({geometry:{...active.geometry,curve:null}})} className={button}>Remover curva</button><button type="button" onClick={()=>setCurveOpen(false)} className={button}>Concluir</button></div>
-  </div>}
+  </section></div>}
   {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
    <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
    <button type="submit" disabled={nameSaving||!mapName.trim()||mapName.trim()===map.name&&notice==='Nome da planta atualizado.'} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button>
@@ -452,9 +450,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      >
-      {active&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
-       <button type="button" title="Mover ambiente selecionado" aria-label="Mover ambiente selecionado" aria-pressed={editing&&resizeId!==active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();if(editing&&resizeId!==active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(null);}}} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId!==active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Move size={15}/> {editing&&resizeId!==active.id?'Concluir':'Mover'}</button>
-       <button type="button" aria-label="Redimensionar ambiente selecionado" aria-pressed={editing&&resizeId===active.id} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();activateResize();}} disabled={grouped} title={grouped?'Desagrupe para redimensionar as partes':'Redimensionar ambiente selecionado'} className={'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold '+(editing&&resizeId===active.id?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'border-white/20 text-white')}><Maximize2 size={15}/> {editing&&resizeId===active.id?'Concluir':'Redimensionar'}</button>
+      {active&&!frameEditing&&<div className="absolute left-1/2 top-2 z-[60] flex w-max max-w-[calc(100%-1rem)] -translate-x-1/2 flex-col items-center gap-1.5" onPointerDown={e=>e.stopPropagation()}>
+       <button type="button" aria-label={'Editar ambiente '+active.name} aria-haspopup="menu" aria-expanded={editMenuOpen} onClick={e=>{e.stopPropagation();setEditMenuOpen(v=>!v);}} className={'inline-flex min-h-10 items-center gap-2 rounded-full border border-[#c4ff40] bg-[#17111e] px-4 py-2 text-sm font-bold text-[#c4ff40] shadow-[0_0_15px_#c4ff4030] transition hover:bg-[#c4ff40]/10 '+(editing?'ring-2 ring-[#c4ff40]/35':'')}>
+        <Pencil size={16}/> Editar <ChevronDown size={16} className={editMenuOpen?'rotate-180 transition-transform':'transition-transform'}/>
+       </button>
+       {editMenuOpen&&<div role="menu" aria-label={'Editar '+active.name} className="z-[70] w-52 max-w-full overflow-hidden rounded-2xl border border-[#c4ff40]/45 bg-[#1b1523] p-1.5 text-sm text-white shadow-2xl">
+        <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);if(editing&&resizeId!==active.id){setEditLayout(false);setResizeId(null);}else{setEditLayout(true);setResizeId(null);}}}><Move size={17}/>{editing&&resizeId!==active.id?'Concluir movimento':'Mover'}</button>
+        <button type="button" role="menuitem" disabled={grouped} title={grouped?'Desagrupe para redimensionar as partes':undefined} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);activateResize();}}><Maximize2 size={17}/>{editing&&resizeId===active.id?'Concluir redimensionamento':'Redimensionar'}</button>
+        {grouped?
+         <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>:
+         <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>}
+        <button type="button" role="menuitem" disabled={active.geometry?.shape==='ellipse'} title={active.geometry?.shape==='ellipse'?'O ambiente redondo já possui borda curva':'Curvar borda do ambiente'} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(true);}}><Blend size={17}/> Curvar</button>
+       </div>}
       </div>}
       {selectedMarker&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
        <span className="max-w-28 truncate text-xs text-white/75">{selectedMarker.name}</span>
@@ -464,7 +471,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
       style={{left:frame.x+'%',top:frame.y+'%',width:frame.width+'%',height:frame.height+'%',backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
       onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');}}
-      onClick={e=>{if(e.target!==e.currentTarget)return;setSelected('');setResizeId(null);setEditLayout(false);setGroupOpen(false);setCurveOpen(false);}}
+      onClick={e=>{if(e.target!==e.currentTarget)return;setSelected('');setResizeId(null);setEditLayout(false);setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);}}
      ><span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-bold text-[#c4ff40]/80">Área do mapa</span>
       {editing&&frameEditing&&<>
        <button type="button" onPointerDown={e=>startFrameDrag(e,'frame-move')} className="absolute left-2 top-2 z-40 flex touch-none items-center gap-1 rounded-lg border border-[#c4ff40]/50 bg-[#191321] px-2 py-1 text-[11px] font-bold text-[#c4ff40]"><Move size={13}/> Mover área</button>
@@ -483,12 +490,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       {visibleRooms.map(a=>{
        const color=areaColor(a),chosen=selected===a.id;
        return <path key={a.id} d={areaPath(areas,a.id)} fill={color+'33'} stroke={chosen?'#c4ff40':color} strokeWidth={chosen?0.7:0.45}
-        vectorEffect="non-scaling-stroke" role="button" tabIndex={frameEditing?-1:0}
+        vectorEffect="non-scaling-stroke" role="button" aria-pressed={chosen} tabIndex={frameEditing?-1:0}
         aria-label={'Selecionar ambiente '+a.name+(isGrouped(areas,a.id)?' agrupado':'')}
         onPointerDown={e=>startDrag(e,a.id,'area')}
-        onClick={e=>{e.stopPropagation();if(skipClickAfterDrag.current){skipClickAfterDrag.current=false;return;}toggleSelection(a.id);}}
+        onClick={e=>{e.stopPropagation();e.currentTarget.blur();if(skipClickAfterDrag.current){skipClickAfterDrag.current=false;return;}toggleSelection(a.id);}}
         onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleSelection(a.id);}}}
-        style={{pointerEvents:frameEditing?'none':'visiblePainted',cursor:editing&&resizeId!==a.id?'move':'pointer'}}/>;
+        style={{pointerEvents:frameEditing?'none':'visiblePainted',cursor:editing&&resizeId!==a.id?'move':'pointer',outline:'none'}}/>;
       })}
      </svg>
      {visibleRooms.map(a=>{
