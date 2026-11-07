@@ -176,3 +176,5 @@ Separar a gestão em **Modelos**, **Agendamentos** e **Histórico** dentro do me
 - O mesmo resolvedor `pointIconFor(type, icon)` deve ser usado no editor e na tela do participante. `POST /api/admin/save-layout` salva `icon` no JSON do ponto, sem alterar seu significado. Verificar `tests/map-point-icons.test.mjs`.
 
 - Grupos de amigos: tocar em **Convidar** abre modal responsivo com link copiável, compartilhamento e QR Code opcional. Remover o card "Convide sua galera" fixo na página. Fechar pelo X ou fundo e tratar carregamento/erros dentro do modal, respeitando a área segura de dispositivos móveis.
+
+- No editor cartesiano da planta, apenas clicar ou tocar em uma área vazia **dentro da grade do plano cartesiano** remove a seleção de ambiente/ponto e fecha seus controles. Cliques em ambientes, pontos, passagens, controles ou fora da grade não devem desselecionar. Use o alvo original do `pointerdown` na fase capture para impedir que o pointer capture de arraste cause desseleção acidental.
