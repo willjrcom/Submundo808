@@ -28,8 +28,15 @@ test('event linked maps have the same real drawing preview as venue maps',()=>{
  assert.match(venues,/<AdminMapThumbnail areas=\{rooms\}\/>/);
  assert.match(shared,/fetch\('\/api\/admin\/areas'/);
  assert.match(shared,/<svg viewBox="0 0 100 100"/);
- assert.match(shared,/<ellipse/);
- assert.match(shared,/<rect/);
+ assert.match(shared,/visibleAreas\(areas\)\.map\(area=>/);
+ assert.match(shared,/d=\{areaPath\(areas,area\.id\)\}/);
  assert.match(dashboard,/onClick=\{\(\)=>venueId&&onOpenMap\(map.id,venueId\)\}/);
  assert.doesNotMatch(dashboard,/<MapIcon size=\{16\} className="text-\[#c4ff40\]"\/>\{displayLabel\(map.name\)\}/);
+});
+
+test('dashboard thumbnails render curved and grouped room paths consistently',()=>{
+ const shared=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-map-thumbnail.tsx',import.meta.url),'utf8');
+ assert.match(shared,/import \{areaPath,visibleAreas/);
+ assert.match(shared,/fillRule="evenodd"/);
+ assert.doesNotMatch(shared,/<rect key=\{area.id\}/);
 });
