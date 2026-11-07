@@ -1,0 +1,23 @@
+name: Validate map grouping changes (temporary)
+on:
+  push:
+    branches:
+      - fix/map-group-expansion-external-curves
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Map geometry and UI regression
+        run: node --test tests/map-area-shapes.test.mjs tests/map-area-editor.test.mjs tests/map-editor-curve-preview.test.mjs
+      - name: Compile frontend
+        run: pnpm --filter @workspace/submundo-808 build
