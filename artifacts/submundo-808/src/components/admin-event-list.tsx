@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {CalendarDays,Clock3,Map as MapIcon,MapPin,Music2,Plus,Search,Pencil,Trash2,X} from 'lucide-react';
+import {CalendarDays,Clock3,Map as MapIcon,MapPin,Music2,Plus,Search,Pencil,X} from 'lucide-react';
 import {displayLabel} from './display-label';
 import {filterAdminEvents,groupAdminEvents,eventStatus,availableEventMonths,type EventPeriod,type EventRecord} from './admin-event-filters';
 
@@ -23,9 +23,9 @@ const periodChoices:{value:EventPeriod;label:string}[]=[
  {value:'all',label:'Todos'}
 ];
 const selectClass='w-full rounded-xl border border-white/15 bg-[#241b2c] px-3 py-2.5 text-sm text-white';
-export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:{
+export default function AdminEventList({events,venues,onCreate,onEdit}:{
  events:EventItem[];venues:Venue[];
- onCreate:()=>void;onEdit:(event:EventItem)=>void;onDelete:(event:EventItem)=>void;
+ onCreate:()=>void;onEdit:(event:EventItem)=>void;
 }){
  const [period,setPeriod]=useState<EventPeriod>('upcoming');
  const [search,setSearch]=useState(''),[venueId,setVenueId]=useState(''),[month,setMonth]=useState(''),[publication,setPublication]=useState('all');
@@ -99,7 +99,6 @@ export default function AdminEventList({events,venues,onCreate,onEdit,onDelete}:
        </div>
        <div className="flex shrink-0 gap-2">
         <button onClick={()=>onEdit(event)} className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-white/20 px-3 py-2.5 text-xs font-bold sm:flex-none"><Pencil size={13}/> Editar</button>
-        <button onClick={()=>onDelete(event)} aria-label={'Excluir '+event.name} className="rounded-lg border border-red-400/35 px-3 py-2.5 text-xs text-red-300"><Trash2 size={14}/></button>
        </div>
       </article>;
      })}
