@@ -12,7 +12,7 @@ test('Calibrar mapa opens a choice, preserving original GPS workflow',()=>{
  assert.match(editor,/onClick=\{openCalibrationOverview\}/);
  assert.match(editor,/aria-label="Escolher modo de calibração"/);
  assert.match(editor,/Calibrar usando GPS/);
- assert.match(editor,/Inserir coordenadas manualmente/);
+ assert.match(editor,/Ajustar pelo mapa/);
  assert.match(editor,/startGpsCalibration/);
  assert.match(editor,/setCalibrationOpen\(true\)/);
  assert.match(editor,/Calibração por GPS/);
@@ -81,55 +81,59 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.match(editor,/onApplyCoordinates=\{applyOverviewCoordinates\}/);
  assert.match(editor,/Coordenadas atualizadas no rascunho/);
 });
-test('manual calibration uses four numbered border selectors and a top-of-plan arrow',()=>{
- const orientation=read('artifacts/submundo-808/src/components/map-calibration-orientation.tsx');
- assert.match(manual,/<MapCalibrationOrientation/);
- assert.match(manual,/selectedCorner/);
- assert.match(manual,/selectCorner=\(key:CornerKey\)/);
- assert.match(orientation,/TOPO DO DESENHO/);
- assert.match(orientation,/não o norte geográfico/);
- assert.match(orientation,/cada número representa um/);
- assert.match(orientation,/onSelect\(key\)/);
- for(const position of ['left-[27%] top-[15%]','left-[85%] top-[30%]','left-[73%] top-[85%]','left-[15%] top-[70%]']){
-  assert.ok(orientation.includes(position),position);
- }
- assert.match(manual,/value=\{estimated&&result\.ok\?result\.raw\.br\.lat/);
+test('satellite view is the primary calibration experience and coordinate editing is discreet',()=>{
+ assert.match(manual,/Ajustar calibração pelo mapa/);
+ assert.match(manual,/<AdminCalibrationSatelliteMap/);
+ assert.match(manual,/Editar coordenadas/);
+ assert.match(manual,/aria-expanded=\{coordinatesOpen\}/);
+ assert.match(manual,/\{coordinatesOpen&&<div id="calibration-coordinate-fields"/);
+ assert.match(manual,/onChange=\{e=>change\(key,'lat',e\.target\.value\)\}/);
+ assert.match(manual,/onChange=\{e=>change\(key,'lng',e\.target\.value\)\}/);
+ assert.match(manual,/buildManualCalibration\(values,'4'\)/);
+ assert.doesNotMatch(manual,/Por coordenadas \(lat\/lng\)/);
+ assert.doesNotMatch(manual,/<MapCalibrationOrientation/);
+ assert.doesNotMatch(manual,/3 pontos/);
 });
-test('manual modal offers four-corner or marked 3-point estimation and a real satellite iframe',()=>{
+test('the calibration screen remains accessible and preserves satellite controls',()=>{
+ const map=read('artifacts/submundo-808/src/components/admin-calibration-satellite-map.tsx');
  assert.match(editor,/<AdminManualCalibration mapName=\{mapName\}/);
  assert.match(manual,/aria-label="Calibração manual de mapa"/);
- assert.match(manual,/4 cantos · recomendado/);
- assert.match(manual,/3 pontos/);
- assert.match(manual,/O quarto canto será estimado|canto inferior direito será estimado/);
- assert.match(manual,/Latitude/);
- assert.match(manual,/Longitude/);
- assert.match(manual,/Imagem de satélite · Google Maps/);
- assert.match(manual,/<iframe title="Imagem de satélite do Google Maps"/);
- assert.match(manual,/googleSatelliteEmbedUrl\(position,mapName\)/);
- assert.match(manual,/googleMapsLink\(position,mapName\)/);
- assert.match(csp,/frame-src[^\n]*https:\/\/maps\.google\.com/);
+ assert.match(manual,/Selecionar ponto/);
+ assert.match(manual,/Opacidade da planta/);
+ assert.match(manual,/Mostrar medidas \(m\)/);
+ assert.match(manual,/Mostrar contorno da planta/);
+ assert.match(manual,/onMove=\{setMapCorner\}/);
+ assert.match(map,/maps\.googleapis\.com/);
+ assert.match(manual,/Geometria válida/);
 });
-test('manual calibration requires preview and confirmation, replacing GPS points only in local editor',()=>{
- assert.match(manual,/buildManualCalibration\(values,mode\)/);
- assert.match(manual,/setReview\(true\)/);
- assert.match(manual,/role="alert"/);
- assert.match(manual,/Revisar calibração/);
- assert.match(manual,/Confirmar calibração/);
- assert.match(manual,/Aplicar ao rascunho da planta/);
- assert.match(editor,/function confirmManualCalibration\(result:/);
- assert.match(editor,/checkpoint\(\)/);
- assert.match(editor,/setAreas\(old=>old\.map\(a=>\(\{\.\.\.a,gps:a\.id===calibrationArea\.id\?result\.gps:\{\}\}\)\)\)/);
- assert.match(editor,/Calibração manual aplicada ao rascunho/);
- assert.match(editor,/Calibração preparada!/);
- assert.match(editor,/Salvar mapa/);
+test('Aplicar calibração saves immediately without double confirmation or publishing unrelated drafts',()=>{
+ const server=read('server/index.mjs');
+ const helper=read('server/map-calibration-save.mjs');
+ assert.match(manual,/async function applyCalibration\(\)/);
+ assert.match(manual,/if\(!result\.ok\)\{setError\(result\.error\);return;\}/);
+ assert.match(manual,/await onApply\(result\)/);
+ assert.match(manual,/onClick=\{\(\)=>void applyCalibration\(\)\}/);
+ assert.match(manual,/Salvando calibração/);
+ assert.match(manual,/Aplicar calibração/);
+ assert.doesNotMatch(manual,/Confirmar e aplicar ao rascunho/);
+ assert.doesNotMatch(manual,/Corrigir pontos/);
+ assert.doesNotMatch(manual,/Revisar calibração/);
+ assert.doesNotMatch(manual,/Escolher outro método/);
+ assert.doesNotMatch(manual,/role="group" aria-label="Método de calibração manual"/);
+ assert.match(editor,/async function confirmManualCalibration\(result:/);
+ assert.match(editor,/await api\('save-calibration',\{map_id:map\.id,area_id:areaId,raw_corners:result\.raw\}\)/);
+ assert.match(editor,/setManualCalibrationOpen\(false\)/);
+ assert.match(editor,/const applySavedGps=\(items:Area\[\]\)=>/);
+ assert.match(editor,/setHistory\(previous=>previous\.map\(snapshot=>/);
+ assert.match(editor,/As outras alterações da planta continuam pendentes/);
+ assert.match(server,/saveMapCalibration\(db,\{mapId:b\.map_id,areaId:b\.area_id,rawCorners:b\.raw_corners\}\)/);
+ assert.match(helper,/UPDATE map_areas SET gps_json=CASE WHEN id=\? THEN \? ELSE '\{\}' END WHERE map_id=\?/);
  assert.match(geometry,/MAP_MARGIN_METERS=5/);
 });
-test('manual modal is navigable and keeps inputs after switching methods',()=>{
- assert.match(editor,/const \[manualStarted,setManualStarted\]=useState\(false\)/);
- assert.match(editor,/if\(!manualStarted\)\{setManualValues\(manualValuesFromGps\(corners\)\)/);
+test('manual coordinates are reloaded from persisted map on every new edit, with escape and close support',()=>{
+ assert.match(editor,/setManualValues\(manualValuesFromGps\(corners\)\)/);
  assert.match(editor,/onChange=\{\(key,field,value\)=>setManualValues/);
- assert.match(editor,/onBack=\{\(\)=>\{setManualCalibrationOpen\(false\);setCalibrationChoiceOpen\(true\)/);
  assert.match(editor,/event\.key==='Escape'&&manualCalibrationOpen/);
  assert.match(manual,/aria-label="Fechar calibração manual"/);
- assert.match(manual,/Escolher outro método/);
+ assert.match(manual,/onClick=\{onClose\}/);
 });
