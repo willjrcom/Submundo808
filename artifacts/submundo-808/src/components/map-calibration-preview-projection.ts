@@ -24,7 +24,7 @@ export function calibrationPreviewProjection(
  const offsetX=(width-spanX*scale)/2,offsetY=(height-spanY*scale)/2;
  const projectGps=(p:GeoPosition):PreviewPoint=>{
   const metric=xy(p);
-  return {x:offsetX+(metric.x-minX)*scale,y:offsetY+(maxY-metric.y)*scale};
+  return {x:offsetX+(metric.x-minX)*scale,y:offsetY+(metric.y-minY)*scale};
  };
  const corners=Object.fromEntries(CORNERS.map(key=>[key,projectGps(frame[key])])) as Record<typeof CORNERS[number],PreviewPoint>;
  const pointAt=(x:number,y:number):PreviewPoint=>{
