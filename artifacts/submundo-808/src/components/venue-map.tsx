@@ -2,7 +2,8 @@ import {useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import {displayLabel} from './display-label';
-import {MapPin,Navigation,ArrowUp,Info,Music2,Warehouse,Crown,Users,DoorOpen,Sofa,Utensils,Wine,Bath,Flag,Stethoscope} from 'lucide-react';
+import {MapPin,Navigation,ArrowUp,Info} from 'lucide-react';
+import {pointIconFor} from './map-point-icons';
 import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,distanceMeters,type GpsFix} from './map-location-utils';
 import {mapPercentToGps} from './map-calibration-geometry';
 import {startInitialGps,gpsErrorText} from './gps-acquisition';
@@ -21,16 +22,12 @@ const eventEndLabel=(value:string)=>{
  return match?match[3]+'/'+match[2]+' às '+match[4]+':'+match[5]:'horário a definir';
 };
 type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number;rawCorners?:Partial<Bounds>;marginMeters?:number};color?:string;icon?:string;description?:string;geometry?:AreaGeometry};
-type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;shape?:'square'|'circle';size?:number;color?:string;description?:string;opens_at?:string;closes_at?:string;categories?:string[];access_type?:string};
+type Marker={id:string;name:string;type:string;icon?:string;x:number;y:number;anchor?:MarkerAnchor;shape?:'square'|'circle';size?:number;color?:string;description?:string;opens_at?:string;closes_at?:string;categories?:string[];access_type?:string};
 type MapData={map:{id:string;name:string;frame?:MapFrame};areas:Area[];markers:Marker[]};
 type PointProduct={id:string;name:string;description:string;category:string;effective_price_cents:number};
 const formatBRL=(n:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(n/100);
 const EMPTY_AREAS:Area[]=[];
 const EMPTY_MARKERS:Marker[]=[];
-const mapIcon=(type:string)=>{
- const icons:Record<string,typeof MapPin>={pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,passagem:DoorOpen,'posto-medico':Stethoscope};
- return icons[type]||MapPin;
-};
 const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.test(color)?color:fallback;
 // Nomes internos de seed não são títulos de navegação para o público.
 const publicMapName=(name?:string)=>{
@@ -589,10 +586,10 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  {roomLabels.map(label=>{
   const room=data?.areas.find(a=>a.id===label.id);
   if(!room)return null;
-  const Icon=mapIcon(room.icon||room.kind);
+  const Icon=pointIconFor(room.kind,room.icon);
   return <span key={'label-'+label.id} className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded border border-white/15 bg-[#100d18]/90 px-1.5 py-1 text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%',maxWidth:Math.max(room.width,10)+'%'}}><Icon size={12} className="shrink-0" style={{color:validColor(room.color)}}/><span className="truncate">{publicPointName(room.name,!!mapIsDemo)}</span></span>;
  })}
- {data?.markers.map(m=>{const Icon=mapIcon(m.type),selected=selectedMarkerId===m.id,color=selected?'#ff4b57':validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
+ {data?.markers.map(m=>{const Icon=pointIconFor(m.type,m.icon),selected=selectedMarkerId===m.id,color=selected?'#ff4b57':validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
   return <button key={m.id} type="button" onClick={()=>{setSelectedMarkerId(m.id);setPointCategory('');setPointMenuOpen(true);}}
     aria-label={publicPointName(m.name,!!mapIsDemo)+(selected?' (selecionado)':'')} aria-pressed={selected} title={m.description||publicPointName(m.name,!!mapIsDemo)}
     className={'text-center transition-[filter] duration-200 '+(selected?'z-[25] drop-shadow-[0_0_10px_#ff4b57]':'z-10')}

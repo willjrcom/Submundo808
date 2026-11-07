@@ -7,21 +7,22 @@ import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
- Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,ChevronDown,
- Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3,X
+ Eye,MousePointer2,Square,RotateCcw,Info,Group,Unplug,Blend,ChevronDown,Grid3X3,X
 } from 'lucide-react';
 import {freeAreaPosition,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,outerResizeHandles,resizeOuterGroupEdge,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 import {anchorMarker,anchorMarkerInRoom,associateMarkerWithRoom,bindMarkerToRoom,freeMarker,normalizeMarker,moveMarkerInRooms,moveRoomMarkers,roomContainingPoint,closestRoomEdge,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
+import MapPointIconSelect from './map-point-icon-select';
+import {pointIconFor} from './map-point-icons';
 import {gpsToMap,distanceMeters,type MapCorners} from './map-location-utils';
 import {GPS_CAPTURE_MS,MAP_MARGIN_METERS,CORNER_KEYS,measuredCorners,allCorners,applyMeasuredCorner,summarizeGpsSamples,cornersGeometryValid,type CornerKey,type CalibrationGps} from './map-calibration-geometry';
 
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=CalibrationGps;
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;geometry?:AreaGeometry;description?:string;color?:string;icon?:string};
-type Marker={id:string;name:string;type:string;x:number;y:number;area_id?:string;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
+type Marker={id:string;name:string;type:string;icon?:string;x:number;y:number;area_id?:string;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
 type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
@@ -30,10 +31,6 @@ const button='inline-flex items-center justify-center gap-2 rounded-xl border bo
 const colors=['#9747FF','#3B82F6','#00BDD6','#A3E635','#FF9F43','#FF456C','#EAB308'];
 const types=['principal','pista','palco','vip','backstage','recepcao','entrada','descanso','cozinha','alimentacao','bar','banheiro','saida','posto-medico','passagem','outro'];
 const typeNames:Record<string,string>={principal:'Área principal',backstage:'Backstage',pista:'Pista',palco:'Palco',vip:'Área VIP',recepcao:'Recepção',entrada:'Entrada',descanso:'Área de descanso',cozinha:'Cozinha',alimentacao:'Alimentação',bar:'Bar',banheiro:'Banheiro',saida:'Saída','posto-medico':'Posto médico',passagem:'Passagem entre ambientes',outro:'Outro'};
-const iconFor=(type:string)=>{
- const icons:Record<string,typeof MapPin>={principal:Music2,backstage:Warehouse,pista:Music2,palco:Warehouse,vip:Crown,recepcao:Users,entrada:DoorOpen,descanso:Sofa,cozinha:Utensils,alimentacao:Utensils,bar:Wine,banheiro:Bath,saida:Flag,'posto-medico':Stethoscope,passagem:DoorOpen,outro:MapPin};
- return icons[type]||MapPin;
-};
 const areaColor=(a:Area)=>/^#[0-9a-fA-F]{6}$/.test(a.color||'')?a.color!:'#9747FF';
 const pointColor=(p:Marker)=>/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color!:'#C4FF40';
 async function api(route:string,payload?:object){
@@ -631,7 +628,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      {roomLabels.map(label=>{
        const room=areas.find(area=>area.id===label.id);
        if(!room)return null;
-       const Icon=iconFor(room.icon||room.kind);
+       const Icon=pointIconFor(room.kind,room.icon);
        return <div key={'label-'+label.id}
         className="pointer-events-none absolute z-[5] flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-md border border-white/15 bg-[#100d18]/90 px-2 py-1 text-center text-[11px] font-bold text-white shadow-sm"
         style={{left:label.x+'%',top:label.y+'%',maxWidth:Math.max(room.width,10)+'%'}}>
@@ -640,7 +637,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
        </div>;
       })}
       {markers.map(m=>{
-      const Icon=iconFor(m.type);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
+      const Icon=pointIconFor(m.type,m.icon);const color=pointColor(m),size=limit(m.size||42,24,72),chosen=selected===m.id;
       return <button key={m.id} type="button" onPointerDown={e=>startDrag(e,m.id,'marker')} onClick={e=>{e.stopPropagation();if(skipClickAfterDrag.current){skipClickAfterDrag.current=false;return;}toggleSelection(m.id);}}
        title={m.description||m.name}
        className={'z-10 text-center '+(frameEditing?'pointer-events-none ':'')+(editing?'cursor-move':'cursor-pointer')}
@@ -718,7 +715,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · {selectedMarker.area_id?'vinculado ao ambiente':'livre no mapa'}</p></div></div>
      {selectedMarker.type==='passagem'&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 p-3 text-xs"><p className="font-semibold text-[#c4ff40]">Passagem entre ambientes</p><p className="text-white/55">A passagem só pode deslizar ao longo da divisória compartilhada, sem sair para dentro dos ambientes.</p><p className="text-white/60">{areas.find(a=>a.id===selectedMarker.from_area_id)?.name||'Ambiente A'} ↔ {areas.find(a=>a.id===selectedMarker.to_area_id)?.name||'Ambiente B'}</p><label className="block space-y-1">Tipo de acesso<select className={input} value={selectedMarker.access_type||'livre'} onChange={e=>updateMarker({access_type:e.target.value})}><option value="livre">Livre</option><option value="vip">VIP / Controlado</option><option value="saida">Somente saída</option><option value="staff">Equipe / Staff</option></select></label></div>}
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
-     <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
+     <label className="block space-y-1 text-xs text-white/65">Tipo do ponto<select aria-label="Tipo do ponto" className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
+     <MapPointIconSelect key={selectedMarker.id} type={selectedMarker.type} icon={selectedMarker.icon} onChange={icon=>updateMarker({icon})}/>
      <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
        <p className="font-bold text-[#c4ff40]">Posicionamento</p>
        {selectedMarker.type!=='passagem'&&<label className="block space-y-1 font-semibold text-white/70">Vinculado ao ambiente
