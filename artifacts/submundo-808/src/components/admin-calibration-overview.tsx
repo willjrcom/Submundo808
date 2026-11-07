@@ -1,4 +1,4 @@
-import {CheckCircle2,ExternalLink,MapPin,RotateCcw,X,ArrowUp} from 'lucide-react';
+import {CheckCircle2,ExternalLink,MapPin,RotateCcw,X} from 'lucide-react';
 import {areaPath,groupMembers,visibleAreas,type GeometricArea} from './map-area-shapes';
 import {allCorners,cornersGeometryValid,MAP_MARGIN_METERS,measuredCorners,type CalibrationGps,type CornerKey} from './map-calibration-geometry';
 import {distanceMeters} from './map-location-utils';
