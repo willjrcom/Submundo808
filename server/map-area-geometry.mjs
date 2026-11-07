@@ -26,7 +26,15 @@ export function validateAreaGeometries(areas){
   if(g.curve!==undefined&&g.curve!==null){
    if(!plain(g.curve)||!SIDES.has(g.curve.side)||!DIRECTIONS.has(g.curve.direction)||
       typeof g.curve.depth!=='number'||!Number.isFinite(g.curve.depth)||g.curve.depth<1||g.curve.depth>40||
-      g.shape==='ellipse')return 'Curvatura inválida.';
+      !SIDES.has(g.curve.side))return 'Curvatura inválida.';
+  }
+  if(g.curves!==undefined&&g.curves!==null){
+   if(!plain(g.curves))return 'Curvatura inválida.';
+   for(const [side,curve] of Object.entries(g.curves)){
+    if(!SIDES.has(side)||!plain(curve)||curve.side!==side||!DIRECTIONS.has(curve.direction)||
+       typeof curve.depth!=='number'||!Number.isFinite(curve.depth)||curve.depth<1||curve.depth>40)
+     return 'Curvatura inválida.';
+   }
   }
   if(g.groupId!==undefined&&g.groupId!==null){
    if(typeof g.groupId!=='string'||g.groupId.length>100||g.groupId===a.id||

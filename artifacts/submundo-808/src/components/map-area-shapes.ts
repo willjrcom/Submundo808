@@ -1,10 +1,10 @@
-import {intersects,moveArea,snapMoveTranslation,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
+import {intersects,moveArea,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
 
 export type AreaShape='rect'|'ellipse';
 export type CurveSide='top'|'right'|'bottom'|'left';
 export type CurveDirection='in'|'out';
 export type AreaCurve={side:CurveSide;direction:CurveDirection;depth:number};
-export type AreaGeometry={shape?:AreaShape;curve?:AreaCurve|null;groupId?:string|null};
+export type AreaGeometry={shape?:AreaShape;curve?:AreaCurve|null;curves?:Partial<Record<CurveSide,AreaCurve>>;groupId?:string|null};
 export type GeometricArea=MapRect&{geometry?:AreaGeometry};
 const EPS=0.001;
 const snap=(n:number)=>Math.round(n*10000)/10000;
@@ -37,9 +37,8 @@ export function moveAreaGroup<T extends GeometricArea>(areas:T[],rootId:string,x
  const highX=Math.max(...members.map(a=>a.x+a.width)),highY=Math.max(...members.map(a=>a.y+a.height));
  const desiredX=limit(x-root.x,-35-lowX,135-highX);
  const desiredY=limit(y-root.y,-35-lowY,135-highY);
- const snapped=snapEdges?snapMoveTranslation(members,others,desiredX,desiredY):{dx:desiredX,dy:desiredY};
- const dx=limit(snapped.dx,-35-lowX,135-highX);
- const dy=limit(snapped.dy,-35-lowY,135-highY);
+ const ref=moveArea([...others,root],rootId,root.x+desiredX,root.y+desiredY,snapEdges).find(a=>a.id===rootId)!;
+ const dx=ref.x-root.x,dy=ref.y-root.y;
  const moved=members.map(a=>({...a,x:snap(a.x+dx),y:snap(a.y+dy)}));
  if(moved.some(a=>a.x< -35-EPS||a.y< -35-EPS||a.x+a.width>135+EPS||a.y+a.height>135+EPS||others.some(b=>intersects(a,b))))return areas;
  return areas.map(a=>moved.find(m=>m.id===a.id)||a);
@@ -54,11 +53,18 @@ const onSegment=(from:Pt,to:Pt,area:GeometricArea,side:CurveSide)=>{
  return eq(from.x,area.x+area.width)&&eq(to.x,area.x+area.width)&&Math.min(from.y,to.y)>=area.y-EPS&&Math.max(from.y,to.y)<=area.y+area.height+EPS;
 };
 const point=(p:Pt)=>snap(p.x)+' '+snap(p.y);
+const SIDES:CurveSide[]=['top','right','bottom','left'];
+function curveAt(area:GeometricArea,side:CurveSide){
+ const geometry=geometryOf(area);
+ return geometry.curves?.[side]||(geometry.curve?.side===side?geometry.curve:null);
+}
 function curveFor(from:Pt,to:Pt,areas:GeometricArea[]){
- return areas.find(a=>{const curve=geometryOf(a).curve;return curve&&onSegment(from,to,a,curve.side);});
+ return areas.find(a=>SIDES.some(side=>curveAt(a,side)&&onSegment(from,to,a,side)));
 }
 function drawSegment(from:Pt,to:Pt,areas:GeometricArea[]){
- const area=curveFor(from,to,areas),curve=area&&geometryOf(area).curve;
+ const area=curveFor(from,to,areas);
+ const side=area&&SIDES.find(s=>onSegment(from,to,area,s)&&curveAt(area,s));
+ const curve=area&&side?curveAt(area,side):null;
  if(!area||!curve||curve.depth<=0)return 'L'+point(to);
  const dx=to.x-from.x,dy=to.y-from.y,len=Math.hypot(dx,dy);
  if(len<EPS)return '';
@@ -69,7 +75,23 @@ function drawSegment(from:Pt,to:Pt,areas:GeometricArea[]){
 }
 function ellipsePath(a:GeometricArea){
  const midX=a.x+a.width/2,midY=a.y+a.height/2,rx=a.width/2,ry=a.height/2;
- return 'M'+point({x:midX+rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX-rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX+rx,y:midY})+' Z';
+ if(!SIDES.some(side=>curveAt(a,side)))
+  return 'M'+point({x:midX+rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX-rx,y:midY})+' A'+snap(rx)+' '+snap(ry)+' 0 1 0 '+point({x:midX+rx,y:midY})+' Z';
+ // Four smooth elliptical quadrants, with independent radial offsets per side.
+ const radius=(side:CurveSide)=>{
+  const selected=curveAt(a,side);
+  return 1+(selected?(selected.direction==='out'?1:-1)*selected.depth*.007:0);
+ };
+ const top={x:midX,y:midY-ry*radius('top')};
+ const right={x:midX+rx*radius('right'),y:midY};
+ const bottom={x:midX,y:midY+ry*radius('bottom')};
+ const left={x:midX-rx*radius('left'),y:midY};
+ const k=.5522847498;
+ return 'M'+point(top)+
+  ' C'+point({x:top.x+k*rx,y:top.y})+' '+point({x:right.x,y:right.y-k*ry})+' '+point(right)+
+  ' C'+point({x:right.x,y:right.y+k*ry})+' '+point({x:bottom.x+k*rx,y:bottom.y})+' '+point(bottom)+
+  ' C'+point({x:bottom.x-k*rx,y:bottom.y})+' '+point({x:left.x,y:left.y+k*ry})+' '+point(left)+
+  ' C'+point({x:left.x,y:left.y-k*ry})+' '+point({x:top.x-k*rx,y:top.y})+' '+point(top)+' Z';
 }
 function unionPath(areas:GeometricArea[]){
  const xs=[...new Set(areas.flatMap(a=>[snap(a.x),snap(a.x+a.width)]))].sort((a,b)=>a-b);

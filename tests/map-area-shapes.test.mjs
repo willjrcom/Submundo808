@@ -64,3 +64,24 @@ test('geometrias antigas sem metadata são retangulares e legíveis',()=>{
  assert.deepEqual(parseAreaGeometry('{invalid'),{});
  assert.match(areaPath([{id:'legacy',x:0,y:0,width:20,height:10}],'legacy'),/^M/);
 });
+
+test('individual room sides can be curved independently',()=>{
+ const area={...base[0],geometry:{shape:'rect',curves:{top:{side:'top',direction:'in',depth:20},right:{side:'right',direction:'out',depth:35}}}};
+ const path=areaPath([area],'principal');
+ assert.ok((path.match(/Q/g)||[]).length>=2);
+ assert.equal(validateAreaGeometries([area]),null);
+ const onlyTop=areaPath([{...area,geometry:{...area.geometry,curves:{top:area.geometry.curves.top}}}],'principal');
+ assert.notEqual(path,onlyTop);
+});
+test('oval with one adjusted edge preserves a smooth silhouette',()=>{
+ const oval={...base[0],geometry:{shape:'ellipse',curves:{left:{side:'left',direction:'in',depth:28}}}};
+ const path=areaPath([oval],'principal');
+ assert.match(path,/C/);
+ assert.equal(validateAreaGeometries([oval]),null);
+ assert.notEqual(path,areaPath([{...oval,geometry:{shape:'ellipse'}}],'principal'));
+});
+test('backend rejects invalid per-side curves',()=>{
+ assert.match(validateAreaGeometries([{...base[0],geometry:{shape:'ellipse',curves:{north:{side:'north',direction:'out',depth:20}}}}]),/Curvatura/);
+ assert.match(validateAreaGeometries([{...base[0],geometry:{curves:{left:{side:'left',direction:'out',depth:41}}}}]),/Curvatura/);
+ assert.match(validateAreaGeometries([{...base[0],geometry:{curves:[]}}]),/Curvatura/);
+});
