@@ -1,4 +1,4 @@
-import {intersects,moveArea,snapMoveTranslation,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
+import {intersects,moveArea,snapMoveTranslation,sharesBorder,resizeShared,limit,type MapRect,type Edge} from './map-layout-geometry.ts';
 
 export type AreaShape='rect'|'ellipse';
 export type CurveSide='top'|'right'|'bottom'|'left';
@@ -43,6 +43,61 @@ export function moveAreaGroup<T extends GeometricArea>(areas:T[],rootId:string,x
  const moved=members.map(a=>({...a,x:snap(a.x+dx),y:snap(a.y+dy)}));
  if(moved.some(a=>a.x< -35-EPS||a.y< -35-EPS||a.x+a.width>135+EPS||a.y+a.height>135+EPS||others.some(b=>intersects(a,b))))return areas;
  return areas.map(a=>moved.find(m=>m.id===a.id)||a);
+}
+
+/** A joined side is not a resize handle. Keep the original rectangles independent. */
+export type OuterResizeHandle={areaId:string;edge:Edge;x:number;y:number};
+const outerSides:Edge[]=['left','right','top','bottom'];
+const hasSpan=(a:number,b:number,c:number,d:number)=>Math.min(b,d)-Math.max(a,c)>EPS;
+function siblingCoversSide(a:GeometricArea,b:GeometricArea,side:Edge){
+ if(side==='left'||side==='right'){
+  const x=side==='left'?a.x:a.x+a.width;
+  return b.x<=x+EPS&&b.x+b.width>=x-EPS&&hasSpan(a.y,a.y+a.height,b.y,b.y+b.height);
+ }
+ const y=side==='top'?a.y:a.y+a.height;
+ return b.y<=y+EPS&&b.y+b.height>=y-EPS&&hasSpan(a.x,a.x+a.width,b.x,b.x+b.width);
+}
+/** Expose only full external edges of each saved piece, including grouped children.
+ * A partially shared edge remains locked: resizing it as a whole would move
+ * the internal seam and break an adjacent rectangle.
+ */
+export function outerResizeHandles<T extends GeometricArea>(areas:T[],rootId:string):OuterResizeHandle[]{
+ const root=areas.find(a=>a.id===rootId);
+ if(!root||root.geometry?.groupId)return [];
+ const members=groupMembers(areas,rootId);
+ return members.flatMap(room=>outerSides
+  .filter(edge=>!members.some(sibling=>sibling.id!==room.id&&siblingCoversSide(room,sibling,edge)))
+  .map(edge=>({
+   areaId:room.id,edge,
+   x:edge==='left'?room.x:edge==='right'?room.x+room.width:room.x+room.width/2,
+   y:edge==='top'?room.y:edge==='bottom'?room.y+room.height:room.y+room.height/2
+  })));
+}
+function groupsRemainConnected(areas:GeometricArea[]){
+ for(const root of visibleAreas(areas)){
+  const members=groupMembers(areas,root.id);
+  if(members.length<=1)continue;
+  const reached=new Set([root.id]);let changed=true;
+  while(changed){
+   changed=false;
+   for(const item of members){
+    if(reached.has(item.id))continue;
+    if(members.some(other=>reached.has(other.id)&&(sharesBorder(item,other)||intersects(item,other)))){
+     reached.add(item.id);changed=true;
+    }
+   }
+  }
+  if(reached.size!==members.length)return false;
+ }
+ return true;
+}
+/** Resize the selected rectangular piece without allowing hidden internal seams to move.
+ * Validate after snapping and after any changes to adjacent independent rooms.
+ */
+export function resizeOuterGroupEdge<T extends GeometricArea>(areas:T[],rootId:string,partId:string,edge:Edge,delta:number,snapEdges=true):T[]{
+ if(!outerResizeHandles(areas,rootId).some(h=>h.areaId===partId&&h.edge===edge))return areas;
+ const next=resizeShared(areas,partId,edge,delta,snapEdges);
+ return groupsRemainConnected(next)?next:areas;
 }
 
 type Pt={x:number;y:number};

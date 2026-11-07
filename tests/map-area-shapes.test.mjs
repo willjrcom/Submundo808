@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {areaPath,visibleAreas,canGroup,groupWith,ungroup,isGrouped,moveAreaGroup} from '../artifacts/submundo-808/src/components/map-area-shapes.ts';
+import {areaPath,visibleAreas,canGroup,groupWith,ungroup,isGrouped,moveAreaGroup,outerResizeHandles,resizeOuterGroupEdge} from '../artifacts/submundo-808/src/components/map-area-shapes.ts';
 import {validateAreaGeometries,parseAreaGeometry} from '../server/map-area-geometry.mjs';
 
 const room=(id,x,y,width=20,height=20)=>({id,x,y,width,height,geometry:{shape:'rect'}});
@@ -84,4 +84,42 @@ test('backend rejects invalid per-side curves',()=>{
  assert.match(validateAreaGeometries([{...base[0],geometry:{shape:'ellipse',curves:{north:{side:'north',direction:'out',depth:20}}}}]),/Curvatura/);
  assert.match(validateAreaGeometries([{...base[0],geometry:{curves:{left:{side:'left',direction:'out',depth:41}}}}]),/Curvatura/);
  assert.match(validateAreaGeometries([{...base[0],geometry:{curves:[]}}]),/Curvatura/);
+});
+
+test('grouped rectangles can resize each original piece only along fully exterior sides',()=>{
+ const grouped=groupWith([room('main',10,10,30,30),room('wing',40,20,15,15)],'main','wing');
+ const handles=outerResizeHandles(grouped,'main');
+ assert.deepEqual(handles.filter(h=>h.areaId==='main').map(h=>h.edge),['left','top','bottom']);
+ assert.deepEqual(handles.filter(h=>h.areaId==='wing').map(h=>h.edge),['right','top','bottom']);
+ const changed=resizeOuterGroupEdge(grouped,'main','wing','right',8,false);
+ assert.equal(changed[1].width,23);
+ assert.deepEqual(changed[0],grouped[0]);
+ assert.equal(changed[1].geometry.groupId,'main');
+ assert.equal(validateAreaGeometries(changed),null);
+ assert.ok(areaPath(changed,'main').startsWith('M'));
+ assert.deepEqual(resizeOuterGroupEdge(grouped,'main','wing','left',-3,false),grouped);
+ assert.deepEqual(resizeOuterGroupEdge(grouped,'main','main','right',3,false),grouped);
+});
+
+test('main rectangle of a group can resize its own outside border',()=>{
+ const grouped=groupWith([room('main',10,10,20,20),room('wing',30,10,12,20)],'main','wing');
+ const changed=resizeOuterGroupEdge(grouped,'main','main','left',-5,false);
+ assert.equal(changed[0].x,5);
+ assert.equal(changed[0].width,25);
+ assert.deepEqual(changed[1],grouped[1]);
+ assert.equal(validateAreaGeometries(changed),null);
+});
+
+test('grouped rooms cannot be disconnected by resizing a different outer edge',()=>{
+ const grouped=groupWith([room('main',10,10,20,20),room('wing',30,25,15,5)],'main','wing');
+ assert.deepEqual(resizeOuterGroupEdge(grouped,'main','main','bottom',-6,false),grouped);
+ const other=room('outside',60,20,20,20);
+ const snapped=resizeOuterGroupEdge([...grouped,other],'main','wing','right',14.5,true);
+ assert.equal(snapped[1].x+snapped[1].width,60);
+ assert.deepEqual(snapped[2],other);
+ assert.equal(validateAreaGeometries(snapped),null);
+});
+
+test('ungrouped rooms retain resize handles on all four edges',()=>{
+ assert.deepEqual(outerResizeHandles([room('solo',10,10,20,20)],'solo').map(h=>h.edge),['left','right','top','bottom']);
 });
