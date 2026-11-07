@@ -55,6 +55,11 @@ function sharedEdges(areas:Area[]){
  }
  return edges;
 }
+function editableAreaGeometry(area:Area):AreaGeometry{
+ const geometry=area.geometry||{},legacy=geometry.curve;
+ return {...geometry,shape:geometry.shape||'rect',curve:null,
+  curves:{...(legacy?{[legacy.side]:legacy}:{}),...(geometry.curves||{})}};
+}
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
  const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false),[renameOpen,setRenameOpen]=useState(false);
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
@@ -62,7 +67,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false),[editMenuOpen,setEditMenuOpen]=useState(false);
- const [curveDraft,setCurveDraft]=useState<AreaGeometry|null>(null);
+ const [curvePartId,setCurvePartId]=useState('');
+ const [curveDrafts,setCurveDrafts]=useState<Record<string,AreaGeometry>>({});
  const [formatSide,setFormatSide]=useState<CurveSide>('top');
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [draftUnavailable,setDraftUnavailable]=useState(false);
@@ -114,16 +120,21 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
  const setCanvasRef=useCallback((element:HTMLDivElement|null)=>{canvas.current=element;setMapElement(element);},[setMapElement]);
  const active=areas.find(a=>a.id===selected);
- // Render the draft silhouette while editing; persisted map geometry changes only on Apply.
- const previewAreas=curveOpen&&active
-  ?areas.map(a=>a.id===active.id?{...a,geometry:curveDraft||a.geometry}:a)
-  :areas;
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
  const passages=sharedEdges(areas);
  const visibleRooms=visibleAreas(areas);
  const grouped=isGrouped(areas,active?.id||'');
  const groupCandidates=active?visibleRooms.filter(a=>a.id!==active.id&&canGroup(areas,active.id,a.id)):[];
+ const curveParts=active?groupMembers(areas,active.id):[];
+ const curveHandles=active?outerResizeHandles(areas,active.id):[];
+ const curveTarget=curveParts.find(a=>a.id===curvePartId);
+ const curveDraft=curveTarget?(curveDrafts[curveTarget.id]||editableAreaGeometry(curveTarget)):null;
+ const freeCurveSides=curveHandles.filter(h=>h.areaId===curvePartId).map(h=>h.edge as CurveSide);
+ // Preview changes to all the selected group's parts, leaving the original intact.
+ const previewAreas=curveOpen&&active
+  ?areas.map(a=>curveDrafts[a.id]?{...a,geometry:curveDrafts[a.id]}:a)
+  :areas;
  const areasOutside=areas.filter(a=>a.x<0||a.y<0||a.x+a.width>100||a.y+a.height>100).length;
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
@@ -235,7 +246,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(id);setNotice('Ambiente selecionado. Arraste o interior para mover ou as alças para redimensionar.');
  }
  function confirmGroup(){
-  if(!active||!groupChoice||!canGroup(areas,active.id,groupChoice)){setError('Escolha um ambiente retangular que encoste no ambiente selecionado.');return;}
+  if(!active||!groupChoice||!canGroup(areas,active.id,groupChoice)){setError('Escolha um ambiente ou grupo retangular conectado ao ambiente selecionado.');return;}
   checkpoint();setAreas(groupWith(areas,active.id,groupChoice));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(active.id);setEditLayout(true);
   setNotice('Ambientes agrupados em uma única silhueta, sem divisória interna. Salve o mapa para publicar.');
  }
@@ -245,29 +256,52 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setNotice('Ambientes desagrupados. As partes originais foram preservadas.');
  }
  function openCurveEditor(){
-  if(!active||grouped)return;
-  const legacy=active.geometry?.curve;
-  setCurveDraft({...active.geometry,shape:active.geometry?.shape||'rect',curve:null,
-   curves:{...(legacy?{[legacy.side]:legacy}:{}),...(active.geometry?.curves||{})}});
-  setFormatSide(legacy?.side||'top');
+  if(!active)return;
+  const first=curveParts.find(part=>curveHandles.some(h=>h.areaId===part.id))||active;
+  const sides=curveHandles.filter(h=>h.areaId===first.id).map(h=>h.edge as CurveSide);
+  const preferred=first.geometry?.curve?.side;
+  setCurvePartId(first.id);setCurveDrafts({});
+  setFormatSide(preferred&&sides.includes(preferred)?preferred:sides[0]||'top');
   setGroupOpen(false);setEditMenuOpen(false);setCurveOpen(true);
  }
+ function chooseCurvePart(id:string){
+  if(!curveParts.some(part=>part.id===id))return;
+  const sides=curveHandles.filter(h=>h.areaId===id).map(h=>h.edge as CurveSide);
+  if(!sides.length)return;
+  setCurvePartId(id);
+  setFormatSide(sides.includes(formatSide)?formatSide:sides[0]);
+ }
  function updateCurve(patch:Partial<NonNullable<AreaGeometry['curve']>>){
-  setCurveDraft(current=>{
-   const curves={...(current?.curves||{})};
+  if(!curveTarget||!freeCurveSides.includes(formatSide))return;
+  setCurveDrafts(drafts=>{
+   const current=drafts[curvePartId]||editableAreaGeometry(curveTarget);
+   const curves={...(current.curves||{})};
    const next={side:formatSide,direction:'in' as CurveDirection,depth:20,...curves[formatSide],...patch};
    if(next.depth<=0)delete curves[formatSide];
    else curves[formatSide]=next;
-   return {...current,curves,curve:null};
+   return {...drafts,[curvePartId]:{...current,curves,curve:null}};
   });
  }
- function applyCurve(){
-  if(!active||!curveDraft)return;
-  const geometry={...active.geometry,...curveDraft,curve:null};
-  if(JSON.stringify(active.geometry)!==JSON.stringify(geometry))updateArea({geometry});
-  setCurveOpen(false);setCurveDraft(null);
+ function setCurveShape(shape:'rect'|'ellipse'){
+  if(!curveTarget||(grouped&&shape==='ellipse'))return;
+  setCurveDrafts(drafts=>({...drafts,[curvePartId]:{
+   ...(drafts[curvePartId]||editableAreaGeometry(curveTarget)),shape
+  }}));
  }
- function cancelCurve(){setCurveOpen(false);setCurveDraft(null);}
+ function applyCurve(){
+  if(!active)return;
+  const updated=areas.map(a=>{
+   const draft=curveDrafts[a.id];
+   if(!draft)return a;
+   const geometry={...a.geometry,...draft,shape:grouped?'rect':draft.shape,curve:null};
+   return JSON.stringify(a.geometry)===JSON.stringify(geometry)?a:{...a,geometry};
+  });
+  if(updated.some((a,i)=>a!==areas[i])){
+   checkpoint();setAreas(updated);setMarkers(moveRoomMarkers(markers,areas,updated));
+  }
+  setCurveOpen(false);setCurveDrafts({});setCurvePartId('');
+ }
+ function cancelCurve(){setCurveOpen(false);setCurveDrafts({});setCurvePartId('');}
  function createPassage(a:Area,b:Area,x:number,y:number){
   checkpoint();const id=crypto.randomUUID();
   setMarkers(v=>[...v,{id,name:'Passagem '+a.name+' / '+b.name,type:'passagem',x,y,from_area_id:a.id,to_area_id:b.id,access_type:'livre',shape:'square',size:30,color:'#C4FF40',description:''}]);
@@ -544,9 +578,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
   </div>
-  {groupOpen&&active&&!grouped&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget)setGroupOpen(false);}}><section role="dialog" aria-modal="true" aria-label="Agrupar ambientes" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] space-y-3 overflow-y-auto rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] p-4 shadow-2xl sm:p-6">
+  {groupOpen&&active&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget)setGroupOpen(false);}}><section role="dialog" aria-modal="true" aria-label="Agrupar ambientes" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] space-y-3 overflow-y-auto rounded-2xl border border-[#c4ff40]/40 bg-[#17111e] p-4 shadow-2xl sm:p-6">
    <p className="text-sm font-semibold">Agrupar ao ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
-   <p className="text-xs text-white/60">Escolha outra parte que encoste neste ambiente. As bordas internas desaparecem; cada peça poderá ser recuperada ao desagrupar.</p>
+   <p className="text-xs text-white/60">Escolha outro ambiente ou grupo que encoste em qualquer parte do conjunto. As bordas internas desaparecem; as peças são preservadas ao desagrupar.</p>
    <div className="flex flex-wrap items-end gap-2">
     <label className="min-w-[190px] flex-1 space-y-1 text-xs text-white/65">Ambiente para agrupar
      <select className={input} value={groupChoice} onChange={e=>setGroupChoice(e.target.value)}><option value="">Selecione um ambiente</option>{groupCandidates.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
@@ -554,7 +588,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     <button type="button" disabled={!groupChoice} onClick={confirmGroup} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black disabled:opacity-40">Agrupar selecionados</button>
     <button type="button" onClick={()=>setGroupOpen(false)} className={button}>Cancelar</button>
    </div>
-   {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes retangulares encostados neste. Arraste a segunda parte até uma borda para habilitar o agrupamento.</p>}
+   {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes ou grupos retangulares conectados. Arraste a nova parte até encostar em uma das bordas do grupo.</p>}
   </section></div>}
   {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
    <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
@@ -574,10 +608,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         <Pencil size={16}/> Editar <ChevronDown size={16} className={editMenuOpen?'rotate-180 transition-transform':'transition-transform'}/>
        </button>
        {editMenuOpen&&<div role="menu" aria-label={'Editar '+active.name} className="z-[70] w-52 max-w-full overflow-hidden rounded-2xl border border-[#c4ff40]/45 bg-[#1b1523] p-1.5 text-sm text-white shadow-2xl">
-        {grouped?
-         <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>:
-         <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>}
-        <button type="button" role="menuitem" disabled={grouped} title={grouped?'Desagrupe para editar cada formato':'Editar formato e curvaturas'} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Formato</button>
+        {grouped&&<button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>}
+        <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>
+        <button type="button" role="menuitem" title="Editar formato e curvaturas externas" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Formato</button>
        </div>}
       </div>}
      <div ref={setCanvasRef}
@@ -656,20 +689,29 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>
    </div>
    <aside className="min-w-0 space-y-4 self-start rounded-xl border border-white/10 bg-[#16111e] p-4">
-    <div className="flex items-center justify-between gap-2"><h3 className="font-black">{curveOpen&&active&&!grouped?'Formato · '+active.name:frameEditing?'Editar área do mapa':'Editar item'}</h3>{curveOpen&&active&&!grouped?<button type="button" onClick={cancelCurve} aria-label="Cancelar edição do formato" className={button}><X size={16}/></button>:(active||selectedMarker)&&<button onClick={removeSelected} aria-label="Excluir item" className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10"><Trash2 size={16}/></button>}</div>
-    {curveOpen&&active&&!grouped?<section aria-label="Controles de curvatura" className="space-y-3">
+    <div className="flex items-center justify-between gap-2"><h3 className="font-black">{curveOpen&&active?'Formato · '+active.name:frameEditing?'Editar área do mapa':'Editar item'}</h3>{curveOpen&&active?<button type="button" onClick={cancelCurve} aria-label="Cancelar edição do formato" className={button}><X size={16}/></button>:(active||selectedMarker)&&<button onClick={removeSelected} aria-label="Excluir item" className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10"><Trash2 size={16}/></button>}</div>
+    {curveOpen&&active?<section aria-label="Controles de curvatura" className="space-y-3">
      <p role="status" className="text-xs text-[#c4ff40]">Prévia em tempo real no mapa ao lado. As alterações só são aplicadas ao confirmar.</p>
    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Escolher formato do ambiente">
-    <button type="button" aria-pressed={curveDraft?.shape!=='ellipse'} onClick={()=>setCurveDraft(draft=>({...draft,shape:'rect'}))}
+    <button type="button" aria-pressed={curveDraft?.shape!=='ellipse'} onClick={()=>setCurveShape('rect')}
      className={button+' '+(curveDraft?.shape!=='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Retangular</button>
-    <button type="button" aria-pressed={curveDraft?.shape==='ellipse'} onClick={()=>setCurveDraft(draft=>({...draft,shape:'ellipse'}))}
+    <button type="button" disabled={grouped} title={grouped?'O formato oval exige desagrupar os ambientes':'Alterar para oval ou redondo'} aria-pressed={curveDraft?.shape==='ellipse'} onClick={()=>setCurveShape('ellipse')}
      className={button+' '+(curveDraft?.shape==='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current"/> Oval / redondo</button>
    </div>
-   <p className="text-xs leading-relaxed text-white/55">Selecione uma borda para curvar individualmente. No modo oval, cada lado pode ficar mais aberto ou fechado. O círculo depende das proporções do ambiente.</p>
+   {grouped&&<p role="note" className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 text-xs text-amber-100">Não é possível curvar lados que já foram agrupados. Escolha uma parte e uma borda externa livre. O formato oval só está disponível após desagrupar.</p>}
+    {grouped&&<label className="block space-y-1 text-xs text-white/65">Parte do grupo
+     <select aria-label="Parte do grupo para curvar" className={input} value={curvePartId} onChange={e=>chooseCurvePart(e.target.value)}>
+      {curveParts.map((part,index)=><option key={part.id} value={part.id} disabled={!curveHandles.some(handle=>handle.areaId===part.id)}>{part.name} · parte {index+1}{!curveHandles.some(handle=>handle.areaId===part.id)?' (sem bordas livres)':''}</option>)}
+     </select>
+    </label>}
+    <p className="text-xs leading-relaxed text-white/55">{grouped?'A curvatura altera apenas a parte selecionada e mantém as divisórias internas protegidas.':'Selecione uma borda para curvar individualmente. No modo oval, cada lado pode ficar mais aberto ou fechado. O círculo depende das proporções do ambiente.'}</p>
    <div className="grid gap-3">
     <label className="space-y-1 text-xs text-white/65">Borda
      <select aria-label="Borda para curvar" className={input} value={formatSide} onChange={e=>setFormatSide(e.target.value as CurveSide)}>
-      <option value="top">Superior</option><option value="right">Direita</option><option value="bottom">Inferior</option><option value="left">Esquerda</option>
+      <option value="top" disabled={!freeCurveSides.includes('top')}>Superior{grouped&&!freeCurveSides.includes('top')?' · agrupada':''}</option>
+       <option value="right" disabled={!freeCurveSides.includes('right')}>Direita{grouped&&!freeCurveSides.includes('right')?' · agrupada':''}</option>
+       <option value="bottom" disabled={!freeCurveSides.includes('bottom')}>Inferior{grouped&&!freeCurveSides.includes('bottom')?' · agrupada':''}</option>
+       <option value="left" disabled={!freeCurveSides.includes('left')}>Esquerda{grouped&&!freeCurveSides.includes('left')?' · agrupada':''}</option>
      </select>
     </label>
     <label className="space-y-1 text-xs text-white/65">Direção
@@ -700,8 +742,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <div className="space-y-2 text-xs text-white/65">
       <p>Formato do ambiente</p>
       <p className="text-white/70">{active.geometry?.shape==='ellipse'?'Oval / redondo':'Retangular'} · {new Set([...Object.keys(active.geometry?.curves||{}),...(active.geometry?.curve?[active.geometry.curve.side]:[])]).size} borda(s) curvas</p>
-      <button type="button" disabled={grouped} onClick={openCurveEditor} className={button+' w-full justify-center disabled:opacity-40'}><Blend size={15}/> Editar formato</button>
-      {grouped&&<p className="text-[11px] text-white/50">Desagrupe para alterar o formato das partes.</p>}
+      <button type="button" onClick={openCurveEditor} className={button+' w-full justify-center'}><Blend size={15}/> Editar formato</button>
+      {grouped&&<p className="text-[11px] text-white/50">Você pode curvar as bordas externas livres de cada parte. Bordas internas ficam protegidas.</p>}
      </div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} value={active.name} maxLength={100} onChange={e=>updateArea({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Tipo e ícone<select className={input} value={active.icon||active.kind} onChange={e=>updateArea({kind:e.target.value,icon:e.target.value})}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
