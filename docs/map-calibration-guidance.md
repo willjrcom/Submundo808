@@ -2,7 +2,8 @@
 
 ## Administração
 
-- Abra o editor da planta de um estabelecimento e toque em **Calibrar mapa**.
+- Abra o editor da planta de um estabelecimento. Sem calibração válida, toque em **Calibrar mapa**. Com quatro pontos válidos, o botão muda para **Ver calibração**, que abre uma consulta somente leitura, com perspectiva dos ambientes, dimensões, margem e coordenadas originais. O botão **Recalibrar** inicia novamente a escolha entre GPS e coordenadas manuais.
+- Na calibração manual, um esboço indica **↑ Topo do desenho**, que não representa necessariamente o norte geográfico. Quatro botões **+** numerados ficam distribuídos pelas bordas do desenho para selecionar os **quatro cantos técnicos** armazenados (`tl/tr/br/bl`), sem fingir que os pontos médios das bordas foram medidos. A seleção leva ao campo correspondente. O quarto ponto estimado continua explicitamente sinalizado no modo de três pontos.
 - Os quatro controles **+** agora ficam **sobre os respectivos cantos da própria planta**, sem depender de rótulos externos. Cantos medidos passam a exibir ✓.
 - Fique parado no canto, dentro do espaço, e toque no seu botão. O aplicativo solicita posições GPS durante **8 segundos**, com contagem regressiva e barra de progresso real.
 - Ao concluir, o administrador vê a posição estimada, a precisão reportada pelo aparelho e a quantidade de leituras aproveitadas. Pode **Confirmar ponto**, **Mapear novamente** ou **Cancelar** sem modificar a planta.
