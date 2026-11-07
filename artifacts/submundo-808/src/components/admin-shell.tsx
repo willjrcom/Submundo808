@@ -9,15 +9,17 @@ import {ErrorBoundary} from './error-boundary';
 import { useEffect, useState } from 'react';
 import { EventEditor } from './admin-editors';
 import AdminMapWorkspace from './admin-map-workspace';
-import AdminVenueMaps from './admin-venue-maps';
+import AdminVenueDashboard from './admin-venue-dashboard';
+import AdminEventDashboard from './admin-event-dashboard';
 import AdminEventList from './admin-event-list';
+import {compressVenueImage} from './compress-venue-image';
 import AdminCrowd from './admin-crowd';
 import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
 import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Users, ShoppingBag, Star, Bell, Menu, X } from 'lucide-react';
-type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[];location_sharing_enabled?:number};
+type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;cover_image?:string;logo_image?:string;description?:string;starts_at?:string;ends_at?:string;doors_at?:string;site_url?:string;tickets_url?:string;map_ids?:string[];lineup?:{nome:string;inicio?:string;fim?:string}[];location_sharing_enabled?:number;is_published?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm text-white placeholder:text-white/40';
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao salvar');return j;}
@@ -26,16 +28,19 @@ export default function AdminShell(){
  const [databaseEngine,setDatabaseEngine]=useState<'postgresql'|'sqlite'|'unknown'>('unknown');
  const [accentColor,setAccentColor]=useState(DEFAULT_COLOR),[accentStatus,setAccentStatus]=useState(''),[accentSaving,setAccentSaving]=useState(false);
  const [settings,setSettings]=useState({minimum_age:18,entry_rules:'',accepted_documents:'',cancellation_policy:'',contact_name:'Submundo 808',contact_phone:''}),[settingsNotice,setSettingsNotice]=useState('');
- const [venueTab,setVenueTab]=useState<'maps'|'info'|'events'>(window.location.pathname.includes('/events/')||window.location.pathname.endsWith('/analytics')?'events':'info');
  const [currentPath,setCurrentPath]=useState(window.location.pathname);
  const [navOpen,setNavOpen]=useState(false);
  const [exampleOpen,setExampleOpen]=useState(false);
+ const [venueModalId,setVenueModalId]=useState<string|null>(null),[eventModalId,setEventModalId]=useState<string|null>(null);
+ const [photoBusy,setPhotoBusy]=useState(false),[coverImage,setCoverImage]=useState(''),[logoImage,setLogoImage]=useState('');
  const [user,setUser]=useState<User|null|undefined>(undefined),[route,setRoute]=useState<AdminRoute>(()=>parseAdminRoute(window.location.pathname)),[listsLoaded,setListsLoaded]=useState(false),[loadFailed,setLoadFailed]=useState(false);
  const [venues,setVenues]=useState<Item[]>([]),[maps,setMaps]=useState<Item[]>([]),[events,setEvents]=useState<Item[]>([]),[stats,setStats]=useState({totalUsers:0,activeUsers:0,sharingNow:0});
  const [name,setName]=useState(''),[address,setAddress]=useState(''),[city,setCity]=useState(''),[postalCode,setPostalCode]=useState(''),[street,setStreet]=useState(''),[neighborhood,setNeighborhood]=useState(''),[complement,setComplement]=useState(''),[addressUrl,setAddressUrl]=useState(''),[services,setServices]=useState(''),[venueSearch,setVenueSearch]=useState(''),[filteredVenues,setFilteredVenues]=useState<Item[]|null>(null),[searchBusy,setSearchBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
 
  const section=route.section,creating=route.creating;
  const editing=(section==='Estabelecimentos'?venues:section==='Eventos'?events:[]).find(item=>item.id===route.id)||null;
+ const modalVenue=venueModalId?venues.find(item=>item.id===venueModalId)||null:null;
+ const modalEvent=eventModalId?events.find(item=>item.id===eventModalId)||null:null;
  const openedMap=route.mapId?maps.find(item=>item.id===route.mapId&&item.venue_id===route.id):null;
  const venueEvents=events.filter(item=>item.venue_id===route.id);
  const selectedVenueEvent=route.eventId?venueEvents.find(item=>item.id===route.eventId):null;
@@ -44,14 +49,14 @@ export default function AdminShell(){
  useEffect(()=>{void api('event-settings').then(j=>setSettings(j.settings)).catch(()=>{});void api('branding').then(j=>{setBrandLogo(j.logo||'');setAccentColor(j.color||DEFAULT_COLOR);}).catch(()=>{});},[]);
  useEffect(()=>{if(section!=='Preferências'||!user?.isAdmin)return;let active=true;void api('database-status').then(j=>{if(active)setDatabaseEngine(j.engine==='postgresql'?'postgresql':j.engine==='sqlite'?'sqlite':'unknown');}).catch(()=>{if(active)setDatabaseEngine('unknown');});return()=>{active=false;};},[section,user?.isAdmin]);
  useEffect(()=>{let alive=true;fetch('/api/auth/me',{credentials:'same-origin'}).then(r=>r.json()).then(j=>{if(!alive)return;setUser(j.user);if(j.user?.isAdmin)void reload().catch(e=>{if(alive){setError(String(e));setLoadFailed(true);}}).finally(()=>{if(alive)setListsLoaded(true);});else setListsLoaded(true);}).catch(()=>{if(alive){setUser(null);setListsLoaded(true);}});return()=>{alive=false;};},[]);
- useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setVenueTab(window.location.pathname.includes('/events/')||window.location.pathname.endsWith('/analytics')?'events':'info');setError('');};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
+ useEffect(()=>{const onPop=()=>{setNavOpen(false);setCurrentPath(window.location.pathname);setRoute(parseAdminRoute(window.location.pathname));setVenueModalId(null);setEventModalId(null);setError('');};window.addEventListener('popstate',onPop);return()=>window.removeEventListener('popstate',onPop);},[]);
  useEffect(()=>{
   if(!navOpen)return;
   const onEscape=(e:KeyboardEvent)=>{if(e.key==='Escape')setNavOpen(false);};
   document.addEventListener('keydown',onEscape);
   return()=>document.removeEventListener('keydown',onEscape);
  },[navOpen]);
- useEffect(()=>{const location=venueLocation(editing);setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setPostalCode(location.postalCode);setStreet(location.street);setNeighborhood(location.neighborhood);setComplement(editing?.complement||'');setAddressUrl(editing?.address_url||'');setServices(editing?.services||'');},[section,route.id,route.creating,editing?.id]);
+ useEffect(()=>{const location=venueLocation(editing);setName(editing?.name||'');setAddress(editing?.address||'');setCity(editing?.city||'');setPostalCode(location.postalCode);setStreet(location.street);setNeighborhood(location.neighborhood);setComplement(editing?.complement||'');setAddressUrl(editing?.address_url||'');setServices(editing?.services||'');setCoverImage(editing?.cover_image||'');setLogoImage(editing?.logo_image||'');},[section,route.id,route.creating,editing?.id]);
  useEffect(()=>{if(section!=='Visão geral'||!user?.isAdmin)return;const t=setInterval(()=>void api('overview').then(setStats).catch(()=>{}),30000);return ()=>clearInterval(t);},[section,user?.isAdmin]);
  // Preserve old /mapas/:id bookmarks while removing the standalone menu.
  useEffect(()=>{
@@ -72,27 +77,72 @@ export default function AdminShell(){
    setCurrentPath(path);setRoute(next);
   },[section]);
   useEffect(()=>{if(section!=='Estabelecimentos'||creating||route.id){setFilteredVenues(null);return;}let alive=true;const controller=new AbortController();const timer=setTimeout(()=>{setSearchBusy(true);fetch('/api/admin/search-venues?q='+encodeURIComponent(venueSearch),{credentials:'same-origin',signal:controller.signal}).then(async r=>{const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na busca');return j;}).then(j=>{if(alive)setFilteredVenues(j.items);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(String(e));}).finally(()=>{if(alive)setSearchBusy(false);});},250);return()=>{alive=false;controller.abort();clearTimeout(timer);};},[venueSearch,section,creating,route.id,venues]);
- function go(next:AdminRoute){setNavOpen(false);setExampleOpen(false);const path=adminRoutePath(next);setCurrentPath(path);if(next.section==='Estabelecimentos'){if(next.analytics||next.eventId)setVenueTab('events');else if(next.id!==route.id)setVenueTab('info');}if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');}
+ function go(next:AdminRoute){setNavOpen(false);setExampleOpen(false);setVenueModalId(null);setEventModalId(null);const path=adminRoutePath(next);setCurrentPath(path);if(window.location.pathname!==path)window.history.pushState({},'',path);setRoute(next);setError('');setNotice('');}
  function navigate(next:AdminSection){go({section:next,id:null,creating:false});}
  function edit(item:Item){go({section,id:item.id,creating:false});}
  function back(){
-  if(route.eventId){go({section:'Estabelecimentos',id:route.id,creating:false});setVenueTab('events');return;}
-  if(route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});setVenueTab('maps');return;}
+  if(route.eventId||route.mapId){go({section:'Estabelecimentos',id:route.id,creating:false});return;}
   go({section,id:null,creating:false});
  }
  function openMap(mapId:string){if(!route.id)return;go({section:'Estabelecimentos',id:route.id,creating:false,mapId});}
+ function openVenueEdit(item:Item){
+  const location=venueLocation(item);
+  setName(item.name);setAddress(item.address||'');setCity(item.city||'');
+  setPostalCode(location.postalCode);setStreet(location.street);setNeighborhood(location.neighborhood);
+  setComplement(item.complement||'');setAddressUrl(item.address_url||'');setServices(item.services||'');
+  setCoverImage(item.cover_image||'');setLogoImage(item.logo_image||'');
+  setError('');setNotice('');setVenueModalId(item.id);
+ }
+ useEffect(()=>{
+  if(!venueModalId&&!eventModalId)return;
+  const before=document.body.style.overflow;
+  document.body.style.overflow='hidden';
+  const onEscape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setVenueModalId(null);setEventModalId(null);}};
+  document.addEventListener('keydown',onEscape);
+  return()=>{document.body.style.overflow=before;document.removeEventListener('keydown',onEscape);};
+ },[venueModalId,eventModalId]);
 
  async function save(e:React.FormEvent){
-  e.preventDefault();setBusy(true);setError('');setNotice('');
+  e.preventDefault();if(busy||photoBusy)return;
+  setBusy(true);setError('');setNotice('');
   try{
-   if(section!=='Estabelecimentos')return;
-   const response=await api(editing?'edit-venue':'venues',{id:editing?.id,name,address:completeVenueAddress(street,neighborhood,city,postalCode,address),city,postal_code:postalCode,street,neighborhood,complement,address_url:addressUrl,services});
+   const response=await api(modalVenue?'edit-venue':'venues',{id:modalVenue?.id,name,address:completeVenueAddress(street,neighborhood,city,postalCode,address),city,postal_code:postalCode,street,neighborhood,complement,address_url:addressUrl,services,cover_image:coverImage,logo_image:logoImage});
    await reload();
-   if(!editing&&response.id)go({section:'Estabelecimentos',id:response.id,creating:false});
-   else setNotice('Estabelecimento atualizado com sucesso.');
-  }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar');}
+   if(!modalVenue&&response.id)go({section:'Estabelecimentos',id:response.id,creating:false});
+   else {setVenueModalId(null);setNotice('Estabelecimento atualizado com sucesso.');}
+  }catch(e){setError(e instanceof Error?e.message:'Erro ao salvar estabelecimento');}
   finally{setBusy(false);}
  }
+ const venueForm=(<form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+    <h3 className="font-bold">{modalVenue?'Editar estabelecimento':'Cadastrar estabelecimento'}</h3>
+    <label className="block space-y-1 text-xs text-white/60">Nome<input required maxLength={100} placeholder="Nome do estabelecimento" value={name} onChange={e=>setName(e.target.value)} className={input}/></label>
+    <div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1 text-xs text-white/60">CEP<input value={postalCode} onChange={e=>setPostalCode(e.target.value)} placeholder="00000-000" maxLength={12} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Rua e número<input value={street} onChange={e=>setStreet(e.target.value)} placeholder="Rua, avenida e número" className={input}/></label><label className="block space-y-1 text-xs text-white/60">Bairro<input value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Complemento<input value={complement} onChange={e=>setComplement(e.target.value)} placeholder="Bloco, sala, referência..." className={input}/></label></div><label className="block space-y-1 text-xs text-white/60">Link de localização<input type="url" value={addressUrl} onChange={e=>setAddressUrl(e.target.value)} placeholder="https://maps.google.com/..." className={input}/></label>
+    <label className="block space-y-1 text-xs text-white/60">Cidade<input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></label>
+    <div className="grid gap-4 sm:grid-cols-2">
+     <div className="space-y-2 rounded-xl border border-white/10 p-3">
+      <p className="text-xs font-semibold text-white/70">Foto do estabelecimento (capa)</p>
+      {coverImage?<img src={coverImage} alt="Prévia da foto do estabelecimento" className="h-28 w-full rounded-lg object-cover"/>:<div className="flex h-28 items-center justify-center rounded-lg bg-white/5 text-xs text-white/40">Sem foto</div>}
+      <input aria-label="Enviar foto do estabelecimento" type="file" accept="image/jpeg,image/png,image/webp" className={input} onChange={event=>{
+       const file=event.target.files?.[0];if(!file)return;setPhotoBusy(true);setError('');
+       void compressVenueImage(file,'cover').then(setCoverImage).catch(err=>setError(err instanceof Error?err.message:'Falha ao processar foto.')).finally(()=>setPhotoBusy(false));
+      }}/>
+      {coverImage&&<button type="button" onClick={()=>setCoverImage('')} className="text-xs text-white/60 underline">Remover foto</button>}
+     </div>
+     <div className="space-y-2 rounded-xl border border-white/10 p-3">
+      <p className="text-xs font-semibold text-white/70">Logo do estabelecimento</p>
+      {logoImage?<img src={logoImage} alt="Prévia da logo" className="h-28 w-28 rounded-xl object-cover"/>:<div className="flex h-28 w-28 items-center justify-center rounded-xl bg-white/5 text-xs text-white/40">Sem logo</div>}
+      <input aria-label="Enviar logo do estabelecimento" type="file" accept="image/jpeg,image/png,image/webp" className={input} onChange={event=>{
+       const file=event.target.files?.[0];if(!file)return;setPhotoBusy(true);setError('');
+       void compressVenueImage(file,'logo').then(setLogoImage).catch(err=>setError(err instanceof Error?err.message:'Falha ao processar logo.')).finally(()=>setPhotoBusy(false));
+      }}/>
+      {logoImage&&<button type="button" onClick={()=>setLogoImage('')} className="text-xs text-white/60 underline">Remover logo</button>}
+     </div>
+    </div>
+    <label className="block space-y-1 text-xs text-white/60">Serviços disponíveis no estabelecimento (opcional)<textarea rows={3} value={services} onChange={e=>setServices(e.target.value)} className={input} placeholder="Ex.: Chapelaria — R$ 12; posto médico; acessibilidade"/></label>
+    <button disabled={busy||photoBusy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Pencil size={17}/>{busy?'Salvando...':photoBusy?'Processando imagens...':modalVenue?'Salvar estabelecimento':'Cadastrar e abrir'}</button>
+    {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
+    {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
+   </form>);
  const pathParts=currentPath.split('/').filter(Boolean);
  const knownAdminRoute=(pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','intelligence','inteligencia','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
@@ -142,75 +192,74 @@ export default function AdminShell(){
  {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
 
  
- {section==='Estabelecimentos'&&(editing||creating?
- <div className="mt-8 space-y-5">
-  {editing&&<div role="tablist" aria-label="Seções do estabelecimento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
-   <button type="button" role="tab" aria-selected={venueTab==='info'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('info');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='info'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Pencil size={16}/> Dados do estabelecimento</button>
-   <button type="button" role="tab" aria-selected={venueTab==='maps'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('maps');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='maps'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><Map size={16}/> Plantas do local ({maps.filter(map=>map.venue_id===editing.id).length})</button>
-    <button type="button" role="tab" aria-selected={venueTab==='events'} onClick={()=>{go({section:'Estabelecimentos',id:editing.id,creating:false});setVenueTab('events');}} className={'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold '+(venueTab==='events'?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}><CalendarDays size={16}/> Eventos ({events.filter(event=>event.venue_id===editing.id).length})</button>
+ {section==='Estabelecimentos'&&(
+  creating?<div className="mt-7 max-w-3xl">{venueForm}</div>
+  :editing?
+   route.eventId&&selectedVenueEvent?
+    <div className="mt-6 space-y-4">
+     <button type="button" onClick={()=>go({section:'Estabelecimentos',id:editing.id,creating:false})} className="text-sm font-bold text-[#c4ff40]">Voltar ao estabelecimento</button>
+     <AdminCrowd key={selectedVenueEvent.id} event={selectedVenueEvent} venueMaps={maps.filter(map=>map.venue_id===editing.id)}/>
+    </div>
+   :<div className="space-y-4">
+     <AdminVenueDashboard venue={editing} maps={maps} events={events} onEdit={()=>openVenueEdit(editing)} onOpenMap={openMap} onChanged={reload}
+      onOpenEvent={eventId=>go({section:'Eventos',id:eventId,creating:false})}
+      onViewAnalytics={eventId=>go({section:'Estabelecimentos',id:editing.id,creating:false,eventId})}/>
+     <button type="button" onClick={()=>setExampleOpen(true)} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-semibold text-white/70">Ver exemplo de inteligência</button>
+    </div>
+  :<div className="mt-8 space-y-4">
+    <div className="flex items-center justify-between gap-3">
+     <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Abra um local para visualizar plantas, eventos e informações.</p></div>
+     <button type="button" onClick={()=>go({section:'Estabelecimentos',id:null,creating:true})} className="shrink-0 rounded-xl bg-[#c4ff40] px-3 py-2.5 text-xs font-bold text-black"><Plus size={14} className="mr-1 inline-block"/> Novo</button>
+    </div>
+    <label className="block space-y-2 text-xs text-white/60">Buscar por nome, cidade, rua, bairro ou CEP<input value={venueSearch} onChange={e=>setVenueSearch(e.target.value)} placeholder="Digite uma cidade ou outro termo..." className={input}/></label>
+    {searchBusy&&<p className="text-xs text-white/50">Buscando no servidor...</p>}
+    {(filteredVenues??venues).length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
+     :<div className="grid gap-3 md:grid-cols-2">{(filteredVenues??venues).map(item=><article key={item.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[.035]">
+       <button type="button" onClick={()=>go({section:'Estabelecimentos',id:item.id,creating:false})} className="relative block h-28 w-full overflow-hidden bg-[radial-gradient(circle_at_80%_20%,#53406f,transparent_50%),#20182b] text-left">
+        {item.cover_image?<img src={item.cover_image} alt="" className="h-full w-full object-cover"/>:<Building2 size={32} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#c4ff40]/55"/>}
+       </button>
+       <div className="space-y-2 p-4">
+        <p className="font-bold">{displayLabel(item.name)}</p>
+        <p className="text-xs text-white/55">{[item.city,item.neighborhood,item.street||item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
+        <p className="flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{maps.filter(map=>map.venue_id===item.id).length} plantas</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{events.filter(event=>event.venue_id===item.id).length} eventos</span></p>
+        <div className="flex flex-wrap gap-2 pt-2">
+         <button type="button" onClick={()=>go({section:'Estabelecimentos',id:item.id,creating:false})} className="flex-1 rounded-xl border border-[#c4ff40]/40 px-3 py-2.5 text-xs font-bold text-[#c4ff40]">Abrir estabelecimento</button>
+         <button type="button" onClick={()=>openVenueEdit(item)} className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2.5 text-xs font-bold"><Pencil size={14}/> Editar</button>
+        </div>
+       </div>
+      </article>)}</div>}
+   </div>
+ )}
+ {section==='Eventos'&&(
+   creating?<EventEditor key="new" venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>
+   :editing?<AdminEventDashboard event={editing} venues={venues} maps={maps} onEdit={()=>setEventModalId(editing.id)}
+     onOpenVenue={venueId=>go({section:'Estabelecimentos',id:venueId,creating:false})}
+     onOpenMap={(mapId,venueId)=>go({section:'Estabelecimentos',id:venueId,creating:false,mapId})}
+     onOpenAnalytics={(venueId,eventId)=>go({section:'Estabelecimentos',id:venueId,creating:false,eventId})}/>
+   :<AdminEventList events={events} venues={venues} onCreate={()=>go({section:'Eventos',id:null,creating:true})}
+     onOpen={item=>go({section:'Eventos',id:item.id,creating:false})}
+     onEdit={item=>setEventModalId(item.id)}/>
+ )}
+ {editing&&section==='Estabelecimentos'&&exampleOpen&&<div role="dialog" aria-modal="true" aria-label="Exemplo de análise do evento" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3" onClick={()=>setExampleOpen(false)}>
+   <div className="max-h-[94dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/20 bg-[#17111d] p-4 sm:p-6" onClick={e=>e.stopPropagation()}>
+    <div className="mb-5 flex items-center justify-between gap-2"><h3 className="font-bold">Exemplo de inteligência</h3><button type="button" onClick={()=>setExampleOpen(false)} aria-label="Fechar exemplo" className="rounded-lg border border-white/20 p-2"><X size={18}/></button></div>
+    <AdminCrowd example event={{id:'example',name:'Exemplo de movimentação',map_ids:[]}} venueMaps={[]}/>
+   </div>
   </div>}
-  <div role="tabpanel" className={venueTab==='events'?'w-full':'max-w-3xl'}>
-   {(!editing||venueTab==='info')&&<form onSubmit={save} className="h-fit space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
-    <h3 className="font-bold">{editing?'Dados do estabelecimento':'Cadastrar estabelecimento'}</h3>
-    <label className="block space-y-1 text-xs text-white/60">Nome<input required maxLength={100} placeholder="Nome do estabelecimento" value={name} onChange={e=>setName(e.target.value)} className={input}/></label>
-    <div className="grid gap-3 sm:grid-cols-2"><label className="block space-y-1 text-xs text-white/60">CEP<input value={postalCode} onChange={e=>setPostalCode(e.target.value)} placeholder="00000-000" maxLength={12} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Rua e número<input value={street} onChange={e=>setStreet(e.target.value)} placeholder="Rua, avenida e número" className={input}/></label><label className="block space-y-1 text-xs text-white/60">Bairro<input value={neighborhood} onChange={e=>setNeighborhood(e.target.value)} className={input}/></label><label className="block space-y-1 text-xs text-white/60">Complemento<input value={complement} onChange={e=>setComplement(e.target.value)} placeholder="Bloco, sala, referência..." className={input}/></label></div><label className="block space-y-1 text-xs text-white/60">Link de localização<input type="url" value={addressUrl} onChange={e=>setAddressUrl(e.target.value)} placeholder="https://maps.google.com/..." className={input}/></label>
-    <label className="block space-y-1 text-xs text-white/60">Cidade<input placeholder="Cidade" value={city} onChange={e=>setCity(e.target.value)} className={input}/></label>
-    <label className="block space-y-1 text-xs text-white/60">Serviços disponíveis no estabelecimento (opcional)<textarea rows={3} value={services} onChange={e=>setServices(e.target.value)} className={input} placeholder="Ex.: Chapelaria — R$ 12; posto médico; acessibilidade"/></label>
-    <button disabled={busy} type="submit" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50"><Pencil size={17}/>{busy?'Salvando...':editing?'Salvar estabelecimento':'Cadastrar e abrir'}</button>
-    {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
-   </form>}
-   {editing&&venueTab==='maps'&&<AdminVenueMaps key={editing.id} venue={editing} maps={maps} events={events}
-    onOpen={openMap} onChanged={reload}
-    />}
-    {editing&&venueTab==='events'&&(!route.eventId?
-    <section className="space-y-4">
-     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div><h3 className="font-bold">Eventos deste estabelecimento</h3><p className="mt-1 text-xs text-white/55">Selecione uma festa para consultar o histórico de movimentação por hora.</p></div>
-      <button type="button" onClick={()=>setExampleOpen(true)} className="rounded-xl border border-white/20 px-4 py-2.5 text-xs font-bold">Ver exemplo</button>
-     </div>
-     {!venueEvents.length?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/60">Nenhum evento cadastrado neste estabelecimento.</p>:
-      <div className="space-y-3">{[...venueEvents].sort((a,b)=>(b.starts_at||'').localeCompare(a.starts_at||'')).map(event=>
-       <article key={event.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[.035] p-4">
-        <div className="min-w-0"><p className="font-bold">{displayLabel(event.name)}</p><p className="mt-1 text-xs text-white/60">{event.starts_at?new Date(event.starts_at).toLocaleString('pt-BR'):'Data a definir'}</p></div>
-        <button type="button" onClick={()=>go({section:'Estabelecimentos',id:editing.id,creating:false,eventId:event.id})} className="shrink-0 rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-bold text-black">Ver análise</button>
-       </article>)}</div>}
-    </section>
-   :selectedVenueEvent&&<AdminCrowd key={selectedVenueEvent.id} event={selectedVenueEvent} venueMaps={maps.filter(map=>map.venue_id===editing.id)}/>)}
-   {editing&&venueTab==='events'&&exampleOpen&&<div role="dialog" aria-modal="true" aria-label="Exemplo de análise do evento" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3" onClick={()=>setExampleOpen(false)}>
-    <div className="max-h-[94vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/20 bg-[#17111d] p-4 sm:p-6" onClick={e=>e.stopPropagation()}>
-     <div className="mb-5 flex items-center justify-between gap-2"><h3 className="font-bold">Como a análise aparecerá depois do evento</h3><button type="button" onClick={()=>setExampleOpen(false)} aria-label="Fechar exemplo" className="rounded-lg border border-white/20 p-2"><X size={18}/></button></div>
-     <AdminCrowd example event={{id:'example',name:'Exemplo de movimentação',map_ids:[]}} venueMaps={[]}/>
-    </div>
-   </div>}
-
-  </div>
- </div>
- :<div className="mt-8 space-y-4">
-  <div className="flex items-center justify-between gap-3">
-   <div><h3 className="font-bold">Estabelecimentos cadastrados</h3><p className="mt-1 text-xs text-white/50">Acesse um estabelecimento para gerenciar plantas e consultar eventos.</p></div>
-   <button type="button" onClick={()=>go({section:'Estabelecimentos',id:null,creating:true})} className="shrink-0 rounded-xl bg-[#c4ff40] px-3 py-2.5 text-xs font-bold text-black"><Plus size={14} className="mr-1 inline-block"/> Novo</button>
-  </div>
-  <label className="block space-y-2 text-xs text-white/60">Buscar por nome, cidade, rua, bairro ou CEP<input value={venueSearch} onChange={e=>setVenueSearch(e.target.value)} placeholder="Digite uma cidade ou outro termo..." className={input}/></label>{searchBusy&&<p className="text-xs text-white/50">Buscando no servidor...</p>}
-  {(filteredVenues??venues).length===0?<p className="rounded-xl border border-white/15 p-5 text-sm text-white/60">Nenhum estabelecimento cadastrado.</p>
-  :<div className="grid gap-3 md:grid-cols-2">{(filteredVenues??venues).map(item=>{
-   const mapCount=maps.filter(map=>map.venue_id===item.id).length;
-   const eventCount=events.filter(event=>event.venue_id===item.id).length;
-   return <article key={item.id} className="rounded-xl border border-white/10 bg-white/[.035] p-4">
-    <h3 className="font-bold">{displayLabel(item.name)}</h3>
-    <p className="mt-1 text-xs text-white/50">{[item.city,item.neighborhood,item.street||item.address].filter(Boolean).join(' · ')||'Endereço não informado'}</p>
-    {item.address_url&&/^https?:\/\//i.test(item.address_url)&&<a href={item.address_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs font-semibold text-[#c4ff40] underline">Ver localização</a>}
-    <p className="mt-3 flex flex-wrap gap-3 text-xs text-white/70"><span className="inline-flex items-center gap-1"><Map size={14}/>{mapCount} {mapCount===1?'mapa':'mapas'}</span><span className="inline-flex items-center gap-1"><CalendarDays size={14}/>{eventCount} {eventCount===1?'evento':'eventos'}</span></p>
-    <div className="mt-4 flex gap-2">
-     <button onClick={()=>edit(item)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Pencil size={14}/> Abrir estabelecimento</button>
-    </div>
-   </article>;
-  })}</div>}
- </div>)}
- {section==='Eventos'&&(editing||creating
-  ?<EventEditor key={editing?.id||'new'} event={editing} venues={venues} maps={maps} onPublicationChanged={()=>{void reload();}} onSaved={()=>{void reload();back();}}/>
-  :<AdminEventList events={events} venues={venues}
-    onCreate={()=>go({section:'Eventos',id:null,creating:true})}
-    onEdit={item=>edit(item)}/>)}
+ {modalVenue&&<div role="dialog" aria-modal="true" aria-label={'Editar estabelecimento '+modalVenue.name} className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/80 p-3 py-6" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setVenueModalId(null);}}>
+   <div className="w-full max-w-2xl rounded-2xl border border-white/15 bg-[#17111e] p-3 shadow-2xl sm:p-5">
+    <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-lg font-black">Editar estabelecimento</h3><button type="button" disabled={busy} onClick={()=>setVenueModalId(null)} aria-label="Fechar edição do estabelecimento" className="rounded-lg border border-white/20 p-2"><X size={19}/></button></div>
+    {venueForm}
+   </div>
+  </div>}
+ {modalEvent&&<div role="dialog" aria-modal="true" aria-label={'Editar evento '+modalEvent.name} className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/85 p-3 py-6" onMouseDown={e=>{if(e.target===e.currentTarget)setEventModalId(null);}}>
+   <div className="w-full max-w-3xl rounded-2xl border border-white/15 bg-[#17111e] p-4 shadow-2xl sm:p-6">
+    <div className="flex items-center justify-between gap-2"><h3 className="font-black">Edição do evento</h3><button type="button" onClick={()=>setEventModalId(null)} aria-label="Fechar edição do evento" className="rounded-lg border border-white/20 p-2"><X size={19}/></button></div>
+    <EventEditor key={modalEvent.id} event={modalEvent} venues={venues} maps={maps}
+      onSaved={()=>{setEventModalId(null);void reload().catch(err=>setError(String(err)));}}
+      onPublicationChanged={()=>{void reload();}}/>
+   </div>
+  </div>}
  {error&&<p role="alert" className="mt-5 text-sm text-red-300">{error}</p>}</>}
  </ErrorBoundary>}
  </main></div>;
