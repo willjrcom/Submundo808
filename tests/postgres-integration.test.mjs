@@ -32,6 +32,25 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   assert.equal(map.status,201,JSON.stringify(map.data));
   const mapDetail=await api('/api/public/map-detail?map_id='+encodeURIComponent(map.data.id));
   assert.equal(mapDetail.status,200,JSON.stringify(mapDetail.data));assert.ok(Array.isArray(mapDetail.data.areas));
+  const firstRoom=mapDetail.data.areas[0];
+  assert.ok(firstRoom,'A newly created map must have at least one area');
+  const linkedMarker={
+   id:'pg-linked-marker-'+Date.now(),name:'Ponto vinculado',type:'bar',
+   x:firstRoom.x+firstRoom.width/2,y:firstRoom.y,area_id:firstRoom.id,
+   anchor:{side:'top',offset:50,scope:'area'},shape:'square',size:30
+  };
+  const savedLayout=await api('/api/admin/save-layout',{method:'POST',cookie:register.cookie,body:{
+   map_id:map.data.id,areas:mapDetail.data.areas,markers:[linkedMarker],frame:mapDetail.data.map.frame
+  }});
+  assert.equal(savedLayout.status,200,JSON.stringify(savedLayout.data));
+  const reloadedLayout=await api('/api/public/map-detail?map_id='+encodeURIComponent(map.data.id));
+  assert.equal(reloadedLayout.data.markers.find(m=>m.id===linkedMarker.id).area_id,firstRoom.id);
+  assert.equal(reloadedLayout.data.markers.find(m=>m.id===linkedMarker.id).anchor.scope,'area');
+  const invalidMarker={...linkedMarker,area_id:'missing-room'};
+  const rejected=await api('/api/admin/save-layout',{method:'POST',cookie:register.cookie,body:{
+   map_id:map.data.id,areas:mapDetail.data.areas,markers:[invalidMarker],frame:mapDetail.data.map.frame
+  }});
+  assert.equal(rejected.status,400);
   const event=await api('/api/admin/events',{method:'POST',cookie:register.cookie,body:{name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00'}});
   assert.equal(event.status,201,JSON.stringify(event.data));
   const blocked=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});

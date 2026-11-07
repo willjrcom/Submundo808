@@ -97,7 +97,7 @@ export function closestRoomEdge(room:MarkerRoom,x:number,y:number):MarkerAnchor{
   {side:'left' as const,distance:Math.abs(x-room.x),offset:percent((y-room.y)/room.height*100)}
  ];
  options.sort((a,b)=>a.distance-b.distance);
- return {...options[0],distance:undefined,scope:'area' as const};
+ return {side:options[0].side,offset:options[0].offset,scope:'area'};
 }
 
 /** All coordinates remain map percentages; an area anchor measures offset along its own edge. */
@@ -188,7 +188,7 @@ export function moveRoomMarkers<T extends PositionedMarker>(
   }
   const old=marker.area_id?oldById.get(marker.area_id):undefined;
   const next=marker.area_id?newById.get(marker.area_id):undefined;
-  if(!old||!next||old.x===next.x&&old.y===next.y&&old.width===next.width&&old.height===next.height)return marker;
+  if(!old||!next||old.x===next.x&&old.y===next.y&&old.width===next.width&&old.height===next.height&&old.geometry?.shape===next.geometry?.shape)return marker;
   if(marker.anchor?.scope==='area')return anchorMarkerInRoom(marker,next,marker.anchor.side,marker.anchor.offset);
   return {...marker,x:next.x+(marker.x-old.x)/old.width*next.width,
    y:next.y+(marker.y-old.y)/old.height*next.height} as T;

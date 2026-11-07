@@ -27,8 +27,8 @@ test('stage chooses free versus border, entrance chooses among four edges',()=>{
  assert.match(editor,/Na borda/);
  assert.match(editor,/selectedMarker\.type==='entrada'/);
  assert.match(editor,/MAP_SIDES\.map/);
- assert.match(editor,/anchorMarker\(selectedMarker,e\.target\.value as MapSide\)/);
- assert.match(editor,/moveMarker\(m,p\.x-d\.offsetX,p\.y-d\.offsetY\)/);
+ assert.match(editor,/anchorMarkerInRoom\(selectedMarker,room,side/);
+ assert.match(editor,/moveMarkerInRooms\(m,x,y,d\.snapshot\.areas\)/);
 });
 test('smart room labels appear in editor and public map without covering markers',()=>{
  assert.match(editor,/useMapLabels\(areas,markers\)/);
