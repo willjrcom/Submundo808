@@ -23,7 +23,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const [pendingMemberOperation,setPendingMemberOperation]=useState<'remove'|'admin'|'member'|null>(null);
  useEffect(()=>{onDetailChange?.(selected!==null);},[selected,onDetailChange]);
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]),[photo,setPhoto]=useState('');
- const [inviteLink,setInviteLink]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
+ const [inviteLink,setInviteLink]=useState(''),[inviteModalOpen,setInviteModalOpen]=useState(false),[inviteError,setInviteError]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
  const [linkedInvite,setLinkedInvite]=useState(()=>Boolean(new URLSearchParams(window.location.search).get('group_invite')));
  const [previewLoading,setPreviewLoading]=useState(false),[participantsOpen,setParticipantsOpen]=useState(false),[participantNames,setParticipantNames]=useState<{name:string}[]>([]),[participantsLoading,setParticipantsLoading]=useState(false);
@@ -37,7 +37,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
  useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite')){setLinkedInvite(true);setMode('join');}return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
  useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
- const open=async(id:string)=>{setMemberActionsId(null);setPendingMemberOperation(null);setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
+ const open=async(id:string)=>{setMemberActionsId(null);setPendingMemberOperation(null);setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setInviteModalOpen(false);setInviteError('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');setStatus('');
   try{const j=await groupApi('/create',{name:name.trim(),description:description.trim(),color,photo});setName('');setPhoto('');setDescription('');await load();await open(j.group.id);if(pickedFriends.length){try{const invites=await groupApi('/invite-friends',{id:j.group.id,friendIds:pickedFriends});setStatus(invites.invited.length+' convite(s) enviado(s) aos amigos.');}catch(e){setError('Grupo criado, mas não foi possível enviar os convites: '+(e instanceof Error?e.message:'Erro desconhecido'));}}setPickedFriends([]);setFriendQuery('');}
@@ -80,13 +80,17 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  async function addGroupFriend(id:string){if(!selected)return;setBusy(true);setError('');try{const r=await fetch('/api/friends/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:id})});const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível solicitar amizade.');setStatus(j.status==='friends'?'Vocês já são amigos.':'Solicitação de amizade enviada.');const detail=await groupApi('/detail?id='+encodeURIComponent(selected.id));setSelected(detail.group);}catch(e){showError(e);}finally{setBusy(false);}}
  async function invite(){
   if(!selected)return;
-  setBusy(true);setError('');
-  try{const j=await groupApi('/invite',{id:selected.id});setInviteLink(window.location.origin+'/groups?group_invite='+j.token);setQrOpen(false);}
-  catch(e){showError(e);}finally{setBusy(false);}
+  setInviteModalOpen(true);setInviteLink('');setQrOpen(false);setCopied(false);setInviteError('');
+  setBusy(true);
+  try{const j=await groupApi('/invite',{id:selected.id});setInviteLink(window.location.origin+'/groups?group_invite='+j.token);}
+  catch(e){setInviteError(e instanceof Error?e.message:'Não foi possível gerar o convite.');}
+  finally{setBusy(false);}
  }
+ function closeInviteModal(){setInviteModalOpen(false);setQrOpen(false);setInviteError('');setCopied(false);}
  async function copy(){
-  try{await navigator.clipboard.writeText(inviteLink);setCopied(true);setStatus('Link de convite copiado.');window.setTimeout(()=>setCopied(false),2200);}
-  catch{setStatus('Selecione e copie o link exibido abaixo.');}
+  if(!inviteLink)return;
+  try{await navigator.clipboard.writeText(inviteLink);setCopied(true);setInviteError('');window.setTimeout(()=>setCopied(false),2200);}
+  catch{setInviteError('Não foi possível copiar automaticamente. Selecione e copie o link acima.');}
  }
  async function share(){
   if(!inviteLink)return;
@@ -102,7 +106,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   setBusy(true);setError('');
   try{
    const result=await groupApi(dialog==='delete'?'/delete':'/leave',{id:selected.id,successorId,confirmation});
-   setDialog(null);setSelected(null);setInviteLink('');await load();setStatus(result.deleted?'Grupo excluído.':'Você saiu do grupo.');
+   setDialog(null);setSelected(null);setInviteLink('');setInviteModalOpen(false);await load();setStatus(result.deleted?'Grupo excluído.':'Você saiu do grupo.');
   }catch(e){showError(e);}finally{setBusy(false);}
  }
  async function remove(id:string,name:string){
@@ -162,7 +166,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const button='w-full rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40';
  const memberActions=selected?.members.find(p=>p.id===memberActionsId)||null;
  if(selected)return <div className="space-y-5">
-  <div className="flex items-center justify-between"><button onClick={()=>{setSelected(null);setInviteLink('');void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>{(selected.role==='owner'||selected.role==='admin'||selected.editPolicy==='everyone')&&<button onClick={startEdit} className="inline-flex items-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-sm font-bold text-[#c4ff40]"><Pencil size={16}/> Editar grupo</button>}</div>
+  <div className="flex items-center justify-between"><button onClick={()=>{setSelected(null);setInviteLink('');setInviteModalOpen(false);void load();}} className="inline-flex items-center gap-2 p-2 text-sm text-white/70"><ArrowLeft size={18}/> Meus grupos</button>{(selected.role==='owner'||selected.role==='admin'||selected.editPolicy==='everyone')&&<button onClick={startEdit} className="inline-flex items-center gap-2 rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-sm font-bold text-[#c4ff40]"><Pencil size={16}/> Editar grupo</button>}</div>
   <div className="space-y-3 text-center">
    <div className="flex justify-center"><GroupAvatar name={selected.name} color={selected.color} icon={selected.icon} photo={selected.photo} size="lg"/></div>
    <h3 className="text-xl font-black">{selected.name}</h3>
@@ -179,13 +183,28 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
    {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
    </div><div className="shrink-0 border-t border-white/15 p-4"><button type="submit" disabled={busy||photoBusy||editName.trim().length<2} className={button}>{busy?'Salvando...':'Salvar alterações'}</button></div></form></div>}
   <div className="grid grid-cols-2 gap-2"><button onClick={()=>void invite()} disabled={busy} className="rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black"><UserPlus size={18} className="mr-1 inline"/> Convidar</button><button onClick={()=>{setAlertOpen(true);setAlertTab('send');setAlertChoice('');void loadAlerts(selected.id).catch(showError);}} className="flex items-center justify-center gap-2 rounded-xl border border-[#c4ff40] px-3 py-3 text-sm font-bold text-[#c4ff40]"><Megaphone size={18}/> Avisar a galera</button></div>
-  <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4">
-   <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-bold">Convide sua galera</h4><p className="mt-1 text-xs text-white/50">Use o botão acima para gerar o link ou QR Code do grupo.</p></div></div>
-   {inviteLink&&<div className="space-y-3 border-t border-white/10 pt-3">
-    <div className="flex items-center gap-2"><input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-[#100b16] px-3 py-2.5 text-xs text-white"/><button aria-label={copied?'Link copiado':'Copiar link'} title={copied?'Copiado!':'Copiar link'} onClick={()=>void copy()} className={'flex min-w-[44px] items-center justify-center gap-1 rounded-lg border p-2.5 transition-all duration-200 '+(copied?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40] scale-105':'border-white/20')} >{copied?<><Check size={18}/><span className="text-xs font-bold">Copiado!</span></>:<Copy size={18}/>}</button><button aria-label="Compartilhar convite" title="Compartilhar" onClick={()=>void share()} className="rounded-lg border border-white/20 p-2.5"><Share2 size={18}/></button><button aria-label="Mostrar QR Code" aria-expanded={qrOpen} title="QR Code" onClick={()=>setQrOpen(v=>!v)} className={'rounded-lg border p-2.5 '+(qrOpen?'border-[#c4ff40] text-[#c4ff40]':'border-white/20')}><QrCode size={18}/></button></div>
-    {qrOpen&&<div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code para entrar no grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div>}
-    <p className="text-[11px] text-white/45">Entrar no grupo não ativa o compartilhamento de localização.</p>
-   </div>}
+  {inviteModalOpen&&<div className="fixed inset-0 z-[130] flex items-end justify-center bg-black/85 p-2 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="group-invite-title" onClick={e=>{if(e.target===e.currentTarget)closeInviteModal();}}>
+   <div className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#c4ff40]/30 bg-[#211729] shadow-2xl">
+    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 p-4">
+     <div className="min-w-0"><h3 id="group-invite-title" className="flex items-center gap-2 text-lg font-black"><UserPlus size={21} className="shrink-0 text-[#c4ff40]"/> Convide sua galera</h3><p className="mt-1 truncate text-xs text-white/55">{selected.name}</p></div>
+     <button type="button" aria-label="Fechar convite" onClick={closeInviteModal} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/15 text-white/70"><X size={20}/></button>
+    </div>
+    <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+     <p className="text-sm leading-relaxed text-white/70">Compartilhe o link ou QR Code para convidar pessoas para o seu grupo.</p>
+     {busy&&!inviteLink?<p role="status" className="rounded-xl border border-white/10 bg-white/[.035] p-4 text-center text-sm text-white/65">Gerando link de convite...</p>:null}
+     {inviteError&&<div className="space-y-2"><p role="alert" className="text-sm text-red-300">{inviteError}</p>{!inviteLink&&<button type="button" disabled={busy} onClick={()=>void invite()} className="rounded-xl border border-[#c4ff40]/50 px-4 py-2.5 text-sm font-bold text-[#c4ff40] disabled:opacity-40">Tentar novamente</button>}</div>}
+     {inviteLink&&<div className="space-y-4">
+      <label className="block space-y-2 text-xs font-semibold text-white/65">Link do grupo<input aria-label="Link do grupo" readOnly value={inviteLink} onFocus={e=>e.currentTarget.select()} className="w-full min-w-0 rounded-xl border border-white/20 bg-[#100b16] px-3 py-3 text-sm font-normal text-white"/></label>
+      <div className="grid grid-cols-3 gap-2">
+       <button type="button" aria-label={copied?'Link copiado':'Copiar link'} onClick={()=>void copy()} className={'flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold '+(copied?'border-[#c4ff40] bg-[#c4ff40]/10 text-[#c4ff40]':'border-white/20 text-white')}>{copied?<Check size={19}/>:<Copy size={19}/>} {copied?'Copiado!':'Copiar link'}</button>
+       <button type="button" onClick={()=>void share()} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border border-white/20 px-2 py-2 text-xs font-bold"><Share2 size={19}/> Compartilhar</button>
+       <button type="button" aria-label={qrOpen?'Ocultar QR Code':'Mostrar QR Code'} aria-expanded={qrOpen} onClick={()=>setQrOpen(v=>!v)} className={'flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold '+(qrOpen?'border-[#c4ff40] bg-[#c4ff40]/10 text-[#c4ff40]':'border-white/20')}><QrCode size={19}/> QR Code</button>
+      </div>
+      {qrOpen&&<div className="space-y-2 rounded-xl border border-white/10 bg-white/[.035] p-4 text-center"><p className="text-xs font-semibold text-white">Escaneie para entrar no grupo</p><div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code para entrar no grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div></div>}
+      <p className="text-xs leading-relaxed text-white/50">Entrar no grupo não ativa o compartilhamento de localização.</p>
+     </div>}
+    </div>
+   </div>
   </div>
   <button onClick={()=>{setAlertOpen(true);setAlertTab('history');void loadAlerts(selected.id).catch(showError);}} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-sm"><span className="flex items-center gap-2"><Bell size={17} className="text-[#c4ff40]"/> Histórico de avisos</span><span className="text-white/45">Ver avisos ›</span></button>
   {alertOpen&&<div className="fixed inset-0 z-[115] flex items-end justify-center bg-black/85 p-2 sm:items-center" role="dialog" aria-modal="true" aria-label="Avisos do grupo">
