@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {displayLabel} from './display-label';
 import {EventMenuEditor} from './admin-products';
+import {validateDjLinks,validateEventFields} from './event-save-validation';
 type Item={id:string;name:string;venue_id?:string;map_id?:string;x?:number;y?:number;width?:number;height?:number;gps?:Record<string,{lat:number;lng:number;accuracy:number}>};
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-sm text-white';
 async function request(route:string,payload?:object){const r=await fetch('/api/admin/'+route,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na operação');return j;}
@@ -20,11 +21,19 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,event}:{ve
  const [doors,setDoors]=useState(event?.doors_at||''),[cover,setCover]=useState(event?.cover_image||''),[services,setServices]=useState(event?.services||''),[published,setPublished]=useState(Boolean(event?.is_published)),[publishing,setPublishing]=useState(false);
  const [locationSharingEnabled,setLocationSharingEnabled]=useState(Number(event?.location_sharing_enabled)===1);
  const [meapleEventId,setMeapleEventId]=useState(event?.meaple_event_id||'');
- const validDates=Boolean(starts&&ends&&Number.isFinite(Date.parse(starts))&&Number.isFinite(Date.parse(ends))&&Date.parse(ends)>Date.parse(starts));
- async function save(e:React.FormEvent){e.preventDefault();setError('');setMessage('');
-  if(starts&&ends&&!validDates){setError('A data de término precisa ser posterior à data de início.');return;}
-  for(const dj of djs){for(const [platform,value,host] of [['Instagram',dj.instagram,'instagram.com'],['Spotify',dj.spotify||'','open.spotify.com']] as const){if(value.trim()){try{const u=new URL(value);if(u.protocol!=='https:'||u.hostname!==host||u.pathname==='/')throw Error();}catch{setError('Cole o link completo HTTPS de '+platform+' para '+(dj.nome||'o DJ')+'. Ex.: https://'+host+'/...');return;}}}}
-  try{await request(event?'edit-event':'events',{id:event?.id,name,venue_id:venue,map_ids:selected,description,starts_at:starts,ends_at:ends,site_url:site,tickets_url:tickets,instagram_url:instagram,lineup:djs,doors_at:doors,cover_image:cover,services,meaple_event_id:meapleEventId,location_sharing_enabled:locationSharingEnabled});setMessage('Evento salvo.');onSaved();}catch(e){setError(e instanceof Error?e.message:String(e));}
+ const [saving,setSaving]=useState(false);
+ async function save(e:React.FormEvent){
+  e.preventDefault();
+  if(saving)return;
+  setError('');setMessage('');
+  const validation=validateEventFields(name,venue,starts,ends,[site,tickets,instagram])||validateDjLinks(djs);
+  if(validation){setTab('geral');setError(validation);return;}
+  setSaving(true);
+  try{
+   await request(event?'edit-event':'events',{id:event?.id,name:name.trim(),venue_id:venue,map_ids:selected,description,starts_at:starts,ends_at:ends,site_url:site,tickets_url:tickets,instagram_url:instagram,lineup:djs,doors_at:doors,cover_image:cover,services,meaple_event_id:meapleEventId,location_sharing_enabled:locationSharingEnabled});
+   setMessage('Evento salvo com sucesso.');onSaved();
+  }catch(error){setError(error instanceof Error?error.message:'Não foi possível salvar o evento.');}
+  finally{setSaving(false);}
  }
  async function togglePublication(){
   if(!event?.id)return;
@@ -40,7 +49,7 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,event}:{ve
    {event&&<button type="button" disabled={publishing} onClick={()=>void togglePublication()} className={'rounded-xl px-4 py-2.5 text-sm font-bold disabled:opacity-50 '+(published?'border border-amber-400/40 text-amber-200':'bg-[#c4ff40] text-black')}>{publishing?'Atualizando...':published?'Despublicar evento':'Publicar evento'}</button>}
   </div>
   <nav aria-label="Seções do evento" className="flex flex-wrap gap-2 border-b border-white/10 pb-3">{tabs.map(([key,label])=><button type="button" key={key} aria-current={tab===key?'page':undefined} onClick={()=>setTab(key)} className={'rounded-xl px-3 py-2.5 text-sm font-semibold '+(tab===key?'bg-[#c4ff40] text-black':'border border-white/15 text-white/70')}>{label}</button>)}</nav>
-  <form onSubmit={save} className="space-y-4 rounded-2xl border border-white/10 p-5">
+  <form noValidate onSubmit={save} className="space-y-4 rounded-2xl border border-white/10 p-5">
    <div className={tab==='geral'?'space-y-4':'hidden'}><h4 className="font-bold">Dados gerais</h4>
     <label className="block space-y-1 text-xs text-white/65">Nome<input required={tab==='geral'} className={input} placeholder="Nome do evento" value={name} onChange={e=>setName(e.target.value)}/></label>
     <label className="block space-y-1 text-xs text-white/65">Estabelecimento<select required={tab==='geral'} className={input} value={venue} onChange={e=>{setVenue(e.target.value);setSelected([]);}}><option value="">Selecione</option>{venues.map(v=><option key={v.id} value={v.id}>{displayLabel(v.name)}</option>)}</select></label>
@@ -68,7 +77,7 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,event}:{ve
    </div>
    <div className={tab==='cardapio'?'space-y-3':'hidden'}>{event?.id?<EventMenuEditor key={event.id} eventId={event.id}/>:<div className="rounded-xl border border-white/15 p-4 text-sm text-white/60">Salve o evento primeiro para configurar seus produtos e preços.</div>}</div>
    <div className={tab==='ingressos'?'space-y-3':'hidden'}><h4 className="font-bold">Ingressos e redes sociais</h4><label className="block text-xs">ID do evento na Meaple<input className={input} value={meapleEventId} onChange={e=>setMeapleEventId(e.target.value)} placeholder="ID do evento na Meaple"/></label><input type="url" className={input} placeholder="Link externo de ingressos" value={tickets} onChange={e=>setTickets(e.target.value)}/><input type="url" className={input} placeholder="Instagram do evento" value={instagram} onChange={e=>setInstagram(e.target.value)}/><p className="text-xs text-white/50">Sem processamento de pagamentos pelo aplicativo.</p></div>
-   {tab!=='cardapio'&&<button type="submit" className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black">Salvar evento</button>}
+   {tab!=='cardapio'&&<button type="submit" disabled={saving} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50">{saving?'Salvando evento...':'Salvar evento'}</button>}
   </form>
   {event&&!published&&<p className="text-xs text-white/55">Para publicar: salve nome, estabelecimento, datas válidas e pelo menos um mapa. Depois use “Publicar evento”.</p>}
   {confirmDj!==null&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><div className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#241b2c] p-6"><h3 className="text-lg font-bold">Remover DJ?</h3><p className="text-sm text-white/70">Remover {djs[confirmDj]?.nome||'este DJ'} do lineup?</p><div className="flex justify-end gap-3"><button type="button" onClick={()=>setConfirmDj(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button><button type="button" onClick={()=>{setDjs(v=>v.filter((_,i)=>i!==confirmDj));setConfirmDj(null);}} className="rounded-xl bg-red-600 px-4 py-2 font-bold">Remover</button></div></div></div>}
