@@ -41,6 +41,21 @@ test('invalid, crossed and incomplete corner values never overwrite calibration'
  assert.equal(parseManualCoordinate('Infinity',90),null);
  assert.equal(parseManualCoordinate('181',180),null);
 });
+test('editing GPS coordinates recalculates measured distances and margin without changing saved values',()=>{
+ const saved=buildManualCalibration(four,'4');
+ assert.equal(saved.ok,true);
+ const fields=manualValuesFromGps(saved.gps);
+ const edited={...fields,tl:{...fields.tl,lng:'-47.400100'}};
+ const result=buildManualCalibration(edited,'4');
+ assert.equal(result.ok,true);
+ assert.equal(result.gps.rawCorners.tl.lng,-47.4001);
+ assert.equal(result.gps.marginMeters,MAP_MARGIN_METERS);
+ assert.ok(Math.abs(result.gps.tl.lng-result.raw.tl.lng)>0);
+ assert.notEqual(result.width,saved.width);
+ assert.equal(saved.raw.tl.lng,-47.4);
+ const invalid=buildManualCalibration({...fields,tl:fields.br},'4');
+ assert.equal(invalid.ok,false);
+});
 test('existing manual calibration hydrates four input rows without using expanded margins',()=>{
  const result=buildManualCalibration(four,'4');
  const filled=manualValuesFromGps(result.gps);
