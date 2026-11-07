@@ -172,7 +172,7 @@ export default function AdminShell(){
  {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
  {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
  {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
- <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing&&section==='Estabelecimentos'?displayLabel(editing.name):editing?'Editar evento':creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
+ <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing?displayLabel(editing.name):creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
  {section==='Produtos'&&<AdminProducts/>}
  {section==='Avaliações'&&<AdminReviews events={events}/>}
  {section==='Notificações'&&<AdminNotifications events={events}/>}
