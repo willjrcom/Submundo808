@@ -205,7 +205,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
      </div>}
     </div>
    </div>
-  </div>
+  </div>}
   <button onClick={()=>{setAlertOpen(true);setAlertTab('history');void loadAlerts(selected.id).catch(showError);}} className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-sm"><span className="flex items-center gap-2"><Bell size={17} className="text-[#c4ff40]"/> Histórico de avisos</span><span className="text-white/45">Ver avisos ›</span></button>
   {alertOpen&&<div className="fixed inset-0 z-[115] flex items-end justify-center bg-black/85 p-2 sm:items-center" role="dialog" aria-modal="true" aria-label="Avisos do grupo">
    <div className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/20 bg-[#201728] shadow-2xl">
