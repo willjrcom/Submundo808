@@ -141,3 +141,8 @@ html, body, #root { background-color: #000; }
   color: rgb(185 176 195 / 55%);
   opacity: 1;
 }
+
+/* Compact map markers visually on phones without modifying saved dimensions. */
+@media (max-width: 639px) {
+  :root { --submundo-map-marker-scale: .72; }
+}

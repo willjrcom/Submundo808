@@ -65,8 +65,9 @@ export function markerIconStyle(marker:Pick<PositionedMarker,'x'|'y'>,size:numbe
   position:'absolute' as const,
   left:marker.x+'%',
   top:marker.y+'%',
-  width:size,
-  height:size,
+  // Scale icon footprint in the UI only; leave the saved marker dimensions intact.
+  width:`calc(${size}px * var(--submundo-map-marker-scale, 1))`,
+  height:`calc(${size}px * var(--submundo-map-marker-scale, 1))`,
   transform:'translate(-50%, -50%)',
   transformOrigin:'center center'
  };
