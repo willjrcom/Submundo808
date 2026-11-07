@@ -1,4 +1,5 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
+import {venueMediaFields} from './venue-media.mjs';
 import {insertReviewOnce} from './review-once.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
@@ -91,7 +92,7 @@ for(const [column,definition] of [['postal_code',"TEXT NOT NULL DEFAULT ''"],['s
  if(!db.prepare('PRAGMA table_info(venues)').all().some(field=>field.name===column))db.exec('ALTER TABLE venues ADD COLUMN '+column+' '+definition);
 }
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='meaple_event_id'))db.exec("ALTER TABLE events ADD COLUMN meaple_event_id TEXT NOT NULL DEFAULT ''");
-for(const table of ['venues','events'])for(const [col,def] of (table==='venues'?[['services',"TEXT NOT NULL DEFAULT ''"]]:[['doors_at',"TEXT NOT NULL DEFAULT ''"],['cover_image',"TEXT NOT NULL DEFAULT ''"],['services',"TEXT NOT NULL DEFAULT ''"]])){
+for(const table of ['venues','events'])for(const [col,def] of (table==='venues'?[['services',"TEXT NOT NULL DEFAULT ''"],['cover_image',"TEXT NOT NULL DEFAULT ''"],['logo_image',"TEXT NOT NULL DEFAULT ''"]]:[['doors_at',"TEXT NOT NULL DEFAULT ''"],['cover_image',"TEXT NOT NULL DEFAULT ''"],['services',"TEXT NOT NULL DEFAULT ''"]])){
  if(!db.prepare('PRAGMA table_info('+table+')').all().some(row=>row.name===col))db.exec('ALTER TABLE '+table+' ADD COLUMN '+col+' '+def);
 }
 db.exec('CREATE TABLE IF NOT EXISTS event_general_settings(id INTEGER PRIMARY KEY CHECK(id=1),minimum_age INTEGER NOT NULL DEFAULT 18,entry_rules TEXT NOT NULL DEFAULT \'\',accepted_documents TEXT NOT NULL DEFAULT \'\',cancellation_policy TEXT NOT NULL DEFAULT \'\')');
@@ -642,8 +643,10 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='POST'&&key==='edit-venue'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);
-          if(!name||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(id))return json(res,400,{error:'Estabelecimento inválido.'});
-          db.prepare('UPDATE venues SET name=?,address=?,city=?,postal_code=?,street=?,neighborhood=?,complement=?,address_url=?,services=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000),id);return json(res,200,{ok:true});
+          const current=db.prepare('SELECT cover_image,logo_image FROM venues WHERE id=?').get(id);
+          if(!name||!current)return json(res,400,{error:'Estabelecimento inválido.'});
+          let media;try{media=venueMediaFields(b,current);}catch(error){return json(res,400,{error:error.message});}
+          db.prepare('UPDATE venues SET name=?,address=?,city=?,postal_code=?,street=?,neighborhood=?,complement=?,address_url=?,services=?,cover_image=?,logo_image=? WHERE id=?').run(name,String(b.address||'').slice(0,300),String(b.city||'').slice(0,100),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000),media.cover_image,media.logo_image,id);return json(res,200,{ok:true});
         }
         if(req.method==='POST'&&key==='edit-map'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
@@ -743,7 +746,8 @@ http.createServer(async (req,res)=>{
         if(req.method==='POST'&&key==='venues'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100);
           if(!name)return json(res,400,{error:'Nome obrigatório.'});
-          const id=randomUUID();db.prepare('INSERT INTO venues(id,name,address,city,created_at,postal_code,street,neighborhood,complement,address_url,services) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now(),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000));return json(res,201,{id});
+          let media;try{media=venueMediaFields(b);}catch(error){return json(res,400,{error:error.message});}
+          const id=randomUUID();db.prepare('INSERT INTO venues(id,name,address,city,created_at,postal_code,street,neighborhood,complement,address_url,services,cover_image,logo_image) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,name,String(b.address||''),String(b.city||''),Date.now(),String(b.postal_code||'').slice(0,12),String(b.street||'').slice(0,200),String(b.neighborhood||'').slice(0,100),String(b.complement||'').slice(0,150),String(b.address_url||'').slice(0,500),String(b.services||'').slice(0,2000),media.cover_image,media.logo_image);return json(res,201,{id});
         }
         if(req.method==='POST'&&key==='maps'){
           const b=await body(req),name=String(b.name||'').trim().slice(0,100),venue=String(b.venue_id||'');
