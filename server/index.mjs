@@ -668,7 +668,7 @@ http.createServer(async (req,res)=>{
           }
           const geometryError=validateAreaGeometries(areas);
           if(geometryError)return json(res,400,{error:geometryError});
-          const markerIds=new Set();
+          const markerIds=new Set(),roomsById=new Map(areas.map(a=>[a.id,a]));
           for(const m of markers){
             if(!m||typeof m.id!=='string'||!m.id||m.id.length>100||markerIds.has(m.id)||typeof m.name!=='string'||!m.name.trim()||m.name.length>100||
               typeof m.type!=='string'||m.type.length>40||![m.x,m.y].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=-35&&n<=135)||
@@ -678,15 +678,36 @@ http.createServer(async (req,res)=>{
               (!!m.opens_at!==!!m.closes_at)||
               (m.categories!==undefined&&(!Array.isArray(m.categories)||m.categories.length>30||m.categories.some(c=>typeof c!=='string'||!c.trim()||c.length>80)))
             )return json(res,400,{error:'Ponto inválido: verifique nome, formato, tamanho e posição.'});
-            if(m.type==='entrada'&&!m.anchor)return json(res,400,{error:'Entradas precisam estar ancoradas a uma borda do mapa.'});
+            if(m.area_id!==undefined&&(typeof m.area_id!=='string'||!roomsById.has(m.area_id)))
+              return json(res,400,{error:'O ambiente vinculado ao ponto não pertence a esta planta.'});
+            if(m.type==='entrada'&&!m.anchor)return json(res,400,{error:'Entradas precisam estar ancoradas a uma borda do mapa ou ambiente.'});
             if(m.anchor!==undefined){
               const anchor=m.anchor;
-              if(!anchor||!['top','right','bottom','left'].includes(anchor.side)||typeof anchor.offset!=='number'||!Number.isFinite(anchor.offset)||anchor.offset<0||anchor.offset>100||
-                 (anchor.side==='top'&&(Math.abs(m.x-anchor.offset)>0.001||Math.abs(m.y)>0.001))||
-                 (anchor.side==='bottom'&&(Math.abs(m.x-anchor.offset)>0.001||Math.abs(m.y-100)>0.001))||
-                 (anchor.side==='left'&&(Math.abs(m.x)>0.001||Math.abs(m.y-anchor.offset)>0.001))||
-                 (anchor.side==='right'&&(Math.abs(m.x-100)>0.001||Math.abs(m.y-anchor.offset)>0.001))
-              )return json(res,400,{error:'Ponto ancorado fora da borda selecionada.'});
+              if(!anchor||!['top','right','bottom','left'].includes(anchor.side)||
+                 ![undefined,'map','area'].includes(anchor.scope)||
+                 typeof anchor.offset!=='number'||!Number.isFinite(anchor.offset)||anchor.offset<0||anchor.offset>100)
+                return json(res,400,{error:'Ponto ancorado fora da borda selecionada.'});
+              const room=anchor.scope==='area'?roomsById.get(m.area_id):null;
+              if(anchor.scope==='area'&&!room||anchor.scope!=='area'&&m.area_id)
+                return json(res,400,{error:'Âncora de ponto incompatível com o ambiente selecionado.'});
+              let expectedX,expectedY;
+              if(room){
+                const t=anchor.offset/100;
+                expectedX=room.x+(anchor.side==='left'?0:anchor.side==='right'?room.width:room.width*t);
+                expectedY=room.y+(anchor.side==='top'?0:anchor.side==='bottom'?room.height:room.height*t);
+                if(room.geometry?.shape==='ellipse'){
+                  const centerX=room.x+room.width/2,centerY=room.y+room.height/2;
+                  const dx=(expectedX-centerX)/(room.width/2),dy=(expectedY-centerY)/(room.height/2);
+                  const length=Math.hypot(dx,dy)||1;
+                  expectedX=centerX+dx/length*room.width/2;
+                  expectedY=centerY+dy/length*room.height/2;
+                }
+              }else{
+                expectedX=anchor.side==='left'?0:anchor.side==='right'?100:anchor.offset;
+                expectedY=anchor.side==='top'?0:anchor.side==='bottom'?100:anchor.offset;
+              }
+              if(Math.abs(m.x-expectedX)>0.02||Math.abs(m.y-expectedY)>0.02)
+                return json(res,400,{error:'Ponto ancorado fora da borda selecionada.'});
             }
             markerIds.add(m.id);
           }
