@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
+import {readMapDraft,persistMapDraft,removeMapDraft} from './map-edit-draft';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
@@ -35,7 +36,10 @@ const areaColor=(a:Area)=>/^#[0-9a-fA-F]{6}$/.test(a.color||'')?a.color!:'#9747F
 const pointColor=(p:Marker)=>/^#[0-9a-fA-F]{6}$/.test(p.color||'')?p.color!:'#C4FF40';
 async function api(route:string,payload?:object){
  const r=await fetch('/api/admin/'+route,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
- const j=await r.json();if(!r.ok)throw Error(j.error||'Erro ao carregar o mapa');return j;
+ const j=await r.json().catch(()=>null);
+ if(!r.ok)throw Error(j?.error||'Erro HTTP '+r.status+' ao '+(payload?'salvar':'carregar')+' o mapa.');
+ if(!j)throw Error('O servidor retornou uma resposta inválida ao '+(payload?'salvar':'carregar')+' o mapa.');
+ return j;
 }
 // Locate overlapping shared edges without introducing gaps in the stored room layout.
 function sharedEdges(areas:Area[]){
@@ -62,6 +66,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [curveDraft,setCurveDraft]=useState<AreaGeometry|null>(null);
  const [formatSide,setFormatSide]=useState<CurveSide>('top');
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
+ const [draftUnavailable,setDraftUnavailable]=useState(false);
+ const draftReady=useRef(false),editRevision=useRef(0);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
  const gpsWatch=useRef<number|null>(null),walkActive=useRef(false);
@@ -116,7 +122,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const areasOutside=areas.filter(a=>a.x<0||a.y<0||a.x+a.width>100||a.y+a.height>100).length;
  const markersOutside=markers.filter(m=>m.x<0||m.y<0||m.x>100||m.y>100).length;
  useEffect(()=>{
-  let alive=true;setLoading(true);setInitialLoadError(false);
+  let alive=true;draftReady.current=false;setLoading(true);setInitialLoadError(false);
   Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps'),api('products')]).then(([a,m,maps,products])=>{
    if(!alive)return;
    const roomAreas:Area[]=a.items.filter((x:Area)=>x.map_id===map.id);
@@ -124,10 +130,35 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    setMarkers(m.items.map(normalizeMarker).map((point:Marker)=>associateMarkerWithRoom(point,roomAreas)));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
    setCatalogCategories([...new Set((products.items as {category:string}[]).map(p=>p.category.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')));
-   setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
-  }).catch(e=>{if(alive){setError(String(e));setInitialLoadError(true);}}).finally(()=>{if(alive)setLoading(false);});
+   const recovered=readMapDraft<Area,Marker,MapFrame>(map.id);
+   if(recovered){
+    setAreas(recovered.areas);
+    setMarkers(recovered.markers.map(normalizeMarker).map(point=>associateMarkerWithRoom(point,recovered.areas)));
+    setFrame(normalizeMapFrame(recovered.frame));
+    setNotice('Rascunho não salvo recuperado neste navegador. Confira o mapa e clique em Salvar mapa quando estiver pronto.');
+   }
+   setFrameEditing(false);setDirty(!!recovered);setHistory([]);setFuture([]);
+   draftReady.current=true;
+  }).catch(e=>{
+   if(!alive)return;
+   const recovered=readMapDraft<Area,Marker,MapFrame>(map.id);
+   if(recovered){
+    setAreas(recovered.areas);
+    setMarkers(recovered.markers.map(normalizeMarker).map(point=>associateMarkerWithRoom(point,recovered.areas)));
+    setFrame(normalizeMapFrame(recovered.frame));
+    setDirty(true);
+    setError('O servidor não respondeu, mas o rascunho local foi recuperado. Suas alterações permanecem neste navegador. Tente salvar novamente quando a conexão voltar.');
+    draftReady.current=true;
+   }else{setError(String(e));setInitialLoadError(true);}
+  }).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
  },[map.id]);
+ // Keep the latest committed editor state even if an unexpected React render fails.
+ useEffect(()=>{
+  if(!draftReady.current||loading||!dirty)return;
+  const ok=persistMapDraft(map.id,{areas,markers,frame});
+  setDraftUnavailable(!ok);
+ },[map.id,areas,markers,frame,dirty,loading]);
  useEffect(()=>{if(!calibrationOpen){stopCaptureWatch();setCaptureReview(null);setCalibrationBusy(false);}},[calibrationOpen]);
  useEffect(()=>()=>stopCaptureWatch(),[]);
  useEffect(()=>{
@@ -177,9 +208,9 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   return()=>window.removeEventListener('keydown',onKeyboard);
  },[editMenuOpen,calibrationOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
- function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
- function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
- function redo(){if(!future.length)return;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers,frame}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setFrame(next.frame);setDirty(true);setResizeId(null);}
+ function checkpoint(){editRevision.current+=1;setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
+ function undo(){if(!history.length)return;editRevision.current+=1;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
+ function redo(){if(!future.length)return;editRevision.current+=1;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers,frame}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setFrame(next.frame);setDirty(true);setResizeId(null);}
  function updateArea(patch:Partial<Area>){
   if(!active)return;checkpoint();
   const updated=areas.map(a=>a.id===active.id?{...a,...patch}:a);
@@ -358,13 +389,25 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }
  }
  async function save(){
-  if(saving)return false;setSaving(true);setError('');
+  if(saving)return false;
+  const revisionAtStart=editRevision.current;
+  setSaving(true);setError('');
   try{
    await api('save-layout',{map_id:map.id,areas,markers,frame});
-   setDirty(false);setHistory([]);setFuture([]);setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');setEditLayout(!!selected);setFrameEditing(false);setResizeId(areas.some(a=>a.id===selected)?selected:null);
+   if(editRevision.current===revisionAtStart){
+    removeMapDraft(map.id);
+    setDirty(false);setHistory([]);setFuture([]);
+    setNotice('Mapa salvo com sucesso. Ambientes, pontos e área externa publicados.');
+   }else{
+    setDirty(true);
+    setNotice('A versão enviada foi salva, mas você fez novas alterações durante o envio. Clique em Salvar mapa novamente.');
+   }
+   setEditLayout(!!selected);setFrameEditing(false);setResizeId(areas.some(a=>a.id===selected)?selected:null);
    return true;
-  }catch(e){setError(e instanceof Error?e.message:'Não foi possível salvar o mapa.');return false;}
-  finally{setSaving(false);}
+  }catch(e){
+   setError((e instanceof Error?e.message:'Não foi possível salvar o mapa.')+' As alterações continuam no editor e no rascunho local; não foram descartadas.');
+   return false;
+  }finally{setSaving(false);}
  }
  function requestCalibrationSave(){
   if(!ready){setError('Registre os quatro cantos antes de salvar.');return;}
@@ -426,6 +469,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    const roomAreas:Area[]=a.items.filter((x:Area)=>x.map_id===map.id);
    setAreas(roomAreas);setMarkers(m.items.map(normalizeMarker).map((point:Marker)=>associateMarkerWithRoom(point,roomAreas)));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));setFrameEditing(false);
+   removeMapDraft(map.id);
    setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
    setPendingDiscardAction(null);
   }catch(e){setError(e instanceof Error?e.message:'Não foi possível recuperar a última versão salva do mapa.');}finally{setLoading(false);}
@@ -438,7 +482,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  }
  async function confirmDiscardAction(){
   if(!pendingDiscardAction||saving||loading)return;
-  if(pendingDiscardAction==='leave'){setPendingDiscardAction(null);onBack();return;}
+  if(pendingDiscardAction==='leave'){removeMapDraft(map.id);setPendingDiscardAction(null);onBack();return;}
   await discard();
  }
  const colorInput=(value:string,apply:(color:string)=>void)=><div className="flex flex-wrap items-center gap-2">{colors.map(c=><button key={c} type="button" aria-label={'Cor '+c} onClick={()=>apply(c)} className={'h-7 w-7 rounded-full border-2 '+(value.toLowerCase()===c.toLowerCase()?'border-white ring-2 ring-white/30':'border-transparent')} style={{backgroundColor:c}}/>)}<input aria-label="Escolher cor personalizada" type="color" value={/^#[0-9a-fA-F]{6}$/.test(value)?value:'#9747FF'} onChange={e=>apply(e.target.value)} className="h-8 w-9 cursor-pointer bg-transparent"/></div>;
@@ -452,6 +496,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <div><p className="text-xs uppercase tracking-widest text-[#c4ff40]">Editor do mapa</p><h2 className="mt-1 text-2xl font-black sm:text-3xl">{displayLabel(mapName)}</h2><p className="mt-1 text-xs text-white/50">{dirty?'● Alterações não salvas':'Mapa salvo'} · {editing?'Modo edição ativo':'Modo de visualização'} · Área externa disponível para organizar</p></div>
    <div className="flex flex-wrap gap-2"><button disabled={!dirty||saving} onClick={requestDiscard} className={button}>Descartar</button><button disabled={saving||loading||!dirty} onClick={()=>void save()} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black disabled:opacity-40"><Save size={16}/>{saving?'Salvando...':'Salvar mapa'}</button></div>
   </div>
+  {draftUnavailable&&dirty&&<p role="alert" className="rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-xs text-amber-100">O navegador não permitiu salvar o rascunho local. Evite atualizar a página até conseguir salvar o mapa no servidor.</p>}
   <div className="rounded-xl border border-white/10 bg-white/[.035]">
   <div className="flex flex-wrap items-center gap-2 p-2">
    <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
