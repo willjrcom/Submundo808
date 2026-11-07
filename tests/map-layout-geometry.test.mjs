@@ -100,3 +100,37 @@ test('moving can snap either left or right side to external boundary',()=>{
  assert.equal(moveArea(room,'a',74.4,20,true)[0].x,75);
  assert.equal(moveArea(room,'a',99.5,20,true)[0].x,100);
 });
+
+test('bottom edge snaps to the bottom of a side-by-side room that shares a vertical border',()=>{
+ const piste={id:'pista',x:0,y:10,width:70,height:70};
+ const vip={id:'vip',x:70,y:20,width:30,height:42};
+ const resized=resizeShared([piste,vip],'vip','bottom',16.4,true);
+ assert.equal(resized[1].y+resized[1].height,80);
+ assert.deepEqual(resized[0],piste);
+ assert.equal(intersects(resized[0],resized[1]),false);
+});
+
+test('top edges of side-by-side rooms align even without horizontal overlap',()=>{
+ const piste={id:'pista',x:0,y:20,width:70,height:60};
+ const vip={id:'vip',x:70,y:10,width:30,height:60};
+ const resized=resizeShared([piste,vip],'vip','top',9.1,true);
+ assert.equal(resized[1].y,20);
+ assert.equal(resized[1].height,50);
+});
+
+test('right edge snaps to the right edge of a vertically adjacent room',()=>{
+ const upper={id:'upper',x:10,y:0,width:70,height:50};
+ const lower={id:'lower',x:20,y:50,width:48,height:50};
+ const resized=resizeShared([upper,lower],'lower','right',10.3,true);
+ assert.equal(resized[1].x+resized[1].width,80);
+});
+
+test('snap switch and distance threshold prevent alignment with unrelated rooms',()=>{
+ const piste={id:'pista',x:0,y:10,width:70,height:70};
+ const vip={id:'vip',x:70,y:20,width:30,height:42};
+ const withoutSnap=resizeShared([piste,vip],'vip','bottom',16.4,false);
+ assert.ok(Math.abs(withoutSnap[1].y+withoutSnap[1].height-78.4)<1e-8);
+ const distant={...piste,id:'distant',width:60};
+ const noCandidate=resizeShared([distant,vip],'vip','bottom',16.4,true);
+ assert.ok(Math.abs(noCandidate[1].y+noCandidate[1].height-78.4)<1e-8);
+});

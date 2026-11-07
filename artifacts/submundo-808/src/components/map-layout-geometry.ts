@@ -5,6 +5,8 @@ export type MapRect = {id:string;x:number;y:number;width:number;height:number};
 export type Edge = 'left'|'right'|'top'|'bottom';
 const EPS=0.15;
 const MIN=3;
+// Distância magnética (em pontos percentuais), aplicada somente a bordas próximas.
+const SNAP_DISTANCE=2.5;
 export const PASTEBOARD_MIN=-35;
 export const PASTEBOARD_MAX=135;
 export const limit=(value:number,min:number,max:number)=>Math.max(min,Math.min(max,value));
@@ -36,15 +38,23 @@ export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,de
   const target=edgeNow+delta;
   const candidates=[0,100];
   for(const other of areas){
+   // Exclude only the rooms actually moved with this shared partition.
    if(other.id===id||neighbors.some(n=>n.id===other.id))continue;
-   const perpendicularOverlap=vertical
-    ?overlap(selected.y,selected.y+selected.height,other.y,other.y+other.height)
-    :overlap(selected.x,selected.x+selected.width,other.x,other.x+other.width);
-   if(perpendicularOverlap<=EPS)continue;
+   const start=vertical?selected.y:selected.x;
+   const end=vertical?selected.y+selected.height:selected.x+selected.width;
+   const otherStart=vertical?other.y:other.x;
+   const otherEnd=vertical?other.y+other.height:other.x+other.width;
+   // Adjacent rooms can share a PERPENDICULAR border, without overlap along
+   // the dimension being resized. Their aligned bottoms/tops (or left/right)
+   // must still be eligible for snapping.
+   const relevant=overlap(start,end,otherStart,otherEnd)>EPS||
+    Math.abs(end-otherStart)<=SNAP_DISTANCE||
+    Math.abs(otherEnd-start)<=SNAP_DISTANCE;
+   if(!relevant)continue;
    if(vertical)candidates.push(other.x,other.x+other.width);
    else candidates.push(other.y,other.y+other.height);
   }
-  const nearest=candidates.filter(pos=>Math.abs(pos-target)<=1.5)
+  const nearest=candidates.filter(pos=>Math.abs(pos-target)<=SNAP_DISTANCE)
    .sort((a,b)=>Math.abs(a-target)-Math.abs(b-target))[0];
   if(nearest!==undefined)delta=nearest-edgeNow;
  }
