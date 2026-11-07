@@ -4,23 +4,26 @@ import {allCorners,cornersGeometryValid,MAP_MARGIN_METERS,measuredCorners,type C
 import {distanceMeters} from './map-location-utils';
 import {googleMapsLink,mapPreviewPosition,manualValuesFromGps} from './map-calibration-manual';
 import {calibrationPreviewProjection,coordinateString,projectEditorAreaPath,type PreviewPoint} from './map-calibration-preview-projection';
+import CalibrationPointDetails,{formatMeters} from './admin-calibration-point-details';
 
 type PreviewRoom=GeometricArea&{name?:string;color?:string};
 const order:CornerKey[]=['tl','tr','br','bl'];
 const labels:Record<CornerKey,string>={tl:'Início do topo',tr:'Fim do topo',br:'Fim da base',bl:'Início da base'};
 const WIDTH=420,HEIGHT=304;
+const dimensionPairs:[CornerKey,CornerKey][]=[['tl','tr'],['tr','br'],['br','bl'],['bl','tl']];
 const svgPoint=(p:PreviewPoint)=>p.x+','+p.y;
 
-export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedChanges,onClose,onRecalibrate}:{
+export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedChanges,onClose,onRecalibrate,onApplyCoordinates}:{
  mapName:string;gps:CalibrationGps|undefined;areas:PreviewRoom[];
  hasUnsavedChanges:boolean;onClose:()=>void;onRecalibrate:()=>void;
+ onApplyCoordinates:(result:Extract<import('./map-calibration-manual').ManualCalibrationResult,{ok:true}>)=>void;
 }){
  const raw=measuredCorners(gps);
  if(!allCorners(raw)||!cornersGeometryValid(raw))return null;
  // Saved coordinates already include the external margin. Use them for the shape
  // and the rooms; use rawCorner coordinates exclusively for numbered GPS markers.
  const frame=gps&&allCorners(gps)&&cornersGeometryValid(gps)?gps:raw;
- const projection=calibrationPreviewProjection(frame,{width:WIDTH,height:HEIGHT,padding:36});
+ const projection=calibrationPreviewProjection(frame,{width:WIDTH,height:HEIGHT,padding:58});
  const outline=order.map(key=>svgPoint(projection.corners[key])).join(' ');
  const width=(distanceMeters(raw.tl,raw.tr)+distanceMeters(raw.bl,raw.br))/2;
  const height=(distanceMeters(raw.tl,raw.bl)+distanceMeters(raw.tr,raw.br))/2;
@@ -30,6 +33,23 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
  const angle=Math.atan2(arrowTip.y-arrowStart.y,arrowTip.x-arrowStart.x);
  const headA={x:arrowTip.x-9*Math.cos(angle-.45),y:arrowTip.y-9*Math.sin(angle-.45)};
  const headB={x:arrowTip.x-9*Math.cos(angle+.45),y:arrowTip.y-9*Math.sin(angle+.45)};
+ const measuredPins=Object.fromEntries(order.map(key=>[key,projection.projectGps(raw[key])])) as Record<CornerKey,PreviewPoint>;
+ const centroid={x:order.reduce((n,key)=>n+measuredPins[key].x,0)/4,y:order.reduce((n,key)=>n+measuredPins[key].y,0)/4};
+ // Engineering-style dimension lines always follow the measured corners, not the margin.
+ const dimensions=dimensionPairs.map(([start,end],index)=>{
+  const a=measuredPins[start],b=measuredPins[end];
+  const dx=b.x-a.x,dy=b.y-a.y,segmentLength=Math.hypot(dx,dy);
+  const midpoint={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+  const normal={x:-dy/segmentLength,y:dx/segmentLength};
+  const outward=(midpoint.x-centroid.x)*normal.x+(midpoint.y-centroid.y)*normal.y>=0?1:-1;
+  const shift=(point:PreviewPoint,n:number):PreviewPoint=>({x:point.x+normal.x*outward*n,y:point.y+normal.y*outward*n});
+  const startLine=shift(a,17),endLine=shift(b,17),labelCenter=shift(midpoint,32);
+  const meters=distanceMeters(raw[start],raw[end]);
+  const label=(index+1)+'–'+((index+1)%4+1)+' · '+formatMeters(meters);
+  return {start,end,meters,label,startLine,endLine,labelCenter,labelWidth:Math.max(78,label.length*6.2+16),
+   startTickA:shift(startLine,-4),startTickB:shift(startLine,4),
+   endTickA:shift(endLine,-4),endTickB:shift(endLine,4)};
+ });
  const rooms=visibleAreas(areas).map(area=>{
   const members=groupMembers(areas,area.id);
   const ellipse=members.length===1&&area.geometry?.shape==='ellipse'
@@ -60,13 +80,24 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
         <path d={'M'+coordinateString(arrowStart)+' L'+coordinateString(arrowTip)}/>
         <path d={'M'+coordinateString(headA)+' L'+coordinateString(arrowTip)+' L'+coordinateString(headB)}/>
        </g>
+       <g aria-label="Cotas entre pontos" stroke="#c4ff40" strokeWidth="1.1" strokeLinecap="round">
+        {dimensions.map(d=><g key={d.start+'-'+d.end}>
+         <line x1={measuredPins[d.start].x} y1={measuredPins[d.start].y} x2={d.startLine.x} y2={d.startLine.y} strokeOpacity=".45"/>
+         <line x1={measuredPins[d.end].x} y1={measuredPins[d.end].y} x2={d.endLine.x} y2={d.endLine.y} strokeOpacity=".45"/>
+         <line x1={d.startLine.x} y1={d.startLine.y} x2={d.endLine.x} y2={d.endLine.y} strokeDasharray="3 2" strokeOpacity=".85"/>
+         <line x1={d.startTickA.x} y1={d.startTickA.y} x2={d.startTickB.x} y2={d.startTickB.y}/>
+         <line x1={d.endTickA.x} y1={d.endTickA.y} x2={d.endTickB.x} y2={d.endTickB.y}/>
+         <rect x={d.labelCenter.x-d.labelWidth/2} y={d.labelCenter.y-9} width={d.labelWidth} height="18" rx="5" fill="#17111e" stroke="#c4ff40" strokeOpacity=".45"/>
+         <text x={d.labelCenter.x} y={d.labelCenter.y+3.5} fill="#e6ffc4" stroke="none" textAnchor="middle" fontSize="10" fontWeight="700">{d.label}</text>
+        </g>)}
+       </g>
        {order.map((key,i)=>{
         const pin=projection.projectGps(raw[key]);
         return <g key={key}><circle cx={pin.x} cy={pin.y} r="11" fill="#c4ff40" stroke="#17111e" strokeWidth="2"/><text x={pin.x} y={pin.y+4} fill="#17111e" fontSize="12" fontWeight="900" textAnchor="middle">{i+1}</text></g>;
        })}
        <g aria-label="Norte geográfico" fill="#e4e4e7"><text x={WIDTH-19} y="19" fontSize="13" textAnchor="end" fontWeight="800">N ↑</text></g>
       </svg>
-      <p className="mt-1 text-[11px] leading-relaxed text-white/60">Projeção geográfica vista de cima: o norte permanece para cima, enquanto a seta verde aponta para o topo do seu desenho. A borda verde utiliza os limites salvos (com a margem, quando configurada); os números indicam os pontos originais. A imagem não contém fotografia de satélite nem relevo 3D.</p>
+      <p className="mt-1 text-[11px] leading-relaxed text-white/60">Projeção geográfica vista de cima: o norte permanece para cima, enquanto a seta verde aponta para o topo do seu desenho. A borda verde utiliza os limites salvos (com a margem, quando configurada); os números indicam os pontos originais. As cotas mostram distâncias aproximadas entre os pontos medidos, sem a margem externa de 5 m. A imagem não contém fotografia de satélite nem relevo 3D.</p>
      </div>
      <a href={satelliteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#c4ff40] hover:underline"><MapPin size={14}/> Conferir localização no Google Maps <ExternalLink size={12}/></a>
     </div>
@@ -81,10 +112,7 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
       <div className="rounded-lg border border-white/10 p-3"><p className="text-white/55">Comprimento médio</p><strong className="mt-1 block text-lg text-white">{height.toFixed(1)} m</strong></div>
      </div>
      <p className="rounded-lg border border-white/10 p-3 text-xs text-white/70">{gps?.marginMeters===MAP_MARGIN_METERS?'Margem externa registrada: 5 metros em cada borda.':'Calibração anterior sem confirmação de margem externa de 5 metros.'} As dimensões acima usam os pontos originais, antes da margem.</p>
-     <div className="space-y-2 rounded-xl border border-white/10 p-3">
-      <p className="text-xs font-bold text-white">Pontos de referência</p>
-      {order.map((key,i)=><div key={key} className="flex items-start gap-2 text-xs"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#c4ff40] text-[10px] font-black text-black">{i+1}</span><div className="min-w-0"><p className="font-semibold text-white">{labels[key]}</p><p className="break-all text-white/55">{raw[key].lat.toFixed(6)}, {raw[key].lng.toFixed(6)}</p></div></div>)}
-     </div>
+     <CalibrationPointDetails gps={gps} distances={dimensions} onApply={onApplyCoordinates}/>
      <p className="text-xs text-white/55">Se os pontos ainda parecerem invertidos em comparação ao satélite, confira a associação das coordenadas aos quatro cantos antes de recalibrar.</p>
     </div>
    </div>
