@@ -18,12 +18,14 @@ export const isGrouped=(areas:GeometricArea[],rootId:string)=>areas.some(a=>geom
 export const canGroup=(areas:GeometricArea[],rootId:string,childId:string)=>{
  const root=areas.find(a=>a.id===rootId),child=areas.find(a=>a.id===childId);
  if(!root||!child||root.id===child.id||geometryOf(root).groupId||geometryOf(child).groupId)return false;
- if(geometryOf(child).shape==='ellipse'||geometryOf(root).shape==='ellipse')return false;
- return groupMembers(areas,rootId).some(member=>sharesBorder(member,child)||intersects(member,child));
+ const existing=groupMembers(areas,rootId),joining=groupMembers(areas,childId);
+ if([...existing,...joining].some(a=>geometryOf(a).shape==='ellipse'))return false;
+ return existing.some(a=>joining.some(b=>touchingForStorage(a,b)));
 };
 export function groupWith<T extends GeometricArea>(areas:T[],rootId:string,childId:string):T[]{
  if(!canGroup(areas,rootId,childId))return areas;
- return areas.map(a=>a.id===childId?{...a,geometry:{...geometryOf(a),groupId:rootId}}:a);
+ const joining=new Set(groupMembers(areas,childId).map(a=>a.id));
+ return areas.map(a=>joining.has(a.id)?{...a,geometry:{...geometryOf(a),groupId:rootId}}:a);
 }
 export function ungroup<T extends GeometricArea>(areas:T[],rootId:string):T[]{
  return areas.map(a=>geometryOf(a).groupId===rootId?{...a,geometry:{...geometryOf(a),groupId:null}}:a);

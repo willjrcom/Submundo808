@@ -16,6 +16,19 @@ test('editor expõe Agrupar/Desagrupar, formato oval e curvas independentes',()=
  assert.match(editor,/canGroup\(areas,active\.id,groupChoice\)/);
  assert.match(editor,/checkpoint\(\);setAreas\(groupWith/);
  assert.match(editor,/checkpoint\(\);setAreas\(ungroup/);
+ assert.match(editor,/groupOpen&&active&&/);
+ assert.doesNotMatch(editor,/groupOpen&&active&&!grouped/);
+ assert.match(editor,/grouped&&<button[^\n]*Desagrupar/);
+ assert.match(editor,/setGroupOpen\(true\)/);
+});
+test('grupos continuam aceitando ambientes e Formato permanece acessível',()=>{
+ assert.match(editor,/const groupCandidates=active\?visibleRooms\.filter/);
+ assert.match(editor,/canGroup\(areas,active\.id,a\.id\)/);
+ assert.match(editor,/Parte do grupo para curvar/);
+ assert.match(editor,/Não é possível curvar lados que já foram agrupados/);
+ assert.match(editor,/disabled=\{!freeCurveSides\.includes\('top'\)\}/);
+ assert.match(editor,/disabled=\{grouped\} title=\{grouped\?'O formato oval exige desagrupar/);
+ assert.doesNotMatch(editor,/role="menuitem" disabled=\{grouped\}/);
 });
 test('editor e mapa público usam a mesma silhueta e omitem divisórias internas',()=>{
  assert.match(editor,/visibleRooms\.map\(a=>/);

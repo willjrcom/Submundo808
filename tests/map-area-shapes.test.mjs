@@ -120,6 +120,38 @@ test('grouped rooms cannot be disconnected by resizing a different outer edge',(
  assert.equal(validateAreaGeometries(snapped),null);
 });
 
+test('an existing group can absorb additional rooms and a neighboring group',()=>{
+ const first=groupWith([room('main',10,10),room('wing',30,10),room('third',50,10,10,20)],'main','wing');
+ assert.equal(canGroup(first,'main','third'),true);
+ const expanded=groupWith(first,'main','third');
+ assert.equal(expanded[2].geometry.groupId,'main');
+ assert.equal(groupMembersCount(expanded,'main'),3);
+ const other=groupWith([...expanded,room('next',60,10,10,20),room('last',70,10,10,20)],'next','last');
+ assert.equal(canGroup(other,'main','next'),true);
+ const merged=groupWith(other,'main','next');
+ assert.equal(groupMembersCount(merged,'main'),5);
+ assert.equal(merged.find(a=>a.id==='next').geometry.groupId,'main');
+ assert.equal(merged.find(a=>a.id==='last').geometry.groupId,'main');
+ assert.equal(validateAreaGeometries(merged),null);
+ assert.equal(canGroup(merged,'main','main'),false);
+ assert.equal(canGroup([...merged,room('far',90,80)],'main','far'),false);
+ const separated=ungroup(merged,'main');
+ assert.equal(groupMembersCount(separated,'main'),1);
+});
+const groupMembersCount=(areas,id)=>areas.filter(a=>a.id===id||a.geometry?.groupId===id).length;
+
+test('grouped curvature uses only exterior edges of each part',()=>{
+ const grouped=groupWith([room('main',10,10,30,30),room('wing',40,20,15,15)],'main','wing');
+ const handles=outerResizeHandles(grouped,'main');
+ assert.equal(handles.some(h=>h.areaId==='main'&&h.edge==='right'),false);
+ assert.equal(handles.some(h=>h.areaId==='wing'&&h.edge==='left'),false);
+ assert.equal(handles.some(h=>h.areaId==='wing'&&h.edge==='right'),true);
+ const edited=grouped.map(a=>a.id==='wing'?{...a,geometry:{...a.geometry,curves:{right:{side:'right',direction:'out',depth:25}}}}:a);
+ assert.match(areaPath(edited,'main'),/Q/);
+ assert.doesNotMatch(areaPath(grouped,'main'),/Q/);
+ assert.equal(validateAreaGeometries(edited),null);
+});
+
 test('ungrouped rooms retain resize handles on all four edges',()=>{
  assert.deepEqual(outerResizeHandles([room('solo',10,10,20,20)],'solo').map(h=>h.edge),['left','right','top','bottom']);
 });
