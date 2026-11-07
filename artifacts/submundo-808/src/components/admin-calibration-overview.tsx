@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import {CheckCircle2,ExternalLink,MapPin,RotateCcw,X} from 'lucide-react';
 import {areaPath,groupMembers,visibleAreas,type GeometricArea} from './map-area-shapes';
 import {allCorners,cornersGeometryValid,MAP_MARGIN_METERS,measuredCorners,type CalibrationGps,type CornerKey} from './map-calibration-geometry';
@@ -17,16 +18,25 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
  hasUnsavedChanges:boolean;onClose:()=>void;onRecalibrate:()=>void;
  onApplyCoordinates:(result:Extract<import('./map-calibration-manual').ManualCalibrationResult,{ok:true}>)=>void;
 }){
- const raw=measuredCorners(gps);
+ const [preview,setPreview]=useState<{editing:boolean;valid:boolean;gps:CalibrationGps|null}>({
+  editing:false,valid:true,gps:null
+ });
+ function previewCoordinates(nextGps:CalibrationGps|null,valid:boolean){
+  // An incomplete or invalid coordinate must not break the map: retain the last valid preview.
+  setPreview(current=>({editing:true,valid,gps:nextGps??current.gps}));
+ }
+ function endPreview(){setPreview({editing:false,valid:true,gps:null});}
+ const displayGps=preview.editing&&preview.gps?preview.gps:gps;
+ const raw=measuredCorners(displayGps);
  if(!allCorners(raw)||!cornersGeometryValid(raw))return null;
  // Saved coordinates already include the external margin. Use them for the shape
  // and the rooms; use rawCorner coordinates exclusively for numbered GPS markers.
- const frame=gps&&allCorners(gps)&&cornersGeometryValid(gps)?gps:raw;
+ const frame=displayGps&&allCorners(displayGps)&&cornersGeometryValid(displayGps)?displayGps:raw;
  const projection=calibrationPreviewProjection(frame,{width:WIDTH,height:HEIGHT,padding:58});
  const outline=order.map(key=>svgPoint(projection.corners[key])).join(' ');
  const width=(distanceMeters(raw.tl,raw.tr)+distanceMeters(raw.bl,raw.br))/2;
  const height=(distanceMeters(raw.tl,raw.bl)+distanceMeters(raw.tr,raw.br))/2;
- const position=mapPreviewPosition(manualValuesFromGps(gps),gps);
+ const position=mapPreviewPosition(manualValuesFromGps(displayGps),displayGps);
  const satelliteUrl=googleMapsLink(position,mapName);
  const arrowStart=projection.pointAt(50,16),arrowTip=projection.pointAt(50,-5);
  const angle=Math.atan2(arrowTip.y-arrowStart.y,arrowTip.x-arrowStart.x);
@@ -59,6 +69,9 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
     <div className="space-y-3">
      <div className="rounded-xl border border-white/15 bg-[#100d17] p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-bold text-white">Planta na orientação geográfica real</p><span className="text-[10px] font-semibold text-[#c4ff40]">Norte para cima · escala proporcional</span></div>
+      {preview.editing&&<p role="status" className={'mb-2 rounded-lg border px-3 py-2 text-xs '+(preview.valid?'border-[#c4ff40]/30 bg-[#c4ff40]/5 text-[#c4ff40]':'border-amber-400/30 bg-amber-400/5 text-amber-200')}>
+       {preview.valid?'Prévia em tempo real · alterações ainda não aplicadas.':'Coordenadas incompletas ou inválidas · mantendo a última prévia válida.'}
+      </p>
       <svg viewBox={'0 0 '+WIDTH+' '+HEIGHT} role="img" aria-label="Vista geográfica com norte para cima, limites e ambientes nas coordenadas calibradas" className="w-full">
        <rect width={WIDTH} height={HEIGHT} rx="10" fill="#130f1b"/>
        {Array.from({length:9},(_,i)=><g key={i} stroke="#ffffff0b" strokeWidth="1"><path d={'M'+(i*50)+' 0V'+HEIGHT}/><path d={'M0 '+(i*38)+' H'+WIDTH}/></g>)}
@@ -102,8 +115,8 @@ export default function AdminCalibrationOverview({mapName,gps,areas,hasUnsavedCh
       <div className="rounded-lg border border-white/10 p-3"><p className="text-white/55">Largura média</p><strong className="mt-1 block text-lg text-white">{width.toFixed(1)} m</strong></div>
       <div className="rounded-lg border border-white/10 p-3"><p className="text-white/55">Comprimento médio</p><strong className="mt-1 block text-lg text-white">{height.toFixed(1)} m</strong></div>
      </div>
-     <p className="rounded-lg border border-white/10 p-3 text-xs text-white/70">{gps?.marginMeters===MAP_MARGIN_METERS?'Margem externa registrada: 5 metros em cada borda.':'Calibração anterior sem confirmação de margem externa de 5 metros.'} As dimensões acima usam os pontos originais, antes da margem.</p>
-     <CalibrationPointDetails gps={gps} distances={dimensions} onApply={onApplyCoordinates}/>
+     <p className="rounded-lg border border-white/10 p-3 text-xs text-white/70">{displayGps?.marginMeters===MAP_MARGIN_METERS?'Margem externa registrada: 5 metros em cada borda.':'Calibração anterior sem confirmação de margem externa de 5 metros.'} As dimensões acima usam os pontos originais, antes da margem.</p>
+     <CalibrationPointDetails gps={gps} distances={dimensions} onApply={onApplyCoordinates} onPreviewChange={previewCoordinates} onPreviewEnd={endPreview}/>
      <p className="text-xs text-white/55">Se os pontos ainda parecerem invertidos em comparação ao satélite, confira a associação das coordenadas aos quatro cantos antes de recalibrar.</p>
     </div>
    </div>
