@@ -51,6 +51,15 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.match(details,/onApply\(result\)/);
  assert.match(details,/onClick=\{cancelEdit\}/);
  assert.match(overview,/aria-label="Cotas entre pontos"/);
+ assert.match(overview,/label:formatMeters\(meters\)/);
+ assert.match(overview,/x=\{d\.center\.x\} y=\{d\.center\.y\}/);
+ assert.match(overview,/transform=\{'rotate\('\+d\.angle/);
+ assert.match(overview,/paintOrder="stroke"/);
+ assert.match(overview,/dominantBaseline="middle"/);
+ assert.doesNotMatch(overview,/label=\(index\+1\)\+'–'/);
+ assert.doesNotMatch(overview,/labelWidth:/);
+ assert.doesNotMatch(overview,/startTickA:/);
+ assert.doesNotMatch(overview,/strokeDasharray="3 2"/);
  assert.match(overview,/distanceMeters\(raw\[start\],raw\[end\]\)/);
  assert.match(overview,/formatMeters\(meters\)/);
  assert.match(overview,/<CalibrationPointDetails gps=\{gps\} distances=\{dimensions\} onApply=\{onApplyCoordinates\}/);
