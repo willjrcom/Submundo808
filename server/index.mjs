@@ -11,6 +11,7 @@ import {loadJwtSecret,signJwt,verifyJwt,authCookie,JWT_COOKIE_NAME} from './auth
 import {DEMO_MARKERS} from './demo-geolocation.mjs';
 import {insertDefaultMapAreas} from './default-map-layout.mjs';
 import {parseAreaGeometry,validateAreaGeometries} from './map-area-geometry.mjs';
+import {saveMapCalibration} from './map-calibration-save.mjs';
 import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
@@ -666,6 +667,12 @@ http.createServer(async (req,res)=>{
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100),venueId=String(b.venue_id||'');
           if(!name||!db.prepare('SELECT 1 FROM venue_maps WHERE id=?').get(id)||!db.prepare('SELECT 1 FROM venues WHERE id=?').get(venueId))return json(res,400,{error:'Mapa inválido.'});
           db.prepare('UPDATE venue_maps SET name=?,venue_id=? WHERE id=?').run(name,venueId,id);return json(res,200,{ok:true});
+        }
+        if(req.method==='POST'&&key==='save-calibration'){
+          const b=await body(req);
+          const result=saveMapCalibration(db,{mapId:b.map_id,areaId:b.area_id,rawCorners:b.raw_corners});
+          if(!result.ok)return json(res,result.status,{error:result.error});
+          return json(res,200,{ok:true,gps:result.gps});
         }
         if(req.method==='POST'&&key==='save-layout'){
           const b=await body(req),mapId=String(b.map_id||''),areas=b.areas,markers=b.markers,frame=b.frame;
