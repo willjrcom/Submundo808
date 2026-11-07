@@ -10,7 +10,7 @@ import {
 import {freeAreaPosition,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
-import {anchorMarker,freeMarker,normalizeMarker,moveMarker,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
+import {anchorMarker,anchorMarkerInRoom,associateMarkerWithRoom,bindMarkerToRoom,freeMarker,normalizeMarker,moveMarkerInRooms,moveRoomMarkers,roomContainingPoint,closestRoomEdge,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
 import useMapLabels from './use-map-labels';
 import {gpsToMap,distanceMeters,type MapCorners} from './map-location-utils';
 import {GPS_CAPTURE_MS,MAP_MARGIN_METERS,CORNER_KEYS,measuredCorners,allCorners,applyMeasuredCorner,summarizeGpsSamples,cornersGeometryValid,type CornerKey,type CalibrationGps} from './map-calibration-geometry';
@@ -18,7 +18,7 @@ import {GPS_CAPTURE_MS,MAP_MARGIN_METERS,CORNER_KEYS,measuredCorners,allCorners,
 type GPS={lat:number;lng:number;accuracy:number};
 type GPSData=CalibrationGps;
 type Area={id:string;name:string;map_id:string;kind:string;x:number;y:number;width:number;height:number;gps:GPSData;geometry?:AreaGeometry;description?:string;color?:string;icon?:string};
-type Marker={id:string;name:string;type:string;x:number;y:number;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
+type Marker={id:string;name:string;type:string;x:number;y:number;area_id?:string;anchor?:MarkerAnchor;description?:string;color?:string;shape?:'square'|'circle';size?:number;opens_at?:string;closes_at?:string;categories?:string[];from_area_id?:string;to_area_id?:string;access_type?:string};
 type MapItem={id:string;name:string;venue_id:string};
 type Snapshot={areas:Area[];markers:Marker[];frame:MapFrame};
 type Drag={id:string;kind:'area'|'marker'|'resize'|'frame-move'|'frame-resize';edge?:Edge;frameHandle?:FrameHandle;startX:number;startY:number;offsetX:number;offsetY:number;snapshot:Snapshot;changed?:boolean};
@@ -110,7 +110,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  useEffect(()=>{
   let alive=true;setLoading(true);setInitialLoadError(false);
   Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps'),api('products')]).then(([a,m,maps,products])=>{
-   if(!alive)return;setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setGroupOpen(false);setCurveOpen(false);setMarkers(m.items.map(normalizeMarker));
+   if(!alive)return;
+   const roomAreas:Area[]=a.items.filter((x:Area)=>x.map_id===map.id);
+   setAreas(roomAreas);setGroupOpen(false);setCurveOpen(false);
+   setMarkers(m.items.map(normalizeMarker).map((point:Marker)=>associateMarkerWithRoom(point,roomAreas)));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));
    setCatalogCategories([...new Set((products.items as {category:string}[]).map(p=>p.category.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR')));
    setFrameEditing(false);setDirty(false);setHistory([]);setFuture([]);
@@ -159,7 +162,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function checkpoint(){setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
  function redo(){if(!future.length)return;const next=future[future.length-1];setHistory(v=>[...v,{areas,markers,frame}]);setFuture(v=>v.slice(0,-1));setAreas(next.areas);setMarkers(next.markers);setFrame(next.frame);setDirty(true);setResizeId(null);}
- function updateArea(patch:Partial<Area>){if(!active)return;checkpoint();setAreas(v=>v.map(a=>a.id===active.id?{...a,...patch}:a));}
+ function updateArea(patch:Partial<Area>){
+  if(!active)return;checkpoint();
+  const updated=areas.map(a=>a.id===active.id?{...a,...patch}:a);
+  setAreas(updated);setMarkers(moveRoomMarkers(markers,areas,updated));
+ }
  function updateMarker(patch:Partial<Marker>){if(!selectedMarker)return;checkpoint();setMarkers(v=>v.map(m=>m.id===selectedMarker.id?{...m,...patch}:m));}
  function createArea(){
   // O ambiente começa maior sem sobrepor ambientes já cadastrados.
@@ -201,7 +208,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function createMarker(){
   checkpoint();const id=crypto.randomUUID();
   const x=active?active.x+active.width/2:50,y=active?active.y+active.height/2:50;
-  setMarkers(v=>[...v,{id,name:'Novo ponto',type:'outro',x,y,shape:'square',size:42,color:'#C4FF40',description:''}]);
+  const owner=active||roomContainingPoint(areas,x,y);
+  setMarkers(v=>[...v,{id,name:'Novo ponto',type:'outro',x,y,area_id:owner?.id,shape:'square',size:42,color:'#C4FF40',description:''}]);
   setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Ative a movimentação antes de arrastar.');
  }
  function removeSelected(){
@@ -214,8 +222,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   const item=pendingDelete;
   if((item.kind==='area'&&!areas.some(a=>a.id===item.id))||(item.kind==='marker'&&!markers.some(m=>m.id===item.id))){setPendingDelete(null);return;}
   checkpoint();
-  if(item.kind==='area')setAreas(v=>v.filter(a=>a.id!==item.id));
-  else setMarkers(v=>v.filter(m=>m.id!==item.id));
+  if(item.kind==='area'){
+   setAreas(v=>v.filter(a=>a.id!==item.id));
+   // Keep regular points on the map, but unlink them; a passage cannot exist without both rooms.
+   setMarkers(v=>v.filter(m=>!(m.type==='passagem'&&(m.from_area_id===item.id||m.to_area_id===item.id)))
+    .map(m=>m.area_id===item.id?{...m,area_id:undefined,anchor:m.anchor?.scope==='area'?undefined:m.anchor}:m));
+  }else setMarkers(v=>v.filter(m=>m.id!==item.id));
   setSelected('');setResizeId(null);setGroupOpen(false);setCurveOpen(false);setPendingDelete(null);
   setNotice('Item removido do editor. Salve o mapa para confirmar a exclusão.');
  }
@@ -266,7 +278,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   else if(d.kind==='marker')setMarkers(d.snapshot.markers.map(m=>{
    if(m.id!==d.id)return m;
    const x=p.x-d.offsetX,y=p.y-d.offsetY;
-   if(m.type!=='passagem'||!m.from_area_id||!m.to_area_id)return moveMarker(m,x,y);
+   if(m.type!=='passagem'||!m.from_area_id||!m.to_area_id)return moveMarkerInRooms(m,x,y,d.snapshot.areas);
    const a=d.snapshot.areas.find(area=>area.id===m.from_area_id);
    const b=d.snapshot.areas.find(area=>area.id===m.to_area_id);
    if(!a||!b)return m; // Never release a passage into free movement.
@@ -287,9 +299,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   }));
   else if(d.kind==='resize'&&d.edge){
    const delta=d.edge==='left'||d.edge==='right'?p.x-d.startX:p.y-d.startY;
-   setAreas(resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap));
+   const updated=resizeShared(d.snapshot.areas,d.id,d.edge,delta,snap);
+   setAreas(updated);setMarkers(moveRoomMarkers(d.snapshot.markers,d.snapshot.areas,updated));
   }else{
-   setAreas(moveAreaGroup(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap));
+   const updated=moveAreaGroup(d.snapshot.areas,d.id,p.x-d.offsetX,p.y-d.offsetY,snap);
+   setAreas(updated);setMarkers(moveRoomMarkers(d.snapshot.markers,d.snapshot.areas,updated));
   }
  }
  function endDrag(e:React.PointerEvent){
@@ -370,7 +384,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setLoading(true);setError('');
   try{
    const [a,m,maps]=await Promise.all([api('areas'),api('markers?map_id='+encodeURIComponent(map.id)),api('maps')]);
-   setAreas(a.items.filter((x:Area)=>x.map_id===map.id));setMarkers(m.items.map(normalizeMarker));
+   const roomAreas:Area[]=a.items.filter((x:Area)=>x.map_id===map.id);
+   setAreas(roomAreas);setMarkers(m.items.map(normalizeMarker).map((point:Marker)=>associateMarkerWithRoom(point,roomAreas)));
    setFrame(normalizeMapFrame(maps.items.find((item:MapItem)=>item.id===map.id)?.frame));setFrameEditing(false);
    setDirty(false);setHistory([]);setFuture([]);setResizeId(null);setSelected('');setEditLayout(false);setNotice('Alterações descartadas.');
    setPendingDiscardAction(null);
@@ -502,9 +517,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       const chosen=selected===a.id,canResize=!isGrouped(areas,a.id);
       if(!chosen||frameEditing)return null;
       return <div key={'handles-'+a.id} className="pointer-events-none absolute z-20" style={{left:a.x+'%',top:a.y+'%',width:a.width+'%',height:a.height+'%'}}>
-       {canResize&&!editing&&<button type="button" aria-label={'Redimensionar '+a.name} title="Redimensionar este ambiente"
-        onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();setSelected(a.id);setEditLayout(true);setResizeId(a.id);}}
-        className="pointer-events-auto absolute right-1 top-1 z-30 rounded-md border border-[#c4ff40]/60 bg-[#17101e] p-1.5 text-[#c4ff40] shadow-lg"><Maximize2 size={12}/></button>}
        {canResize&&editing&&resizeId===a.id&&(['left','right','top','bottom'] as const).map(edge=><button key={edge} type="button" aria-label={'Redimensionar borda '+edge}
         onPointerDown={e=>startDrag(e,a.id,'resize',edge)}
         className={'pointer-events-auto absolute z-30 h-4 w-4 touch-none -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+((edge==='left'||edge==='right')?'cursor-ew-resize':'cursor-ns-resize')}
@@ -564,22 +576,52 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      {areas.some(a=>a.id!==active.id&&sharesBorder(a,active))&&<p className="text-[11px] text-[#c4ff40]">Este ambiente compartilha bordas com outros.</p>}
 
     </div> :selectedMarker?<div className="space-y-4">
-     <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · sobreposto aos ambientes</p></div></div>
+     <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><MapPin size={21} style={{color:pointColor(selectedMarker)}}/><div><p className="text-sm font-bold">{selectedMarker.name}</p><p className="text-[11px] text-white/50">Ponto · {selectedMarker.area_id?'vinculado ao ambiente':'livre no mapa'}</p></div></div>
      {selectedMarker.type==='passagem'&&<div className="space-y-2 rounded-xl border border-[#c4ff40]/20 p-3 text-xs"><p className="font-semibold text-[#c4ff40]">Passagem entre ambientes</p><p className="text-white/55">A passagem só pode deslizar ao longo da divisória compartilhada, sem sair para dentro dos ambientes.</p><p className="text-white/60">{areas.find(a=>a.id===selectedMarker.from_area_id)?.name||'Ambiente A'} ↔ {areas.find(a=>a.id===selectedMarker.to_area_id)?.name||'Ambiente B'}</p><label className="block space-y-1">Tipo de acesso<select className={input} value={selectedMarker.access_type||'livre'} onChange={e=>updateMarker({access_type:e.target.value})}><option value="livre">Livre</option><option value="vip">VIP / Controlado</option><option value="saida">Somente saída</option><option value="staff">Equipe / Staff</option></select></label></div>}
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} maxLength={100} value={selectedMarker.name} onChange={e=>updateMarker({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Ícone<select className={input} value={selectedMarker.type} onChange={e=>updateMarker(changeMarkerType(selectedMarker,e.target.value))}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-3 text-xs">
        <p className="font-bold text-[#c4ff40]">Posicionamento</p>
-       <div className="grid grid-cols-2 gap-2">
-        <button type="button" disabled={selectedMarker.type==='entrada'} aria-pressed={!selectedMarker.anchor} onClick={()=>updateMarker(freeMarker(selectedMarker))} className={button+' '+(!selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Ponto livre</button>
-        <button type="button" aria-pressed={!!selectedMarker.anchor} onClick={()=>updateMarker(anchorMarker(selectedMarker,selectedMarker.anchor?.side||closestMapEdge(selectedMarker.x,selectedMarker.y).side))} className={button+' '+(selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Na borda</button>
-       </div>
-       {selectedMarker.anchor&&<label className="block space-y-1">Lateral do mapa
-        <select className={input} value={selectedMarker.anchor.side} onChange={e=>updateMarker(anchorMarker(selectedMarker,e.target.value as MapSide))}>
+       {selectedMarker.type!=='passagem'&&<label className="block space-y-1 font-semibold text-white/70">Vinculado ao ambiente
+        <select className={input} value={selectedMarker.area_id||''} onChange={e=>{
+         const room=areas.find(a=>a.id===e.target.value);
+         if(room)updateMarker(bindMarkerToRoom(selectedMarker,room));
+         else updateMarker({...selectedMarker,area_id:undefined,anchor:selectedMarker.anchor?.scope==='area'?undefined:selectedMarker.anchor});
+        }}>
+         <option value="">Sem vínculo (mapa inteiro)</option>
+         {areas.map(room=><option key={room.id} value={room.id}>{room.name}{room.geometry?.groupId?' (agrupado)':''}</option>)}
+        </select>
+       </label>}
+       {selectedMarker.type!=='passagem'&&<div className="grid grid-cols-2 gap-2">
+        <button type="button" disabled={selectedMarker.type==='entrada'} aria-pressed={!selectedMarker.anchor}
+         onClick={()=>updateMarker(freeMarker(selectedMarker))}
+         className={button+' '+(!selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Ponto livre</button>
+        <button type="button" aria-pressed={!!selectedMarker.anchor} onClick={()=>{
+         const room=areas.find(a=>a.id===selectedMarker.area_id);
+         const side=room?selectedMarker.anchor?.scope==='area'?selectedMarker.anchor.side:closestRoomEdge(room,selectedMarker.x,selectedMarker.y).side
+          :selectedMarker.anchor?.side||closestMapEdge(selectedMarker.x,selectedMarker.y).side;
+         updateMarker(room?anchorMarkerInRoom(selectedMarker,room,side):anchorMarker(selectedMarker,side));
+        }} className={button+' '+(selectedMarker.anchor?'border-[#c4ff40] text-[#c4ff40]':'')}>Na borda</button>
+       </div>}
+       {selectedMarker.anchor&&<label className="block space-y-1">
+        Lateral {selectedMarker.anchor.scope==='area'?'do ambiente':'do mapa'}
+        <select className={input} value={selectedMarker.anchor.side} onChange={e=>{
+         const side=e.target.value as MapSide;
+         const room=areas.find(a=>a.id===selectedMarker.area_id);
+         updateMarker(room&&selectedMarker.anchor?.scope==='area'
+          ?anchorMarkerInRoom(selectedMarker,room,side,selectedMarker.anchor.offset)
+          :anchorMarker(selectedMarker,side));
+        }}>
          {MAP_SIDES.map(side=><option key={side} value={side}>{{top:'Superior',right:'Direita',bottom:'Inferior',left:'Esquerda'}[side]}</option>)}
         </select>
        </label>}
-       <p className="leading-relaxed text-white/55">{selectedMarker.type==='entrada'?'Entradas precisam ficar em uma borda. Você pode cadastrar várias entradas.':selectedMarker.anchor?'O ícone fica centralizado na linha, metade para dentro e metade para fora. Arraste ao longo da borda.':'Deixe o ponto livre ou fixe-o em qualquer lateral.'}</p>
+       <p className="leading-relaxed text-white/55">
+        {selectedMarker.type==='passagem'
+         ?'Passagens pertencem a dois ambientes e acompanham a divisória compartilhada.'
+         :selectedMarker.area_id
+         ?'Ao mover ou redimensionar o ambiente, este ponto acompanha. A opção Na borda usa a borda do ambiente.'
+         :'Sem vínculo, o ponto mantém suas coordenadas. A opção Na borda usa o limite externo do mapa.'}
+       </p>
       </div>
       <div className="space-y-2 text-xs text-white/65">Formato<div className="grid grid-cols-2 gap-2"><button onClick={()=>updateMarker({shape:'square'})} className={button+' '+(selectedMarker.shape!=='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Quadrado</button><button onClick={()=>updateMarker({shape:'circle'})} className={button+' '+(selectedMarker.shape==='circle'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button></div></div>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(pointColor(selectedMarker),color=>updateMarker({color}))}</div>
@@ -587,7 +629,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <label className="block space-y-1 text-xs text-white/65">Descrição (opcional)<textarea className={input+' min-h-24 resize-y'} maxLength={500} value={selectedMarker.description||''} onChange={e=>updateMarker({description:e.target.value})} placeholder="Informações úteis sobre este ponto..."/></label>
      <div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Funcionamento (opcional)</p><p className="text-[11px] text-white/50">Sem horário, funciona durante todo o evento. O fechamento pode ocorrer após a meia-noite.</p><div className="grid grid-cols-2 gap-2"><label className="space-y-1 text-xs">Abre<input type="time" className={input} value={selectedMarker.opens_at||''} onChange={e=>updateMarker({opens_at:e.target.value})}/></label><label className="space-y-1 text-xs">Fecha<input type="time" className={input} value={selectedMarker.closes_at||''} onChange={e=>updateMarker({closes_at:e.target.value})}/></label></div><button type="button" className="text-xs underline text-white/60" onClick={()=>updateMarker({opens_at:'',closes_at:''})}>Remover horários</button></div>
      {['bar','alimentacao','cozinha'].includes(selectedMarker.type)&&<div className="space-y-2 rounded-xl border border-white/10 p-3"><p className="text-xs font-bold text-[#c4ff40]">Categorias vendidas neste ponto</p><p className="text-[11px] text-white/50">Selecione as categorias cadastradas no catálogo. Elas serão cruzadas com os produtos do evento.</p>{catalogCategories.length||(selectedMarker.categories||[]).length?<div className="space-y-2">{[...new Set([...catalogCategories,...(selectedMarker.categories||[])])].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(category=><label key={category} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={(selectedMarker.categories||[]).includes(category)} onChange={e=>updateMarker({categories:e.target.checked?[...(selectedMarker.categories||[]),category]:(selectedMarker.categories||[]).filter(c=>c!==category)})}/>{category}{!catalogCategories.includes(category)&&<span className="text-amber-200/80">(não está mais no catálogo)</span>}</label>)}</div>:<p className="text-xs text-amber-200">Cadastre categorias de produtos antes de vinculá-las.</p>}</div>}
-    </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos são independentes e ficam por cima dos ambientes.</p></div>}
+    </div>:<div className="space-y-3 py-6 text-center text-sm text-white/50"><MousePointer2 size={28} className="mx-auto text-[#c4ff40]"/><p>Selecione um ambiente ou um ponto no mapa para editar nome, ícone, cor e descrição.</p><p className="text-xs">Pontos vinculados acompanham o ambiente; pontos sem vínculo permanecem no mapa.</p></div>}
    </aside>
   </div>
   {pendingDiscardAction&&<div role="presentation" onMouseDown={event=>{if(!loading&&!saving&&event.target===event.currentTarget)setPendingDiscardAction(null);}} className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 p-4">
