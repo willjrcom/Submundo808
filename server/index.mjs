@@ -1,6 +1,6 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
 import {venueMediaFields} from './venue-media.mjs';
-import {insertReviewOnce} from './review-once.mjs';
+import {hasSubmittedReview,insertReviewOnce} from './review-once.mjs';
 import {getAdminReviewStats} from './review-summary.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
@@ -525,7 +525,14 @@ http.createServer(async (req,res)=>{
         return json(res,200,{ok:true});
       }
       if(url.pathname==='/api/reviews'&&req.method==='GET'){
-        const user=getUser(req);if(!user)return json(res,200,{items:[]});
+        const user=getUser(req);
+        const eventId=url.searchParams.get('event_id');
+        if(eventId!==null){
+          if(!user)return json(res,401,{error:'Faça login para verificar suas avaliações.'});
+          if(!eventId||eventId.length>160)return json(res,400,{error:'Evento inválido.'});
+          return json(res,200,{eventId,reviewed:hasSubmittedReview(db,{eventId,userId:user.id})});
+        }
+        if(!user)return json(res,200,{items:[]});
         const items=db.prepare('SELECT r.event_id AS eventId,e.name AS eventName,r.rating,r.tags_json AS tagsJson,r.comment,r.updated_at AS updatedAt FROM event_reviews r JOIN events e ON e.id=r.event_id WHERE r.user_id=? ORDER BY r.updated_at DESC').all(user.id);
         return json(res,200,{items:items.map(x=>({...x,tags:JSON.parse(x.tagsJson),tagsJson:undefined}))});
       }
@@ -541,7 +548,7 @@ http.createServer(async (req,res)=>{
         if(!Number.isInteger(rating)||rating<1||rating>5||!Array.isArray(tags)||tags.length>15||tags.some(x=>typeof x!=='string'||x.length>60)||comment.length>2000)return json(res,400,{error:'Avaliação inválida.'});
         const now=Date.now();
         const inserted=insertReviewOnce(db,{eventId,userId:user.id,rating,tags,comment,now});
-        if(!inserted)return json(res,409,{error:'Você já avaliou este evento. Cada participante pode responder uma única vez.'});
+        if(!inserted)return json(res,409,{code:'already_reviewed',error:'Você já avaliou este evento. Cada participante pode responder uma única vez.'});
         return json(res,201,{ok:true});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
