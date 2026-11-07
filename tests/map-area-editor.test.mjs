@@ -18,7 +18,7 @@ test('editor expõe Agrupar/Desagrupar, Curvar, formato redondo e seleção da p
 });
 test('editor e mapa público usam a mesma silhueta e omitem divisórias internas',()=>{
  assert.match(editor,/visibleRooms\.map\(a=>/);
- assert.match(editor,/d=\{areaPath\(areas,a\.id\)\}/);
+ assert.match(editor,/d=\{areaPath\(previewAreas,a\.id\)\}/);
  assert.match(publicMap,/visibleAreas\(data\.areas\)\.map\(a=>/);
  assert.match(publicMap,/d=\{areaPath\(data\.areas,a\.id\)\}/);
  assert.match(labels,/visibleAreas\(rooms\)/);
