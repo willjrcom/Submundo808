@@ -8,7 +8,6 @@ import CalibrationPointDetails,{formatMeters} from './admin-calibration-point-de
 
 type PreviewRoom=GeometricArea&{name?:string;color?:string};
 const order:CornerKey[]=['tl','tr','br','bl'];
-const labels:Record<CornerKey,string>={tl:'Início do topo',tr:'Fim do topo',br:'Fim da base',bl:'Início da base'};
 const WIDTH=420,HEIGHT=304;
 const dimensionPairs:[CornerKey,CornerKey][]=[['tl','tr'],['tr','br'],['br','bl'],['bl','tl']];
 const svgPoint=(p:PreviewPoint)=>p.x+','+p.y;
