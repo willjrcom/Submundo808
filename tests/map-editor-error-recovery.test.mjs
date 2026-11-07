@@ -57,7 +57,9 @@ test('selected rooms move by dragging and resize via handles without a mode menu
  assert.match(editor,/setEditLayout\(selecting\);setFrameEditing\(false\)/);
  assert.match(editor,/setResizeId\(selecting&&areas\.some\(a=>a\.id===id\)\?id:null\)/);
  assert.match(editor,/onPointerDown=\{e=>startDrag\(e,a\.id,'area'\)\}/);
- assert.match(editor,/canResize&&editing&&\(\['left','right','top','bottom'\] as const\)\.map/);
+ assert.match(editor,/outerResizeHandles\(areas,a\.id\)\.map\(handle=>/);
+ assert.match(editor,/onPointerDown=\{e=>startDrag\(e,handle\.areaId,'resize',handle\.edge\)\}/);
+ assert.match(editor,/resizeOuterGroupEdge\(d\.snapshot\.areas/);
  assert.doesNotMatch(editor,/if\(kind==='area'&&resizeId===id\)return/);
  assert.doesNotMatch(editor,/Concluir movimento|Concluir redimensionamento/);
  const menu=editor.slice(editor.indexOf('{editMenuOpen&&<div role="menu"'),editor.indexOf('</div>}',editor.indexOf('{editMenuOpen&&<div role="menu"')));

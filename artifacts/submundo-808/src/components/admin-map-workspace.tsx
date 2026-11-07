@@ -10,7 +10,7 @@ import {
  Eye,MousePointer2,Square,RotateCcw,Info,Warehouse,Users,Music2,Crown,Group,Unplug,Blend,ChevronDown,
  Utensils,Ticket,DoorOpen,Bath,Wine,Sofa,Stethoscope,Flag,Grid3X3,X
 } from 'lucide-react';
-import {freeAreaPosition,resizeShared,sharesBorder,limit,type Edge} from './map-layout-geometry';
+import {freeAreaPosition,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,outerResizeHandles,resizeOuterGroupEdge,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
 import {DEFAULT_MAP_FRAME,normalizeMapFrame,moveMapFrame,resizeMapFrame,mapFrameAspect,type MapFrame,type FrameHandle} from './map-frame-geometry';
 import {anchorMarker,anchorMarkerInRoom,associateMarkerWithRoom,bindMarkerToRoom,freeMarker,normalizeMarker,moveMarkerInRooms,moveRoomMarkers,roomContainingPoint,closestRoomEdge,changeMarkerType,closestMapEdge,markerIconStyle,MAP_SIDES,type MapSide,type MarkerAnchor} from './map-marker-geometry';
