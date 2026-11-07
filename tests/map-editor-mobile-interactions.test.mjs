@@ -20,6 +20,24 @@ test('pointer capture does not flip selection after a drag',()=>{
  assert.match(editor,/skipClickAfterDrag\.current=true/);
  assert.match(editor,/!previous\.changed\)toggleSelection\(previous\.id\)/);
 });
+test('clique no plano cartesiano vazio desseleciona sem afetar pontos, ambientes ou controles',()=>{
+ assert.match(editor,/const pointerStartedOnEmptyGrid=useRef\(false\)/);
+ assert.match(editor,/function trackEmptyGridPointerStart\(e:React\.PointerEvent<HTMLDivElement>\)/);
+ assert.match(editor,/pointerStartedOnEmptyGrid\.current=e\.target===pasteboard\.current\|\|e\.target===canvas\.current/);
+ assert.match(editor,/function deselectOnEmptyGridClick\(e:React\.MouseEvent<HTMLDivElement>\)/);
+ assert.match(editor,/if\(!pointerStartedOnEmptyGrid\.current\|\|frameEditing\)return/);
+ assert.match(editor,/if\(e\.target!==pasteboard\.current&&e\.target!==canvas\.current\)return/);
+ assert.match(editor,/pointerStartedOnEmptyGrid\.current=false/);
+ assert.match(editor,/setSelected\(''\);setResizeId\(null\);setEditLayout\(false\)/);
+ assert.match(editor,/setGroupOpen\(false\);setGroupChoice\(''\);setCurveOpen\(false\);setEditMenuOpen\(false\)/);
+ assert.match(editor,/ref=\{pasteboard\} onPointerDownCapture=\{trackEmptyGridPointerStart\} onClick=\{deselectOnEmptyGridClick\}/);
+ // No parent-page click handlers: only the Cartesian surface handles deselection.
+ assert.doesNotMatch(editor,/onClick=\{e=>\{if\(e\.target!==e\.currentTarget\)return;setSelected\(''\)/);
+ assert.match(editor,/onPointerDown=\{e=>startDrag\(e,a\.id,'area'\)\}/);
+ assert.match(editor,/onPointerDown=\{e=>startDrag\(e,m\.id,'marker'\)\}/);
+ assert.match(editor,/onClick=\{e=>\{e\.stopPropagation\(\);/);
+ assert.match(editor,/Clique na área vazia do plano cartesiano para desselecionar/);
+});
 test('phone-sized map icons render smaller without persisting a different size',()=>{
  assert.match(marker,/var\(--submundo-map-marker-scale, 1\)/);
  assert.match(css,/@media \(max-width: 639px\)/);

@@ -119,6 +119,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [history,setHistory]=useState<Snapshot[]>([]),[future,setFuture]=useState<Snapshot[]>([]),[snap,setSnap]=useState(true);
  const [snapGuide,setSnapGuide]=useState<{x?:number;y?:number}|null>(null);
  const canvas=useRef<HTMLDivElement>(null),pasteboard=useRef<HTMLDivElement>(null),drag=useRef<Drag|null>(null);
+ const pointerStartedOnEmptyGrid=useRef(false);
  const editMenuRef=useRef<HTMLDivElement>(null);
  const skipClickAfterDrag=useRef(false);
  const {labels:roomLabels,pointLabels,setMapElement}=useMapLabels(areas,markers);
@@ -353,6 +354,20 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    return distance<=9&&along>=edge.start&&along<=edge.end;
   });
   setHoveredPassageEdge(hovered?hovered.a.id+':'+hovered.b.id:null);
+ }
+ function trackEmptyGridPointerStart(e:React.PointerEvent<HTMLDivElement>){
+  // Inspect the original pointer target during capture, before an area/point
+  // may capture the pointer and retarget the eventual click to the backdrop.
+  pointerStartedOnEmptyGrid.current=e.target===pasteboard.current||e.target===canvas.current;
+ }
+ function deselectOnEmptyGridClick(e:React.MouseEvent<HTMLDivElement>){
+  // Only an actual click on empty Cartesian grid may clear selection. A click
+  // on a room, marker, passage, resize handle, or floating menu must not.
+  if(!pointerStartedOnEmptyGrid.current||frameEditing)return;
+  if(e.target!==pasteboard.current&&e.target!==canvas.current)return;
+  pointerStartedOnEmptyGrid.current=false;
+  setSelected('');setResizeId(null);setEditLayout(false);
+  setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);
  }
  function toggleSelection(id:string){
   const selecting=selected!==id;
@@ -634,7 +649,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
    <div className="min-w-0 space-y-3">
     {loading?<p className="rounded-xl border border-white/10 p-6 text-white/60">Carregando ambientes...</p>:<div
-      ref={pasteboard} onPointerMove={e=>{move(e);trackPassageHover(e);}} onPointerLeave={()=>setHoveredPassageEdge(null)} onPointerUp={endDrag} onPointerCancel={endDrag}
+      ref={pasteboard} onPointerDownCapture={trackEmptyGridPointerStart} onClick={deselectOnEmptyGridClick} onPointerMove={e=>{move(e);trackPassageHover(e);}} onPointerLeave={()=>setHoveredPassageEdge(null)} onPointerUp={endDrag} onPointerCancel={endDrag}
       className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      >
@@ -652,7 +667,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
       className={'absolute border-2 border-dashed bg-[#23132e]/40 '+(editing?'touch-none ':'')+(frameEditing?'cursor-move border-[#c4ff40]':'border-[#c4ff40]/30')}
       style={{left:frame.x+'%',top:frame.y+'%',width:frame.width+'%',height:frame.height+'%',backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%',touchAction:editing?'none':'auto'}}
       onPointerDown={e=>{if(e.target!==e.currentTarget)return;if(editing&&frameEditing)startFrameDrag(e,'frame-move');}}
-      onClick={e=>{if(e.target!==e.currentTarget)return;setSelected('');setResizeId(null);setEditLayout(false);setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setEditMenuOpen(false);}}
+      
      ><span className="pointer-events-none absolute -top-5 left-0 text-[10px] font-bold text-[#c4ff40]/80">Área do mapa</span>
       {snapGuide?.x!==undefined&&<span aria-hidden="true" className="pointer-events-none absolute inset-y-0 z-[18] w-px bg-[#c4ff40]/70 shadow-[0_0_5px_#c4ff40]" style={{left:snapGuide.x+'%'}}/>}
       {snapGuide?.y!==undefined&&<span aria-hidden="true" className="pointer-events-none absolute inset-x-0 z-[18] h-px bg-[#c4ff40]/70 shadow-[0_0_5px_#c4ff40]" style={{top:snapGuide.y+'%'}}/>}
@@ -736,7 +751,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      {pointLabels.filter(label=>label.visible).map(label=>{const m=markers[label.index];if(!m)return null;return <span key={'point-label-'+m.id} className="pointer-events-none absolute z-[19] max-w-[116px] -translate-x-1/2 -translate-y-1/2 truncate whitespace-nowrap rounded border border-white/10 bg-black/90 px-1.5 py-1 text-center text-[10px] font-bold text-white" style={{left:label.x+'%',top:label.y+'%'}}>{m.name}</span>;})}
     </div></div>}
     {(areasOutside>0||markersOutside>0)&&<p role="status" className="rounded-lg border border-amber-400/25 bg-amber-400/5 px-3 py-2 text-xs text-amber-200">{areasOutside} ambiente(s) e {markersOutside} ponto(s) na área externa. Podem ficar total ou parcialmente ocultos para participantes até serem reposicionados dentro do mapa.</p>}
-    <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{'Clique uma vez para selecionar. Arraste o interior para mover e as alças externas para redimensionar cada parte do grupo. O menu Editar contém Agrupar e Formato.'}</p></div>
+    <div className="flex items-start gap-2 text-xs text-white/55"><Info size={15} className="mt-0.5 shrink-0 text-[#c4ff40]"/><p>{'Clique uma vez para selecionar. Arraste o interior para mover e as alças externas para redimensionar cada parte do grupo. O menu Editar contém Agrupar e Formato. Clique na área vazia do plano cartesiano para desselecionar.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><Grid3X3 size={16} className="text-[#c4ff40]"/> Ambientes ({visibleRooms.length})</h3><div className="flex flex-wrap gap-2">{visibleRooms.map(a=><button key={a.id} onClick={()=>toggleSelection(a.id)} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===a.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}><span className="mr-1.5 inline-block h-2 w-2 rounded-sm" style={{backgroundColor:areaColor(a)}}/>{a.name}{isGrouped(areas,a.id)?' · '+groupMembers(areas,a.id).length+' partes':''}</button>)}{areas.length===0&&<p className="text-xs text-white/45">Nenhum ambiente cadastrado.</p>}</div></div>
      <div className="rounded-xl border border-white/10 bg-white/[.03] p-3"><h3 className="mb-2 flex items-center gap-2 text-sm font-bold"><MapPin size={16} className="text-[#c4ff40]"/> Pontos ({markers.length})</h3><div className="flex flex-wrap gap-2">{markers.map(m=><button key={m.id} onClick={()=>toggleSelection(m.id)} className={'rounded-lg border px-2.5 py-1.5 text-xs '+(selected===m.id?'border-[#c4ff40] text-[#c4ff40]':'border-white/15 text-white/70')}>{m.name}</button>)}{markers.length===0&&<p className="text-xs text-white/45">Nenhum ponto cadastrado.</p>}</div></div>
