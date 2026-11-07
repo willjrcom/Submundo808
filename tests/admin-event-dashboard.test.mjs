@@ -18,3 +18,18 @@ test('event analytics button uses a clear statistics label',()=>{
  assert.match(dashboard,/>Ver estatísticas do evento<\/button>/);
  assert.doesNotMatch(dashboard,/>Ver inteligência do evento<\/button>/);
 });
+
+test('event linked maps have the same real drawing preview as venue maps',()=>{
+ const shared=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-map-thumbnail.tsx',import.meta.url),'utf8');
+ const venues=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-venue-maps.tsx',import.meta.url),'utf8');
+ assert.match(dashboard,/aria-label="Carrossel de plantas vinculadas ao evento"/);
+ assert.match(dashboard,/areas.filter\(area=>area.map_id===map.id\)/);
+ assert.match(dashboard,/<AdminMapThumbnail areas=\{rooms\}\/>/);
+ assert.match(venues,/<AdminMapThumbnail areas=\{rooms\}\/>/);
+ assert.match(shared,/fetch\('\/api\/admin\/areas'/);
+ assert.match(shared,/<svg viewBox="0 0 100 100"/);
+ assert.match(shared,/<ellipse/);
+ assert.match(shared,/<rect/);
+ assert.match(dashboard,/onClick=\{\(\)=>venueId&&onOpenMap\(map.id,venueId\)\}/);
+ assert.doesNotMatch(dashboard,/<MapIcon size=\{16\} className="text-\[#c4ff40\]"\/>\{displayLabel\(map.name\)\}/);
+});

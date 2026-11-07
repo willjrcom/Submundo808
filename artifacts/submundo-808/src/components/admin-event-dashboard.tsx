@@ -1,5 +1,6 @@
-import {CalendarDays,Clock3,MapPin,Map as MapIcon,Music2,Pencil,ExternalLink,Ticket} from 'lucide-react';
+import {CalendarDays,Clock3,MapPin,Map as MapIcon,Music2,Pencil,ExternalLink,Ticket,ArrowUpRight} from 'lucide-react';
 import {displayLabel} from './display-label';
+import {AdminMapThumbnail,useAdminMapAreas} from './admin-map-thumbnail';
 
 type Dj={nome:string;inicio?:string;fim?:string};
 type Venue={id:string;name:string;city?:string;address?:string;cover_image?:string;logo_image?:string};
@@ -16,6 +17,7 @@ const safeLink=(value?:string)=>value&&/^https?:\/\//i.test(value)?value:'';
 export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,onOpenVenue,onOpenAnalytics}:Props){
  const venue=venues.find(v=>v.id===event.venue_id);
  const linkedMaps=maps.filter(m=>event.map_ids?.includes(m.id));
+ const areas=useAdminMapAreas(maps);
  const djs=Array.isArray(event.lineup)?event.lineup:[];
  return <div className="mt-6 space-y-6">
   <section className="overflow-hidden rounded-3xl border border-white/15 bg-[#17121d]">
@@ -53,8 +55,23 @@ export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,
   </div>
   <section className="space-y-3">
    <h3 className="flex items-center gap-2 text-lg font-black"><MapIcon size={20} className="text-[#c4ff40]"/> Plantas vinculadas</h3>
-   {linkedMaps.length?<div className="flex flex-wrap gap-3">
-    {linkedMaps.map(map=><button key={map.id} type="button" onClick={()=>map.venue_id&&onOpenMap(map.id,map.venue_id)} className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[.035] px-4 py-3 text-sm font-semibold transition hover:border-[#c4ff40]"><MapIcon size={16} className="text-[#c4ff40]"/>{displayLabel(map.name)}</button>)}
+   {linkedMaps.length?<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-3" aria-label="Carrossel de plantas vinculadas ao evento">
+    {linkedMaps.map(map=>{
+     const rooms=areas.filter(area=>area.map_id===map.id);
+     const venueId=map.venue_id||event.venue_id;
+     return <button key={map.id} type="button" disabled={!venueId} onClick={()=>venueId&&onOpenMap(map.id,venueId)}
+      aria-label={'Abrir planta '+map.name}
+      className="group w-[min(76vw,17rem)] shrink-0 snap-start overflow-hidden rounded-2xl border border-white/15 bg-[#110d17]/90 text-left transition-colors hover:border-[#c4ff40]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c4ff40] disabled:cursor-not-allowed disabled:opacity-60 sm:w-64">
+      <div className="relative flex h-36 w-full items-center justify-center overflow-hidden bg-[linear-gradient(#ffffff0a_1px,transparent_1px),linear-gradient(90deg,#ffffff0a_1px,transparent_1px),linear-gradient(135deg,#0f111b,#27203a)] [background-size:17px_17px,17px_17px,auto]">
+       <AdminMapThumbnail areas={rooms}/>
+       <span className="absolute bottom-2 right-2 rounded-lg border border-white/15 bg-[#100d18]/90 p-1.5 text-[#c4ff40]"><ArrowUpRight size={15}/></span>
+      </div>
+      <div className="space-y-2 p-3">
+       <p className="truncate text-sm font-bold">{displayLabel(map.name)}</p>
+       <p className="text-xs text-white/50">{rooms.length} {rooms.length===1?'ambiente':'ambientes'}</p>
+      </div>
+     </button>;
+    })}
    </div>:<p className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-white/55">Nenhuma planta vinculada ao evento.</p>}
    {venue&&<button type="button" onClick={()=>onOpenAnalytics(venue.id,event.id)} className="text-sm font-bold text-[#c4ff40]">Ver estatísticas do evento</button>}
   </section>

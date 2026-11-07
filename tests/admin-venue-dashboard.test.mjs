@@ -10,9 +10,12 @@ test('venue dashboard has photo, logo, edit, maps and events without tabs',()=>{
  assert.match(maps,/aria-label=\{'Abrir planta '\+map\.name\}/);
 });
 test('map card preview is grounded in saved rooms rather than fabricated images',()=>{
- assert.match(maps,/api\/admin\/areas/);
+ const shared=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-map-thumbnail.tsx',import.meta.url),'utf8');
+ assert.match(maps,/useAdminMapAreas\(maps\)/);
  assert.match(maps,/areas.filter\(area=>area.map_id===map.id\)/);
- assert.doesNotMatch(maps,/Unsplash|placehold\.co|demo.*image/);
+ assert.match(maps,/<AdminMapThumbnail areas=\{rooms\}\/>/);
+ assert.match(shared,/fetch\('\/api\/admin\/areas'/);
+ assert.doesNotMatch(shared,/Unsplash|placehold\.co|demo.*image/);
 });
 
 test('venue event cards use a statistics label',()=>{
