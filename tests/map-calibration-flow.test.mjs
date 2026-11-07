@@ -43,6 +43,20 @@ test('calibrated maps show a read-only perspective overview and recalibration op
  assert.match(overview,/Margem externa registrada: 5 metros/);
  assert.match(overview,/Recalibrar/);
  assert.match(overview,/hasUnsavedChanges/);
+ const details=read('artifacts/submundo-808/src/components/admin-calibration-point-details.tsx');
+ assert.match(details,/aria-label="Editar latitude e longitude"/);
+ assert.match(details,/aria-label=\{'Latitude do ponto '\+\(i\+1\)\}/);
+ assert.match(details,/aria-label=\{'Longitude do ponto '\+\(i\+1\)\}/);
+ assert.match(details,/buildManualCalibration\(values,'4'\)/);
+ assert.match(details,/onApply\(result\)/);
+ assert.match(details,/onClick=\{cancelEdit\}/);
+ assert.match(overview,/aria-label="Cotas entre pontos"/);
+ assert.match(overview,/distanceMeters\(raw\[start\],raw\[end\]\)/);
+ assert.match(overview,/formatMeters\(meters\)/);
+ assert.match(overview,/<CalibrationPointDetails gps=\{gps\} distances=\{dimensions\} onApply=\{onApplyCoordinates\}/);
+ assert.match(editor,/function applyOverviewCoordinates\(result:/);
+ assert.match(editor,/onApplyCoordinates=\{applyOverviewCoordinates\}/);
+ assert.match(editor,/Coordenadas atualizadas no rascunho/);
 });
 test('manual calibration uses four numbered border selectors and a top-of-plan arrow',()=>{
  const orientation=read('artifacts/submundo-808/src/components/map-calibration-orientation.tsx');
