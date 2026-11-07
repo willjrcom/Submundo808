@@ -7,10 +7,11 @@ const publicMap=read('artifacts/submundo-808/src/components/venue-map.tsx');
 const labels=read('artifacts/submundo-808/src/components/use-map-labels.ts');
 const server=read('server/index.mjs');
 
-test('editor expõe Agrupar/Desagrupar, Curvar, formato redondo e seleção da peça',()=>{
- for(const label of ['Agrupar','Desagrupar','Curvar','Ambiente redondo','Intensidade da curvatura','Ambiente para agrupar']){
+test('editor expõe Agrupar/Desagrupar, formato oval e curvas independentes',()=>{
+ for(const label of ['Agrupar','Desagrupar','Formato e curvatura','Oval / redondo','Intensidade da curvatura','Ambiente para agrupar']){
   assert.ok(editor.includes(label),label);
  }
+ assert.doesNotMatch(editor,/createRoundArea|Ambiente redondo<\/button>/);
  assert.match(editor,/groupCandidates\.map\(a=>/);
  assert.match(editor,/canGroup\(areas,active\.id,groupChoice\)/);
  assert.match(editor,/checkpoint\(\);setAreas\(groupWith/);

@@ -34,7 +34,7 @@ test('menu único Editar substitui os botões contextuais e fecha ao desselecion
  assert.match(editor,/setSelected\(selected===id\?'':id\)/);
  assert.match(editor,/setEditMenuOpen\(false\)/);
  assert.match(editor,/Desagrupar/);
- assert.match(editor,/Curvar ambiente/);
+ assert.match(editor,/Formato do ambiente/);
  assert.doesNotMatch(editor,/absolute right-3 top-3 z-\[60\] flex max-w-\[calc\(100%-24px\)\] flex-wrap gap-2/);
 });
 test('contorno de foco não permanece no SVG após a desseleção',()=>{

@@ -25,8 +25,8 @@ export function validateAreaGeometries(areas){
   if(g.shape!==undefined&&!SHAPES.has(g.shape))return 'Formato do ambiente inválido.';
   if(g.curve!==undefined&&g.curve!==null){
    if(!plain(g.curve)||!SIDES.has(g.curve.side)||!DIRECTIONS.has(g.curve.direction)||
-      typeof g.curve.depth!=='number'||!Number.isFinite(g.curve.depth)||g.curve.depth<1||g.curve.depth>40||
-      !SIDES.has(g.curve.side))return 'Curvatura inválida.';
+      typeof g.curve.depth!=='number'||!Number.isFinite(g.curve.depth)||g.curve.depth<1||g.curve.depth>40)
+    return 'Curvatura inválida.';
   }
   if(g.curves!==undefined&&g.curves!==null){
    if(!plain(g.curves))return 'Curvatura inválida.';
