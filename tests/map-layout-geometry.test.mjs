@@ -134,3 +134,36 @@ test('snap switch and distance threshold prevent alignment with unrelated rooms'
  const noCandidate=resizeShared([distant,vip],'vip','bottom',16.4,true);
  assert.ok(Math.abs(noCandidate[1].y+noCandidate[1].height-78.4)<1e-8);
 });
+
+test('moving snaps to a neighbouring environment when dragging (not only resizing)',()=>{
+ const rooms=[{id:'pista',x:0,y:10,width:60,height:70},{id:'vip',x:67,y:25,width:25,height:30}];
+ const moved=moveArea(rooms,'vip',61.2,25,true);
+ assert.equal(moved[1].x,60);
+ assert.deepEqual(moved[0],rooms[0]);
+});
+
+test('moving snaps upper and lower edges to neighbouring rooms and aligns their bottoms',()=>{
+ const rooms=[{id:'main',x:0,y:10,width:60,height:70},{id:'side',x:64,y:30,width:20,height:48}];
+ const moved=moveArea(rooms,'side',61.8,31.4,true);
+ assert.equal(moved[1].x,60);
+ assert.equal(moved[1].y+moved[1].height,80);
+});
+
+test('moving snaps right and left edges while preserving outside-map placement',()=>{
+ const rooms=[{id:'a',x:20,y:30,width:20,height:20},{id:'b',x:65,y:30,width:20,height:20}];
+ assert.equal(moveArea(rooms,'a',44.3,30,true)[0].x,45);
+ assert.equal(moveArea(rooms,'a',44.3,30,false)[0].x,44.3);
+ assert.equal(moveArea(rooms,'a',-25,-20,true)[0].x,-25);
+});
+
+test('moving a grouped area uses the perimeter of all members for snapping',async()=>{
+ const {moveAreaGroup,groupWith}=await import('../artifacts/submundo-808/src/components/map-area-shapes.ts');
+ const a={id:'a',x:0,y:0,width:20,height:20,geometry:{shape:'rect'}};
+ const b={id:'b',x:20,y:0,width:10,height:20,geometry:{shape:'rect'}};
+ const neighbour={id:'c',x:70,y:0,width:20,height:20,geometry:{shape:'rect'}};
+ const grouped=groupWith([a,b,neighbour],'a','b');
+ const moved=moveAreaGroup(grouped,'a',39.1,0,true);
+ assert.equal(moved[0].x,40);
+ assert.equal(moved[1].x+moved[1].width,70);
+ assert.deepEqual(moved[2],neighbour);
+});

@@ -80,31 +80,60 @@ export function resizeShared<T extends MapRect>(areas:T[],id:string,edge:Edge,de
 }
 // An environment is moved independently: it can be parked in the pasteboard,
 // then dropped against the edge of another environment. Snapping is optional.
-export function moveArea<T extends MapRect>(areas:T[],id:string,x:number,y:number,snap=true):T[]{
- const selected=areas.find(a=>a.id===id);if(!selected)return areas;
- let px=limit(x,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.width);
- let py=limit(y,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.height);
- if(snap){
-  // Either side of the environment may touch the map's external edges.
-  const xCandidates=[-selected.width,0,100-selected.width,100];
-  const yCandidates=[-selected.height,0,100-selected.height,100];
-  for(const other of areas){
-   if(other.id===id)continue;
-   if(overlap(py,py+selected.height,other.y,other.y+other.height)>EPS){
-    xCandidates.push(other.x+other.width,other.x-selected.width);
+/**
+ * Return one magnetic translation for every member of a moving group.
+ * Room edges (including top/bottom alignment) and map edges share the same
+ * threshold as the resize tool. The checkbox controls this whole operation.
+ */
+export function snapMoveTranslation<T extends MapRect>(moving:T[],others:T[],dx:number,dy:number){
+ if(!moving.length)return {dx,dy};
+ const xCandidates:number[]=[],yCandidates:number[]=[];
+ const near=SNAP_DISTANCE*2;
+ for(const room of moving){
+  const x=room.x+dx,y=room.y+dy,w=room.width,h=room.height;
+  xCandidates.push(-w-room.x, -room.x, 100-w-room.x, 100-room.x);
+  yCandidates.push(-h-room.y, -room.y, 100-h-room.y, 100-room.y);
+  for(const other of others){
+   const ox=other.x,oy=other.y,ow=other.width,oh=other.height;
+   const yOverlap=overlap(y,y+h,oy,oy+oh)>EPS;
+   const xOverlap=overlap(x,x+w,ox,ox+ow)>EPS;
+   const yAdjacent=Math.abs(y+h-oy)<=near||Math.abs(oy+oh-y)<=near;
+   const xAdjacent=Math.abs(x+w-ox)<=near||Math.abs(ox+ow-x)<=near;
+   // Edge-to-edge contacts between adjacent environments.
+   if(yOverlap||yAdjacent){
+    xCandidates.push(ox-w-room.x,ox+ow-room.x);
    }
-   if(overlap(px,px+selected.width,other.x,other.x+other.width)>EPS){
-    yCandidates.push(other.y+other.height,other.y-selected.height);
+   if(xOverlap||xAdjacent){
+    yCandidates.push(oy-h-room.y,oy+oh-room.y);
+   }
+   // Parallel edges may align, even when two rooms merely touch on
+   // the perpendicular axis (e.g. two rooms with matching bottom edges).
+   if(xOverlap||xAdjacent){
+    yCandidates.push(oy-room.y,oy+oh-h-room.y);
+   }
+   if(yOverlap||yAdjacent){
+    xCandidates.push(ox-room.x,ox+ow-w-room.x);
    }
   }
-  const nearest=(value:number,candidates:number[])=>candidates
-    .filter(v=>v>=PASTEBOARD_MIN&&v<=PASTEBOARD_MAX)
-    .sort((a,b)=>Math.abs(value-a)-Math.abs(value-b))[0];
-  const snapX=nearest(px,xCandidates),snapY=nearest(py,yCandidates);
-  if(snapX!==undefined&&Math.abs(snapX-px)<=1.5)px=snapX;
-  if(snapY!==undefined&&Math.abs(snapY-py)<=1.5)py=snapY;
  }
- return areas.map(a=>a.id===id?{...a,x:px,y:py}:a);
+ const best=(target:number,candidates:number[])=>{
+  const next=candidates.filter(v=>Number.isFinite(v)&&Math.abs(v-target)<=SNAP_DISTANCE)
+   .sort((a,b)=>Math.abs(a-target)-Math.abs(b-target))[0];
+  return next===undefined?target:next;
+ };
+ return {dx:best(dx,xCandidates),dy:best(dy,yCandidates)};
+}
+export function moveArea<T extends MapRect>(areas:T[],id:string,x:number,y:number,snap=true):T[]{
+ const selected=areas.find(a=>a.id===id);
+ if(!selected)return areas;
+ let dx=limit(x,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.width)-selected.x;
+ let dy=limit(y,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.height)-selected.y;
+ if(snap){
+  const result=snapMoveTranslation([selected],areas.filter(a=>a.id!==id),dx,dy);
+  dx=limit(selected.x+result.dx,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.width)-selected.x;
+  dy=limit(selected.y+result.dy,PASTEBOARD_MIN,PASTEBOARD_MAX-selected.height)-selected.y;
+ }
+ return areas.map(a=>a.id===id?{...a,x:selected.x+dx,y:selected.y+dy}:a);
 }
 export function freeAreaPosition<T extends MapRect>(areas:T[],width=22,height=18){
  if(!areas.length)return {x:8,y:8,width,height};

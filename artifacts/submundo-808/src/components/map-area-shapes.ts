@@ -1,4 +1,4 @@
-import {intersects,moveArea,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
+import {intersects,moveArea,snapMoveTranslation,sharesBorder,limit,type MapRect} from './map-layout-geometry.ts';
 
 export type AreaShape='rect'|'ellipse';
 export type CurveSide='top'|'right'|'bottom'|'left';
@@ -37,8 +37,9 @@ export function moveAreaGroup<T extends GeometricArea>(areas:T[],rootId:string,x
  const highX=Math.max(...members.map(a=>a.x+a.width)),highY=Math.max(...members.map(a=>a.y+a.height));
  const desiredX=limit(x-root.x,-35-lowX,135-highX);
  const desiredY=limit(y-root.y,-35-lowY,135-highY);
- const ref=moveArea([...others,root],rootId,root.x+desiredX,root.y+desiredY,snapEdges).find(a=>a.id===rootId)!;
- const dx=ref.x-root.x,dy=ref.y-root.y;
+ const snapped=snapEdges?snapMoveTranslation(members,others,desiredX,desiredY):{dx:desiredX,dy:desiredY};
+ const dx=limit(snapped.dx,-35-lowX,135-highX);
+ const dy=limit(snapped.dy,-35-lowY,135-highY);
  const moved=members.map(a=>({...a,x:snap(a.x+dx),y:snap(a.y+dy)}));
  if(moved.some(a=>a.x< -35-EPS||a.y< -35-EPS||a.x+a.width>135+EPS||a.y+a.height>135+EPS||others.some(b=>intersects(a,b))))return areas;
  return areas.map(a=>moved.find(m=>m.id===a.id)||a);
