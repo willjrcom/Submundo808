@@ -1,4 +1,4 @@
-import {distanceMeters,type GpsFix,type MapCorners} from './map-location-utils';
+import {distanceMeters,type GpsFix,type MapCorners} from './map-location-utils.ts';
 
 export type CornerKey='tl'|'tr'|'bl'|'br';
 export const CORNER_KEYS:CornerKey[]=['tl','tr','bl','br'];

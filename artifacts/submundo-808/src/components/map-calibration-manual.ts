@@ -1,5 +1,5 @@
-import {distanceMeters,type GpsFix} from './map-location-utils';
-import {CORNER_KEYS,MAP_MARGIN_METERS,allCorners,cornersGeometryValid,expandMeasuredCorners,measuredCorners,type CalibrationGps,type CornerKey,type MeasuredCorners} from './map-calibration-geometry';
+import {distanceMeters,type GpsFix} from './map-location-utils.ts';
+import {CORNER_KEYS,MAP_MARGIN_METERS,allCorners,cornersGeometryValid,expandMeasuredCorners,measuredCorners,type CalibrationGps,type CornerKey,type MeasuredCorners} from './map-calibration-geometry.ts';
 
 export type ManualPoint={lat:string;lng:string};
 export type ManualValues=Record<CornerKey,ManualPoint>;
