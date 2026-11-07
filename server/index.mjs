@@ -1,4 +1,5 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
+import {insertReviewOnce} from './review-once.mjs';
 import {createOauth} from './oauth.mjs';
 import {readHealth} from './health.mjs';
 import {allowPostOrigin,clientIp,createWindowLimiter,publicAppOrigin,securityHeaders} from './request-security.mjs';
@@ -536,8 +537,9 @@ http.createServer(async (req,res)=>{
         const rating=Number(b.rating),tags=b.tags,comment=String(b.comment||'').trim();
         if(!Number.isInteger(rating)||rating<1||rating>5||!Array.isArray(tags)||tags.length>15||tags.some(x=>typeof x!=='string'||x.length>60)||comment.length>2000)return json(res,400,{error:'Avaliação inválida.'});
         const now=Date.now();
-        db.prepare('INSERT INTO event_reviews(event_id,user_id,rating,tags_json,comment,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(event_id,user_id) DO UPDATE SET rating=excluded.rating,tags_json=excluded.tags_json,comment=excluded.comment,updated_at=excluded.updated_at').run(eventId,user.id,rating,JSON.stringify(tags),comment,now,now);
-        return json(res,200,{ok:true});
+        const inserted=insertReviewOnce(db,{eventId,userId:user.id,rating,tags,comment,now});
+        if(!inserted)return json(res,409,{error:'Você já avaliou este evento. Cada participante pode responder uma única vez.'});
+        return json(res,201,{ok:true});
       }
       if(url.pathname==='/api/public/menu'&&req.method==='GET'){const id=String(url.searchParams.get('event_id')||'');if(!db.prepare('SELECT 1 FROM events WHERE id=? AND is_published=1').get(id))return json(res,404,{error:'Evento não encontrado.'});return json(res,200,{items:db.prepare('SELECT p.*,ep.price_cents,COALESCE(ep.price_cents,p.default_price_cents) effective_price_cents FROM event_products ep JOIN products p ON p.id=ep.product_id WHERE ep.event_id=? ORDER BY p.category,p.name').all(id)});}
       if(url.pathname==='/api/public/branding'&&req.method==='GET')return json(res,200,{logo:db.prepare('SELECT logo_data,accent_color FROM app_branding WHERE id=1').get()?.logo_data||'',color:db.prepare('SELECT accent_color FROM app_branding WHERE id=1').get()?.accent_color||'#c4ff40'});
