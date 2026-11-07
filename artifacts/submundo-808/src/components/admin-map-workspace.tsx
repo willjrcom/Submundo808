@@ -42,16 +42,16 @@ async function api(route:string,payload?:object){
 }
 // Locate overlapping shared edges without introducing gaps in the stored room layout.
 function sharedEdges(areas:Area[]){
- const edges:{a:Area;b:Area;x:number;y:number;vertical:boolean}[]=[];
+ const edges:{a:Area;b:Area;x:number;y:number;vertical:boolean;start:number;end:number}[]=[];
  for(let i=0;i<areas.length;i++)for(let j=i+1;j<areas.length;j++){
   const a=areas[i],b=areas[j],eps=.05;
   const y1=Math.max(a.y,b.y),y2=Math.min(a.y+a.height,b.y+b.height);
   const x1=Math.max(a.x,b.x),x2=Math.min(a.x+a.width,b.x+b.width);
   if(rootAreaId(a)===rootAreaId(b))continue;
   if(y2-y1>=8&&(Math.abs(a.x+a.width-b.x)<eps||Math.abs(b.x+b.width-a.x)<eps))
-   edges.push({a,b,x:Math.abs(a.x+a.width-b.x)<eps?b.x:a.x,y:(y1+y2)/2,vertical:true});
+   edges.push({a,b,x:Math.abs(a.x+a.width-b.x)<eps?b.x:a.x,y:(y1+y2)/2,vertical:true,start:y1,end:y2});
   if(x2-x1>=8&&(Math.abs(a.y+a.height-b.y)<eps||Math.abs(b.y+b.height-a.y)<eps))
-   edges.push({a,b,x:(x1+x2)/2,y:Math.abs(a.y+a.height-b.y)<eps?b.y:a.y,vertical:false});
+   edges.push({a,b,x:(x1+x2)/2,y:Math.abs(a.y+a.height-b.y)<eps?b.y:a.y,vertical:false,start:x1,end:x2});
  }
  return edges;
 }
@@ -67,6 +67,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false),[editMenuOpen,setEditMenuOpen]=useState(false);
+ const [hoveredPassageEdge,setHoveredPassageEdge]=useState<string|null>(null);
  const [curvePartId,setCurvePartId]=useState('');
  const [curveDrafts,setCurveDrafts]=useState<Record<string,AreaGeometry>>({});
  const [formatSide,setFormatSide]=useState<CurveSide>('top');
@@ -337,6 +338,18 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   const rect=canvas.current?.getBoundingClientRect();if(!rect||!rect.width||!rect.height)return null;
   return {x:(e.clientX-rect.left)/rect.width*100,y:(e.clientY-rect.top)/rect.height*100};
  }
+ // Detect hover on the shared edge itself without placing an invisible hit target over points.
+ function trackPassageHover(e:React.PointerEvent){
+  if(e.pointerType!=='mouse'||drag.current||frameEditing){setHoveredPassageEdge(null);return;}
+  const rect=canvas.current?.getBoundingClientRect(),p=coord(e);
+  if(!rect||!p){setHoveredPassageEdge(null);return;}
+  const hovered=passages.find(edge=>{
+   const distance=edge.vertical?Math.abs(p.x-edge.x)*rect.width/100:Math.abs(p.y-edge.y)*rect.height/100;
+   const along=edge.vertical?p.y:p.x;
+   return distance<=9&&along>=edge.start&&along<=edge.end;
+  });
+  setHoveredPassageEdge(hovered?hovered.a.id+':'+hovered.b.id:null);
+ }
  function toggleSelection(id:string){
   const selecting=selected!==id;
   setSelected(selected===id?'':id);
@@ -599,7 +612,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
    <div className="min-w-0 space-y-3">
     {loading?<p className="rounded-xl border border-white/10 p-6 text-white/60">Carregando ambientes...</p>:<div
-      ref={pasteboard} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag}
+      ref={pasteboard} onPointerMove={e=>{move(e);trackPassageHover(e);}} onPointerLeave={()=>setHoveredPassageEdge(null)} onPointerUp={endDrag} onPointerCancel={endDrag}
       className="relative aspect-[4/3] w-full select-none overflow-visible rounded-xl border border-white/20 bg-[#0f0d16]"
       style={{backgroundImage:'linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px)',backgroundSize:'4% 4%'}}
      >
@@ -633,8 +646,27 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         className={'absolute z-50 h-4 w-4 touch-none -translate-x-1/2 -translate-y-1/2 rounded border-2 border-[#17101e] bg-[#c4ff40] shadow-[0_0_0_1px_white] '+(handle==='left'||handle==='right'?'cursor-ew-resize':handle==='top'||handle==='bottom'?'cursor-ns-resize':handle==='tl'||handle==='br'?'cursor-nwse-resize':'cursor-nesw-resize')}
         style={{left,top}}/>)}
       </>}
-     {!frameEditing&&passages.map(edge=>{const already=markers.some(m=>m.type==='passagem'&&((m.from_area_id===edge.a.id&&m.to_area_id===edge.b.id)||(m.from_area_id===edge.b.id&&m.to_area_id===edge.a.id))&&Math.hypot(m.x-edge.x,m.y-edge.y)<7);return already?null:<button type="button" key={edge.a.id+'-'+edge.b.id} title={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} aria-label={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();createPassage(edge.a,edge.b,edge.x,edge.y);}} className="group absolute z-[25] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border border-[#c4ff40]/65 bg-[#17111e]/95 text-lg font-semibold text-[#c4ff40] opacity-75 shadow-lg transition hover:scale-110 hover:opacity-100 focus:opacity-100 sm:opacity-30 sm:hover:opacity-100" style={{left:edge.x+'%',top:edge.y+'%'}}><Plus size={18}/></button>})}
-     <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Silhuetas dos ambientes">
+     {!frameEditing&&passages.map(edge=>{
+       const already=markers.some(m=>m.type==='passagem'&&
+        ((m.from_area_id===edge.a.id&&m.to_area_id===edge.b.id)||(m.from_area_id===edge.b.id&&m.to_area_id===edge.a.id))&&
+        Math.hypot(m.x-edge.x,m.y-edge.y)<7);
+       if(already)return null;
+       const edgeId=edge.a.id+':'+edge.b.id;
+       const related=selected===rootAreaId(edge.a)||selected===rootAreaId(edge.b);
+       const visible=related||hoveredPassageEdge===edgeId;
+       return <button type="button" key={edgeId}
+        title={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name}
+        aria-label={'Adicionar passagem entre '+edge.a.name+' e '+edge.b.name}
+        tabIndex={visible?0:-1}
+        onPointerDown={e=>e.stopPropagation()}
+        onClick={e=>{e.stopPropagation();createPassage(edge.a,edge.b,edge.x,edge.y);setHoveredPassageEdge(null);}}
+        className={'absolute z-[25] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full transition-opacity duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#c4ff40] '+
+         (visible?'pointer-events-auto opacity-100':'pointer-events-none opacity-0')}
+        style={{left:edge.x+'%',top:edge.y+'%'}}>
+        <span aria-hidden="true" className="flex h-6 w-6 items-center justify-center rounded-full border border-[#c4ff40]/80 bg-[#17111e] text-[#c4ff40] shadow-md transition-transform hover:scale-110"><Plus size={14} strokeWidth={2.5}/></span>
+       </button>;
+      })}
+      <svg className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Silhuetas dos ambientes">
       {visibleRooms.map(a=>{
        const color=areaColor(a),chosen=selected===a.id;
        return <path key={a.id} d={areaPath(previewAreas,a.id)} fill={color+'33'} stroke={chosen?'#c4ff40':color} strokeWidth={chosen?0.7:0.45}
