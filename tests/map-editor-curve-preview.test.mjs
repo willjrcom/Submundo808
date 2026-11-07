@@ -7,6 +7,11 @@ const editor=readFileSync(new URL('../artifacts/submundo-808/src/components/admi
 test('shape controls replace the right-hand item editor without hiding the map',()=>{
  assert.match(editor,/aria-label="Controles de curvatura"/);
  assert.match(editor,/curveOpen&&active&&!grouped\?<section aria-label="Controles de curvatura"/);
+ const sidebar=editor.indexOf('<aside className="min-w-0 space-y-4 self-start rounded-xl');
+ const controls=editor.indexOf('<section aria-label="Controles de curvatura"');
+ assert.ok(sidebar>0&&controls>sidebar,'format controls must replace the right sidebar, not appear above the map');
+ assert.match(editor,/curveOpen&&active&&!grouped\?'Formato · '\+active\.name/);
+ assert.match(editor,/disabled=\{curveOpen\|\|saving\|\|loading\|\|!dirty\}/);
  assert.doesNotMatch(editor,/ml-auto w-full max-w-xl space-y-3 border-t/);
  assert.doesNotMatch(editor,/curveOpen&&active[^\n]*fixed inset-0/);
  assert.match(editor,/Prévia em tempo real no mapa ao lado/);

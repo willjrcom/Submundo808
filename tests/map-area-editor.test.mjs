@@ -42,3 +42,13 @@ test('novo ambiente inicia maior respeitando busca por área livre',()=>{
  assert.match(editor,/function createArea\(\)\{[\s\S]*?freeAreaPosition\(areas,30,24\)/);
  assert.match(editor,/Não há espaço livre para um novo ambiente/);
 });
+
+test('selected grouped root exposes piece-specific outer handles and no internal handle',()=>{
+ assert.match(editor,/outerResizeHandles\(areas,a\.id\)\.map\(handle=>/);
+ assert.match(editor,/rootAreaId\(part\)!==selected/);
+ assert.match(editor,/resizeId!==selected/);
+ assert.match(editor,/onPointerDown=\{e=>startDrag\(e,handle\.areaId,'resize',handle\.edge\)\}/);
+ assert.match(editor,/resizeOuterGroupEdge\(d\.snapshot\.areas,rootAreaId\(part\),d\.id,d\.edge,delta,snap\)/);
+ assert.match(editor,/setResizeId\(active\.id\);setEditLayout\(true\)/);
+ assert.doesNotMatch(editor,/canResize=!isGrouped\(areas,a\.id\)/);
+});

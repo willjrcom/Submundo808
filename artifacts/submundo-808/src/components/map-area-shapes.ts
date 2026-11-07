@@ -73,6 +73,14 @@ export function outerResizeHandles<T extends GeometricArea>(areas:T[],rootId:str
    y:edge==='top'?room.y:edge==='bottom'?room.y+room.height:room.y+room.height/2
   })));
 }
+// Match the persistence validator (server/map-area-geometry.mjs) so the UI
+// never accepts an edit that the API would reject as a disconnected group.
+function touchingForStorage(a:GeometricArea,b:GeometricArea){
+ const x=Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x);
+ const y=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
+ const epsilon=.06;
+ return (x>epsilon&&y>epsilon)||(Math.abs(x)<epsilon&&y>epsilon)||(Math.abs(y)<epsilon&&x>epsilon);
+}
 function groupsRemainConnected(areas:GeometricArea[]){
  for(const root of visibleAreas(areas)){
   const members=groupMembers(areas,root.id);
@@ -82,7 +90,7 @@ function groupsRemainConnected(areas:GeometricArea[]){
    changed=false;
    for(const item of members){
     if(reached.has(item.id))continue;
-    if(members.some(other=>reached.has(other.id)&&(sharesBorder(item,other)||intersects(item,other)))){
+    if(members.some(other=>reached.has(other.id)&&touchingForStorage(item,other))){
      reached.add(item.id);changed=true;
     }
    }
