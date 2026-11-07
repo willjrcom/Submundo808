@@ -59,7 +59,8 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
  const [selected,setSelected]=useState(''),[editLayout,setEditLayout]=useState(false),[resizeId,setResizeId]=useState<string|null>(null);
  const [groupOpen,setGroupOpen]=useState(false),[groupChoice,setGroupChoice]=useState(''),[curveOpen,setCurveOpen]=useState(false),[editMenuOpen,setEditMenuOpen]=useState(false);
- const [curveDraft,setCurveDraft]=useState<AreaGeometry['curve']|null>(null);
+ const [curveDraft,setCurveDraft]=useState<AreaGeometry|null>(null);
+ const [formatSide,setFormatSide]=useState<CurveSide>('top');
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[loading,setLoading]=useState(true),[initialLoadError,setInitialLoadError]=useState(false),[saving,setSaving]=useState(false),[dirty,setDirty]=useState(false);
  const [calibrationOpen,setCalibrationOpen]=useState(false);const [calibrationBusy,setCalibrationBusy]=useState(false);const [calibrationPosition,setCalibrationPosition]=useState<GPS|null>(null);
  const [gpsLive,setGpsLive]=useState<GPS|null>(null),[gpsStatus,setGpsStatus]=useState(''),[expectedWidth,setExpectedWidth]=useState(''),[expectedLength,setExpectedLength]=useState(''),[walkPoints,setWalkPoints]=useState<GPS[]>([]),[walkTesting,setWalkTesting]=useState(false),[showCalibrationConfirm,setShowCalibrationConfirm]=useState(false);
@@ -102,7 +103,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const active=areas.find(a=>a.id===selected);
  // Render the draft silhouette while editing; persisted map geometry changes only on Apply.
  const previewAreas=curveOpen&&active
-  ?areas.map(a=>a.id===active.id?{...a,geometry:{...a.geometry,shape:'rect' as const,curve:curveDraft}}:a)
+  ?areas.map(a=>a.id===active.id?{...a,geometry:curveDraft||a.geometry}:a)
   :areas;
  const selectedMarker=markers.find(m=>m.id===selected);
  const editing=editLayout;
@@ -182,14 +183,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setAreas(v=>[...v,{id,map_id:map.id,name:'Novo ambiente',kind:'outro',...p,gps:{},geometry:{shape:'rect'},icon:'outro',color:'#9747FF',description:''}]);
   setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setNotice('Selecione Mover ou Redimensionar para ajustar o ambiente.');
  }
- function createRoundArea(){
-  const p=freeAreaPosition(areas,18,Math.min(35,18*mapFrameAspect(frame)));
-  if(!p){setError('Não há espaço livre para um ambiente redondo.');return;}
-  checkpoint();setError('');const id=crypto.randomUUID();
-  setAreas(v=>[...v,{id,map_id:map.id,name:'Ambiente redondo',kind:'outro',...p,gps:{},geometry:{shape:'ellipse'},icon:'outro',color:'#9747FF',description:''}]);
-  setSelected(id);setEditLayout(false);setFrameEditing(false);setResizeId(null);setCurveOpen(false);
-  setNotice('Ambiente redondo criado. Desenhe o formato oval redimensionando os lados.');
- }
  function confirmGroup(){
   if(!active||!groupChoice||!canGroup(areas,active.id,groupChoice)){setError('Escolha um ambiente retangular que encoste no ambiente selecionado.');return;}
   checkpoint();setAreas(groupWith(areas,active.id,groupChoice));setGroupOpen(false);setGroupChoice('');setCurveOpen(false);setResizeId(null);setEditLayout(false);
@@ -201,24 +194,29 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setNotice('Ambientes desagrupados. As partes originais foram preservadas.');
  }
  function openCurveEditor(){
-  if(!active||active.geometry?.shape==='ellipse')return;
-  setCurveDraft(active.geometry?.curve?{...active.geometry.curve}:{side:'top',direction:'in',depth:20});
+  if(!active||grouped)return;
+  const legacy=active.geometry?.curve;
+  setCurveDraft({...active.geometry,shape:active.geometry?.shape||'rect',curve:null,
+   curves:{...(legacy?{[legacy.side]:legacy}:{}),...(active.geometry?.curves||{})}});
+  setFormatSide(legacy?.side||'top');
   setGroupOpen(false);setEditMenuOpen(false);setCurveOpen(true);
  }
  function updateCurve(patch:Partial<NonNullable<AreaGeometry['curve']>>){
-  setCurveDraft(current=>({side:'top',direction:'in',depth:20,...(current||{}),...patch}));
+  setCurveDraft(current=>{
+   const curves={...(current?.curves||{})};
+   const next={side:formatSide,direction:'in' as CurveDirection,depth:20,...curves[formatSide],...patch};
+   if(next.depth<=0)delete curves[formatSide];
+   else curves[formatSide]=next;
+   return {...current,curves,curve:null};
+  });
  }
  function applyCurve(){
-  if(!active)return;
-  const current=active.geometry?.curve||null;
-  // One Undo checkpoint per completed curve edit, not one for every slider tick.
-  if(JSON.stringify(current)!==JSON.stringify(curveDraft)){
-   updateArea({geometry:{...active.geometry,shape:'rect',curve:curveDraft}});
-  }
+  if(!active||!curveDraft)return;
+  const geometry={...active.geometry,...curveDraft,curve:null};
+  if(JSON.stringify(active.geometry)!==JSON.stringify(geometry))updateArea({geometry});
   setCurveOpen(false);setCurveDraft(null);
  }
  function cancelCurve(){setCurveOpen(false);setCurveDraft(null);}
-
  function createPassage(a:Area,b:Area,x:number,y:number){
   checkpoint();const id=crypto.randomUUID();
   setMarkers(v=>[...v,{id,name:'Passagem '+a.name+' / '+b.name,type:'passagem',x,y,from_area_id:a.id,to_area_id:b.id,access_type:'livre',shape:'square',size:30,color:'#C4FF40',description:''}]);
@@ -441,7 +439,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   <div className="flex flex-wrap items-center gap-2 p-2">
    <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
-   <button onClick={createRoundArea} className={button}><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current"/> Ambiente redondo</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
    <button onClick={()=>setCalibrationOpen(true)} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
@@ -461,30 +458,42 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    </div>
    {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes retangulares encostados neste. Arraste a segunda parte até uma borda para habilitar o agrupamento.</p>}
   </section></div>}
-  {curveOpen&&active&&active.geometry?.shape!=='ellipse'&&<aside aria-label="Controles de curvatura" className="ml-auto w-full max-w-xl space-y-3 border-t border-white/10 bg-[#17111e] p-3 sm:rounded-bl-xl sm:border-l sm:p-4">
-   <div className="flex flex-wrap items-start justify-between gap-2">
-    <div><p className="text-sm font-semibold">Curvar ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
+  {curveOpen&&active&&!grouped&&<aside aria-label="Controles de curvatura" className="ml-auto w-full max-w-xl space-y-3 border-t border-white/10 bg-[#17111e] p-3 sm:rounded-bl-xl sm:border-l sm:p-4">
+   <div className="flex items-center justify-between gap-2">
+    <div><p className="text-sm font-bold">Formato do ambiente: <span className="text-[#c4ff40]">{active.name}</span></p>
      <p className="mt-1 text-xs text-[#c4ff40]">Prévia em tempo real no mapa abaixo</p></div>
-    <button type="button" onClick={cancelCurve} aria-label="Fechar prévia de curvatura" className="rounded-lg border border-white/20 p-2 text-white/75"><X size={16}/></button>
+    <button type="button" onClick={cancelCurve} aria-label="Fechar edição do formato" className={button}><X size={16}/></button>
    </div>
-   <p className="text-xs leading-relaxed text-white/55">Ajuste lateral, direção e intensidade sem cobrir o ambiente. As mudanças só entram no editor ao clicar em Aplicar.</p>
+   <div className="grid grid-cols-2 gap-2" role="group" aria-label="Escolher formato do ambiente">
+    <button type="button" aria-pressed={curveDraft?.shape!=='ellipse'} onClick={()=>setCurveDraft(draft=>({...draft,shape:'rect'}))}
+     className={button+' '+(curveDraft?.shape!=='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Retangular</button>
+    <button type="button" aria-pressed={curveDraft?.shape==='ellipse'} onClick={()=>setCurveDraft(draft=>({...draft,shape:'ellipse'}))}
+     className={button+' '+(curveDraft?.shape==='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><span aria-hidden="true" className="h-4 w-4 rounded-full border-2 border-current"/> Oval / redondo</button>
+   </div>
+   <p className="text-xs leading-relaxed text-white/55">Selecione uma borda para curvar individualmente. No modo oval, cada lado pode ficar mais aberto ou fechado. O círculo depende das proporções do ambiente.</p>
    <div className="grid gap-3 sm:grid-cols-3">
-    <label className="space-y-1 text-xs text-white/65">Lateral
-     <select className={input} value={curveDraft?.side||'top'} onChange={e=>updateCurve({side:e.target.value as CurveSide})}><option value="top">Superior</option><option value="right">Direita</option><option value="bottom">Inferior</option><option value="left">Esquerda</option></select>
+    <label className="space-y-1 text-xs text-white/65">Borda
+     <select aria-label="Borda para curvar" className={input} value={formatSide} onChange={e=>setFormatSide(e.target.value as CurveSide)}>
+      <option value="top">Superior</option><option value="right">Direita</option><option value="bottom">Inferior</option><option value="left">Esquerda</option>
+     </select>
     </label>
     <label className="space-y-1 text-xs text-white/65">Direção
-     <select className={input} value={curveDraft?.direction||'in'} onChange={e=>updateCurve({direction:e.target.value as CurveDirection})}><option value="in">Para dentro</option><option value="out">Para fora</option></select>
+     <select aria-label="Direção da curvatura" className={input} value={curveDraft?.curves?.[formatSide]?.direction||'in'} onChange={e=>updateCurve({direction:e.target.value as CurveDirection})}>
+      <option value="in">Para dentro</option><option value="out">Para fora</option>
+     </select>
     </label>
-    <label className="space-y-1 text-xs text-white/65">Intensidade: {curveDraft?.depth??20}%
-     <input aria-label="Intensidade da curvatura" type="range" min="1" max="40" step="1" value={curveDraft?.depth??20} onChange={e=>updateCurve({depth:Number(e.target.value)})} className="mt-3 w-full accent-[#c4ff40]"/>
+    <label className="space-y-1 text-xs text-white/65">Intensidade: {curveDraft?.curves?.[formatSide]?.depth||0}%
+     <input aria-label="Intensidade da curvatura" type="range" min="0" max="40" step="1" value={curveDraft?.curves?.[formatSide]?.depth||0}
+      onChange={e=>updateCurve({depth:Number(e.target.value)})} className="mt-3 w-full accent-[#c4ff40]"/>
     </label>
    </div>
+   <div className="flex flex-wrap gap-2 text-[11px] text-white/60">{(['top','right','bottom','left'] as const).map(side=><span key={side} className={'rounded-full border px-2 py-1 '+(curveDraft?.curves?.[side]?'border-[#c4ff40]/40 text-[#c4ff40]':'border-white/10')}>{({top:'Superior',right:'Direita',bottom:'Inferior',left:'Esquerda'} as const)[side]}: {curveDraft?.curves?.[side]?.depth||0}%</span>)}</div>
    <div className="flex flex-wrap items-center justify-end gap-2">
-    <button type="button" onClick={()=>setCurveDraft(null)} disabled={!curveDraft} className={button}>Remover curva</button>
+    <button type="button" onClick={()=>updateCurve({depth:0})} className={button}>Remover curva desta borda</button>
     <button type="button" onClick={cancelCurve} className={button}>Cancelar</button>
-    <button type="button" onClick={applyCurve} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-black text-black">Aplicar curva</button>
+    <button type="button" onClick={applyCurve} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-xs font-black text-black">Aplicar formato</button>
    </div>
-   <p className="text-[11px] text-white/45">Depois de aplicar, use “Salvar mapa” para publicar a alteração.</p>
+   <p className="text-[11px] text-white/45">O mapa continua visível durante os ajustes. Clique em Salvar mapa para publicar.</p>
   </aside>}
   {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
    <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
@@ -509,7 +518,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         {grouped?
          <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>:
          <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>}
-        <button type="button" role="menuitem" disabled={active.geometry?.shape==='ellipse'} title={active.geometry?.shape==='ellipse'?'O ambiente redondo já possui borda curva':'Curvar borda do ambiente'} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Curvar</button>
+        <button type="button" role="menuitem" disabled={grouped} title={grouped?'Desagrupe para editar cada formato':'Editar formato e curvaturas'} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Formato e curvatura</button>
        </div>}
       </div>}
       {selectedMarker&&!frameEditing&&<div className="absolute right-3 top-3 z-[60] flex max-w-[calc(100%-24px)] flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/30 bg-[#17111e]/95 p-2 shadow-xl backdrop-blur">
@@ -597,10 +606,12 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      <p className="text-xs text-amber-200/80">Depois de alterar o tamanho físico do mapa, confira a calibração GPS.</p>
     </div>:active?<div className="space-y-4">
      <div className="flex items-center gap-2 rounded-xl border border-white/10 p-3"><span className="h-5 w-5 rounded" style={{backgroundColor:areaColor(active)}}/><div><p className="text-sm font-bold">{active.name}</p><p className="text-[11px] text-white/50">Ambiente · {grouped?groupMembers(areas,active.id).length+' partes agrupadas':'bordas compartilhadas'}</p></div></div>
-     <div className="space-y-2 text-xs text-white/65"><p>Formato do ambiente</p><div className="grid grid-cols-2 gap-2">
-       <button type="button" aria-pressed={active.geometry?.shape!=='ellipse'} disabled={grouped} onClick={()=>updateArea({geometry:{...active.geometry,shape:'rect',curve:null}})} className={button+' '+(active.geometry?.shape!=='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><Square size={16}/> Retangular</button>
-       <button type="button" aria-pressed={active.geometry?.shape==='ellipse'} disabled={grouped} onClick={()=>{updateArea({geometry:{...active.geometry,shape:'ellipse',curve:null}});setCurveOpen(false);}} className={button+' '+(active.geometry?.shape==='ellipse'?'border-[#c4ff40] text-[#c4ff40]':'')}><span className="h-4 w-4 rounded-full border-2 border-current"/> Redondo</button>
-      </div>{grouped&&<p className="text-[11px] text-white/50">Desagrupe para alterar o formato individual das partes.</p>}</div>
+     <div className="space-y-2 text-xs text-white/65">
+      <p>Formato do ambiente</p>
+      <p className="text-white/70">{active.geometry?.shape==='ellipse'?'Oval / redondo':'Retangular'} · {new Set([...Object.keys(active.geometry?.curves||{}),...(active.geometry?.curve?[active.geometry.curve.side]:[])]).size} borda(s) curvas</p>
+      <button type="button" disabled={grouped} onClick={openCurveEditor} className={button+' w-full justify-center disabled:opacity-40'}><Blend size={15}/> Editar formato e curvaturas</button>
+      {grouped&&<p className="text-[11px] text-white/50">Desagrupe para alterar o formato das partes.</p>}
+     </div>
      <label className="block space-y-1 text-xs text-white/65">Nome<input className={input} value={active.name} maxLength={100} onChange={e=>updateArea({name:e.target.value})}/></label>
      <label className="block space-y-1 text-xs text-white/65">Tipo e ícone<select className={input} value={active.icon||active.kind} onChange={e=>updateArea({kind:e.target.value,icon:e.target.value})}>{types.map(t=><option key={t} value={t}>{typeNames[t]}</option>)}</select></label>
      <div className="space-y-2 text-xs text-white/65">Cor{colorInput(areaColor(active),color=>updateArea({color}))}</div>

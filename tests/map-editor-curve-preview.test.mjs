@@ -29,3 +29,13 @@ test('curve draft changes SVG geometry while leaving source room unchanged',()=>
  assert.doesNotMatch(original,/Q/);
  assert.equal(base.geometry.curve,undefined);
 });
+
+test('single Ambiente action and one format panel offer rectangle, oval and per-side curvature',()=>{
+ assert.doesNotMatch(editor,/createRoundArea|Ambiente redondo<\/button>/);
+ assert.match(editor,/Oval \/ redondo/);
+ assert.match(editor,/Formato e curvatura/);
+ assert.match(editor,/aria-label="Borda para curvar"/);
+ assert.match(editor,/setFormatSide\(e\.target\.value as CurveSide\)/);
+ assert.match(editor,/aria-label="Intensidade da curvatura"/);
+ assert.match(editor,/onClick=\{applyCurve\}/);
+});
