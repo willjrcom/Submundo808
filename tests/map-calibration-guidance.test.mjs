@@ -7,7 +7,7 @@ const read=(path)=>readFileSync(new URL('../artifacts/submundo-808/src/component
 const tsCompile=(code)=>ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
 const utilsUrl='data:text/javascript;base64,'+Buffer.from(tsCompile(read('map-location-utils.ts'))).toString('base64');
 const geometrySource=read('map-calibration-geometry.ts');
-const geometryUrl='data:text/javascript;base64,'+Buffer.from(tsCompile(geometrySource.replace("from './map-location-utils'",'from '+JSON.stringify(utilsUrl)))).toString('base64');
+const geometryUrl='data:text/javascript;base64,'+Buffer.from(tsCompile(geometrySource.replace(/from '\.\/map-location-utils(?:\.ts)?'/,'from '+JSON.stringify(utilsUrl)))).toString('base64');
 const {gpsToMap,distanceMeters}=await import(utilsUrl);
 const {MAP_MARGIN_METERS,GPS_CAPTURE_MS,expandMeasuredCorners,measuredCorners,applyMeasuredCorner,
  summarizeGpsSamples,cornersGeometryValid,mapPercentToGps}=await import(geometryUrl);

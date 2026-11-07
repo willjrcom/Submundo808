@@ -2,11 +2,12 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import {readMapDraft,persistMapDraft,removeMapDraft} from './map-edit-draft';
 import AdminManualCalibration from './admin-manual-calibration';
+import AdminCalibrationOverview from './admin-calibration-overview';
 import {emptyManualValues,manualValuesFromGps,type ManualValues,type ManualPointMode,type ManualCalibrationResult} from './map-calibration-manual';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
- ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,
+ ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,CheckCircle2,
  Eye,MousePointer2,Square,RotateCcw,Info,Group,Unplug,Blend,ChevronDown,Grid3X3,X
 } from 'lucide-react';
 import {freeAreaPosition,sharesBorder,limit,type Edge} from './map-layout-geometry';
@@ -75,6 +76,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const [draftUnavailable,setDraftUnavailable]=useState(false);
  const draftReady=useRef(false),editRevision=useRef(0);
  const [calibrationChoiceOpen,setCalibrationChoiceOpen]=useState(false);
+ const [calibrationOverviewOpen,setCalibrationOverviewOpen]=useState(false);
  const [manualCalibrationOpen,setManualCalibrationOpen]=useState(false);
  const [manualValues,setManualValues]=useState<ManualValues>(emptyManualValues);
  const [manualMode,setManualMode]=useState<ManualPointMode>('4');
@@ -103,6 +105,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const geo=(p:GPS)=>({x:p.lng*111320*Math.cos(p.lat*Math.PI/180),y:-p.lat*111320});
  const cross=(a:GPS,b:GPS,c:GPS)=>{const x=geo(a),y=geo(b),z=geo(c);return(y.x-x.x)*(z.y-x.y)-(y.y-x.y)*(z.x-x.x);};
  const geometryValid=allCorners(rawCorners)&&cornersGeometryValid(rawCorners);
+ const calibrationComplete=geometryValid&&corners?.mode!=='demo-auto';
  const accuracyMax=ready?Math.max(...CORNER_KEYS.map(k=>rawCorners[k]?.accuracy||999)):0;
  const accuracyReasonable=ready&&Math.min(averageWidth,averageLength)>accuracyMax*2;
  const widthExpected=Number(expectedWidth.replace(',','.')),lengthExpected=Number(expectedLength.replace(',','.'));
@@ -208,6 +211,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
    if(event.key==='Escape'&&manualCalibrationOpen){event.preventDefault();event.stopPropagation();setManualCalibrationOpen(false);return;}
    if(event.key==='Escape'&&calibrationChoiceOpen){event.preventDefault();event.stopPropagation();setCalibrationChoiceOpen(false);return;}
+   if(event.key==='Escape'&&calibrationOverviewOpen){event.preventDefault();event.stopPropagation();setCalibrationOverviewOpen(false);return;}
    if(event.key==='Escape'&&manualApplied){event.preventDefault();event.stopPropagation();setManualApplied(null);return;}
    if(event.key==='Escape'&&calibrationOpen){
     event.preventDefault();event.stopPropagation();
@@ -226,7 +230,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[editMenuOpen,calibrationOpen,manualCalibrationOpen,calibrationChoiceOpen,manualApplied,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
+ },[editMenuOpen,calibrationOpen,manualCalibrationOpen,calibrationChoiceOpen,calibrationOverviewOpen,manualApplied,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){editRevision.current+=1;setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;editRevision.current+=1;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -472,6 +476,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  function chooseCalibrationMode(){
   setError('');setManualApplied(null);setCalibrationChoiceOpen(true);
  }
+ function openCalibrationOverview(){
+  if(!calibrationComplete){chooseCalibrationMode();return;}
+  setError('');setCalibrationOverviewOpen(true);
+ }
+ function recalibrateMap(){
+  setCalibrationOverviewOpen(false);
+  setManualStarted(false);
+  chooseCalibrationMode();
+ }
  function startManualCalibration(){
   if(!calibrationArea){setError('Crie um ambiente antes de calibrar a planta.');return;}
   if(!manualStarted){setManualValues(manualValuesFromGps(corners));setManualStarted(true);}
@@ -586,7 +599,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
-   <button onClick={chooseCalibrationMode} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}><MapPin size={16}/> Calibrar mapa</button>
+   <button onClick={openCalibrationOverview} className={button+" border-[#c4ff40]/50 text-[#c4ff40]"}>{calibrationComplete?<CheckCircle2 size={16}/>:<MapPin size={16}/>} {calibrationComplete?'Ver calibração':'Calibrar mapa'}</button>
    <button disabled={!history.length} onClick={undo} title="Desfazer (Ctrl/Cmd+Z)" aria-label="Desfazer" className={button}><Undo2 size={17}/></button>
    <button disabled={!future.length} onClick={redo} title="Refazer (Ctrl/Cmd+Shift+Z)" aria-label="Refazer" className={button}><Redo2 size={17}/></button>
    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-xs text-white/65"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)} className="accent-[#c4ff40]"/> Encaixar bordas</label>
@@ -878,6 +891,11 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     <p className="text-xs text-white/50">Os dois métodos utilizam a mesma calibração do mapa e preservam a margem externa de 5 m.</p>
    </section>
   </div>}
+  {calibrationOverviewOpen&&calibrationComplete&&<AdminCalibrationOverview
+   mapName={mapName} gps={corners} areas={areas}
+   hasUnsavedChanges={dirty}
+   onClose={()=>setCalibrationOverviewOpen(false)}
+   onRecalibrate={recalibrateMap}/>}
   {manualCalibrationOpen&&<AdminManualCalibration mapName={mapName} existingGps={corners}
    values={manualValues} mode={manualMode}
    onChange={(key,field,value)=>setManualValues(previous=>({...previous,[key]:{...previous[key],[field]:value}}))}
