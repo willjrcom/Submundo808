@@ -14,14 +14,16 @@ test('participant can evaluate an event only once, without updating the first an
   assert.equal(hasSubmittedReview(db,{eventId:'show1',userId:'user1'}),true);
   assert.equal(hasSubmittedReview(db,{eventId:'show1',userId:'user2'}),false);
   assert.equal(insertReviewOnce(db,{...values,rating:1,comment:'Alteração',now:456}),false);
-  assert.deepEqual(db.prepare('SELECT rating,comment,created_at,updated_at FROM event_reviews WHERE event_id=? AND user_id=?').get('show1','user1'),{rating:5,comment:'Primeira',created_at:123,updated_at:123});
+  assert.deepEqual({...db.prepare('SELECT rating,comment,created_at,updated_at FROM event_reviews WHERE event_id=? AND user_id=?').get('show1','user1')},{rating:5,comment:'Primeira',created_at:123,updated_at:123});
   assert.equal(insertReviewOnce(db,{...values,userId:'user2'}),true);
   assert.equal(insertReviewOnce(db,{...values,eventId:'show2'}),true);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM event_reviews').get().n,3);
  }finally{db.close();}
 });
 test('API returns conflict for a second evaluation instead of upserting',()=>{
- const source=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
- assert.match(source,/if\(!inserted\)return json\(res,409,/);
- assert.doesNotMatch(source,/ON CONFLICT\(event_id,user_id\) DO UPDATE/);
+ const api=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
+ const review=readFileSync(new URL('../server/review-once.mjs',import.meta.url),'utf8');
+ assert.match(api,/if\(!inserted\)return json\(res,409,/);
+ assert.match(review,/ON CONFLICT\(event_id,user_id\) DO NOTHING/);
+ assert.doesNotMatch(review,/ON CONFLICT\(event_id,user_id\) DO UPDATE/);
 });
