@@ -285,6 +285,11 @@ http.createServer(async (req,res)=>{
         console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),requestId,page,component,code,errorType}));
         return json(res,202,{ok:true});
       }
+      if(url.pathname==='/api/admin/map-config'&&req.method==='GET'){
+        const user=getUser(req);if(!isAdmin(user))return json(res,403,{error:'Acesso restrito ao administrador.'});
+        // Browser API keys must be domain-restricted at Google Cloud; private credentials stay server-side.
+        return json(res,200,{googleMapsBrowserKey:process.env.GOOGLE_MAPS_BROWSER_API_KEY||''});
+      }
       if(await handleSocialApi({db,req,res,url,getUser,readBody:body,json,friendSecret:FRIEND_SECRET,drainPushQueue}))return;
       if (url.pathname==='/api/friends/code' && req.method==='POST') {
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
