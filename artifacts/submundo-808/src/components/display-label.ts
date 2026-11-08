@@ -6,11 +6,17 @@ export function displayLabel(value:string|undefined|null):string{
   .trim();
 }
 
+// Oculta apenas avisos de amostra que vieram de dados já persistidos.
+export function displayPublicDescription(value:string|undefined|null):string{
+ const text=String(value||'').trim();
+ return /^(?:DEMONSTRAÇÃO|DEMO|DEMONSTRATIVO|EXEMPLO|FICTÍCIO|ILUSTRATIVO)\s*[:—–-]/i.test(text)?'':text;
+}
+
 export function displayDescription(value:string|undefined|null):string{
  const description=String(value||'');
  // Descrição padrão da antiga rotina de geração; não é conteúdo do evento.
  if(/^Evento demonstrativo completo para testar a experiência do participante\./i.test(description))return '';
- return description;
+ return displayPublicDescription(description);
 }
 
 export function displayAddress(value:string|undefined|null):string{
