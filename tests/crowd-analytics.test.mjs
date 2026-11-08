@@ -168,5 +168,7 @@ test('rotas exigem admin e a localização do participante exige consentimento s
  assert.match(permissions,/analytics-consent/);
  assert.match(permissions,/Revogar/);
  assert.match(permissions,/Autorizar/);
- assert.match(map,/analyticsEnabled:false/);
+ assert.match(map,/analyticsEnabled:shareEnabled&&statisticsEnabled/);
+ assert.match(map,/await savePrefs\(true,true,activeEventId,true\)/);
+ assert.match(map,/statisticsEnabledRef\.current&&statisticsEventRef\.current===activeEventId/);
 });

@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import {displayLabel,displayPublicDescription} from './display-label';
-import {MapPin,Navigation,ArrowUp,Info,Settings2,X} from 'lucide-react';
+import {MapPin,Navigation,ArrowUp,Info} from 'lucide-react';
 import {pointIconFor} from './map-point-icons';
 import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,distanceMeters,type GpsFix} from './map-location-utils';
 import {mapPercentToGps} from './map-calibration-geometry';
@@ -14,12 +14,7 @@ import useMapLabels from './use-map-labels';
 type Geo={lat:number;lng:number};
 type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
-type ShareMode='event'|'4h'|'1h';
 type EventChoice={id:string;name:string;ends_at:string;map_ids:string[];location_sharing_enabled:number};
-const eventEndLabel=(value:string)=>{
- const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
- return match?match[3]+'/'+match[2]+' às '+match[4]+':'+match[5]:'horário a definir';
-};
 type Area={id:string;name:string;kind:string;x:number;y:number;width:number;height:number;gps:Partial<Bounds>&{mode?:string;spacingMeters?:number;accuracyMeters?:number;rawCorners?:Partial<Bounds>;marginMeters?:number};color?:string;icon?:string;description?:string;geometry?:AreaGeometry};
 type Marker={id:string;name:string;type:string;icon?:string;x:number;y:number;anchor?:MarkerAnchor;shape?:'square'|'circle';size?:number;color?:string;description?:string;opens_at?:string;closes_at?:string;categories?:string[];access_type?:string};
 type MapData={map:{id:string;name:string;frame?:MapFrame};areas:Area[];markers:Marker[]};
@@ -139,19 +134,17 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [localGpsEnabled,setLocalGpsEnabled]=useState(false);
   const [localGpsError,setLocalGpsError]=useState('');
   const localGpsWatch=useRef<number|null>(null);
-  const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
   const dontShareRef=useRef(false);
   const privacyRevision=useRef(0);
   // Do not silently resume sharing after a configured deadline or revocation.
   const autoShareSuppressed=useRef(false);
   const prefsQueue=useRef<Promise<void>>(Promise.resolve());
-  const [shareMode,setShareMode]=useState<ShareMode>('event');
-  const [shareWithGroups,setShareWithGroups]=useState(false);
+  // Consentimento de Estatísticas começa no toque informado e pode ser revogado
+  // no Perfil; reativações automáticas preservam a escolha atual.
+  const statisticsEnabledRef=useRef(false);
+  const statisticsEventRef=useRef<string|null>(null);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
-  const [sharingEventId,setSharingEventId]=useState<string|null>(null);
-  const [prefsReady,setPrefsReady]=useState(false);
-  const [prefsSaving,setPrefsSaving]=useState(false);
   const [friends,setFriends]=useState<FriendLocation[]>([]);
   const [friendsReady,setFriendsReady]=useState(false);
   const sharingRef=useRef(false);
@@ -180,17 +173,19 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   };
   const watch=useRef<number|null>(null);
   const trackingRef=useRef(false);
-  const savePrefs=(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
+  const savePrefs=(gpsEnabled:boolean,shareEnabled:boolean,eventId:string|null=null,statisticsEnabled=false)=>{
    // Serialize enable/disable writes so a slow enable cannot overwrite a newer stop.
    const run=async()=>{
-    setPrefsSaving(true);
     try{
-     const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:false});
+     const result=await requestLocation('preferences',{
+      gpsEnabled,shareEnabled,mode:'event',eventId,shareWithGroups:false,
+      analyticsEnabled:shareEnabled&&statisticsEnabled
+     });
      setSharingExpiresAt(result.expiresAt||null);
-     setSharingEventId(result.eventId||null);
+     statisticsEnabledRef.current=result.analyticsEnabled===true;
+     statisticsEventRef.current=result.analyticsEnabled===true?result.eventId||null:null;
      return result;
     }catch(error){setFriendError(error instanceof Error?error.message:'Falha ao salvar preferências.');throw error;}
-    finally{setPrefsSaving(false);}
    };
    const next=prefsQueue.current.then(run,run);
    prefsQueue.current=next.then(()=>{},()=>{});
@@ -243,27 +238,25 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    const requestedPrivacyRevision=privacyRevision.current;
    void requestLocation('preferences').then(p=>{
     if(!alive)return;
-    setPrefsReady(true);
-    setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
-    setShareWithGroups(p.shareWithGroups===true);
+    statisticsEnabledRef.current=p.analyticsEnabled===true;
+    statisticsEventRef.current=p.analyticsEnabled===true?p.eventId||null:null;
     if(privacyRevision.current===requestedPrivacyRevision){
      dontShareRef.current=p.dontShareWithFriends===true;
      setDontShareWithFriends(dontShareRef.current);
     }
     setSharingExpiresAt(p.expiresAt||null);
-    setSharingEventId(p.eventId||null);
     if(p.shareEnabled&&!dontShareRef.current&&localStorage.getItem('submundo-gps-stop-pending')!=='1'){
      if(!activeEventRef.current||p.eventId!==activeEventRef.current){
       // Do not resume GPS from a different festival or a legacy unscoped session.
       void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
       void requestLocation('stop',{}).catch(()=>{});
-      setSharingExpiresAt(null);setSharingEventId(null);
+      setSharingExpiresAt(null);
      }else{
       sharingRef.current=true;setSharing(true);
       void checkPermission();
      }
     }
-   }).catch(()=>{if(alive)setPrefsReady(true);});
+   }).catch(()=>{});
    const refresh=async()=>{
     const eventId=activeEventRef.current;
     if(!eventId){if(alive){setFriends([]);setFriendsReady(true);}return;}
@@ -401,7 +394,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    // Expiry/revocation stops publishing but never stops the phone's local GPS.
    autoShareSuppressed.current=true;
    shareEpoch.current++;sharingRef.current=false;setSharing(false);
-   setSharingExpiresAt(null);setSharingEventId(null);
+   setSharingExpiresAt(null);
    setFriendError('');setGeoError(message);
   };
   const endLocalSharing=(message:string)=>{
@@ -414,12 +407,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
    setTracking(false);setSharing(false);setGpsStarting(false);
    setLocation(null);locationRef.current=null;
-   setSharingExpiresAt(null);setSharingEventId(null);
+   setSharingExpiresAt(null);
    setGeoError(message);
   };
   useEffect(()=>{
    if(!activeEvent||activeEvent.id!==activeEventId||activeEvent.location_sharing_enabled===1)return;
-   setFriends([]);setLocationSetupOpen(false);
+   setFriends([]);
    if(sharingRef.current||gpsActivatingRef.current||watch.current!==null){
     endFriendShareKeepingGps('O organizador desabilitou o compartilhamento. Sua posição local permanece disponível.');
     void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
@@ -449,7 +442,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    const oldId=previousEventId.current;
    previousEventId.current=activeEventId;
    if(oldId===activeEventId)return;
-   setFriends([]);setFriendError('');setLocationSetupOpen(false);
+   setFriends([]);setFriendError('');
    // Changing the active party must remove coordinates from the previous map.
    if(sharingRef.current||gpsActivatingRef.current||watch.current!==null){
     endLocalSharing('Compartilhamento encerrado ao trocar de evento.');
@@ -470,8 +463,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    setLocalGpsEnabled(false);setLocalGpsError('');
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    shareEpoch.current++;sharingRef.current=false;setSharing(false);
-   setLocationSetupOpen(false);setGpsPermissionRequired(false);lastSend.current=0;
-   setSharingExpiresAt(null);setSharingEventId(null);
+   setGpsPermissionRequired(false);lastSend.current=0;
+   setSharingExpiresAt(null);
    trackingRef.current=false;setTracking(false);
    setLocation(null);locationRef.current=null;setGeoError('');
    // Persist an outstanding stop so a flaky/offline phone won't silently resume
@@ -502,7 +495,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(!sharingRef.current&&!activeEventId){
     setGeoError('Selecione uma festa para compartilhar até o encerramento.');return;
    }
-   setLocationSetupOpen(false);
+   
    gpsActivatingRef.current=true;
    setGpsStarting(true);setGeoError('');
    const attempt=++gpsAttemptId.current;
@@ -519,7 +512,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(dontShareRef.current||!navigator.onLine)return;
     void (async()=>{
      try{
-      await savePrefs(true,true,shareMode,activeEventId);
+      await savePrefs(true,true,activeEventId,true);
       if(cancelled()||dontShareRef.current)return;
       shareEpoch.current++;
       sharingRef.current=true;setSharing(true);
@@ -549,7 +542,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       activeEvent?.location_sharing_enabled!==1||authRequired||
       (localGpsWatch.current===null&&watch.current===null))return;
    try{
-    await savePrefs(true,true,shareMode,activeEventId);
+    await savePrefs(true,true,activeEventId,statisticsEnabledRef.current&&statisticsEventRef.current===activeEventId);
     if(dontShareRef.current||!navigator.onLine)return;
     shareEpoch.current++;sharingRef.current=true;setSharing(true);
     lastSend.current=0;sendLatestLocation();setFriendError('');
@@ -584,13 +577,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     toggleLocalPosition();
    }
   };
-  const saveLocationSettings=async()=>{
-   if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
-    try{await savePrefs(true,true,shareMode,activeEventId);}
-    catch{return;}
-   }
-   setLocationSetupOpen(false);
-  };
   useEffect(()=>{
    const onPrivacyChange=(event:Event)=>{
     const disabled=(event as CustomEvent<{disabled:boolean}>).detail?.disabled===true;
@@ -599,7 +585,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(disabled){
      // The server already revoked live locations. Keep the device GPS running.
      shareEpoch.current++;sharingRef.current=false;setSharing(false);
-     setSharingExpiresAt(null);setSharingEventId(null);setFriendError('');
+     setSharingExpiresAt(null);setFriendError('');
     }else if(localGpsWatch.current!==null||watch.current!==null){
      void enableSharingWithActiveGps();
     }
@@ -614,11 +600,18 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      void enableSharingWithActiveGps();
     }
    };
+   const onStatisticsConsent=(event:Event)=>{
+    const detail=(event as CustomEvent<{eventId:string;enabled:boolean}>).detail;
+    if(detail?.eventId!==activeEventId)return;
+    statisticsEnabledRef.current=detail.enabled;
+    statisticsEventRef.current=detail.enabled?detail.eventId:null;
+   };
+   window.addEventListener('submundo-statistics-consent',onStatisticsConsent);
    window.addEventListener('submundo-friend-sharing-privacy',onPrivacyChange);
    window.addEventListener('online',onOnline);
    if(navigator.onLine)onOnline();
-   return()=>{window.removeEventListener('submundo-friend-sharing-privacy',onPrivacyChange);window.removeEventListener('online',onOnline);};
-  },[activeEventId,shareMode,shareWithGroups,authRequired]);
+   return()=>{window.removeEventListener('submundo-statistics-consent',onStatisticsConsent);window.removeEventListener('submundo-friend-sharing-privacy',onPrivacyChange);window.removeEventListener('online',onOnline);};
+  },[activeEventId,authRequired]);
 
  // Não projetar pessoas em plantas cujas referências geográficas não foram
  // validadas: a grade de seed não corresponde ao espaço físico do evento.
@@ -668,14 +661,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <Navigation size={18} className="shrink-0 text-[#c4ff40]"/>
   <div className="min-w-0 flex-1">
    <p className="text-sm font-bold">Minha localização</p>
-   <p className="text-[11px] leading-relaxed text-white/60">{dontShareWithFriends?'GPS apenas para você, inclusive offline.':activeEvent?.location_sharing_enabled!==1?'GPS local. O evento não permite compartilhar com amigos.':'Ao ativar o GPS, sua posição também fica visível aos amigos enquanto houver conexão.'}</p>
+   <p className="text-[11px] leading-relaxed text-white/60">{dontShareWithFriends?'GPS só no seu aparelho, inclusive offline. Compartilhamento desativado em Perfil → Permissões.':activeEvent?.location_sharing_enabled!==1?'GPS só no seu aparelho. O evento não permite compartilhar com amigos.':'Ao ativar, sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas até o fim da festa. Ajuste em Perfil → Permissões.'}</p>
   </div>
   <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
    className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black disabled:opacity-60">
-   {gpsStarting||localGpsEnabled?'Ativando...':'Ativar GPS'}
+   {gpsStarting||localGpsEnabled?'Ativando...':dontShareWithFriends||activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar GPS e compartilhar'}
   </button>
-  <button type="button" aria-label="Configurar localização" title="Configurar localização"
-   onClick={()=>setLocationSetupOpen(true)} className="rounded-lg border border-white/20 p-2.5 text-white/80"><Settings2 size={17}/></button>
   {gpsStarting&&<p className="w-full text-xs text-white/60">Obtendo a posição do aparelho...</p>}
   {localGpsError&&<p role="status" className="w-full text-xs text-amber-300">{localGpsError}</p>}
   {geoError&&<p role="status" className="w-full text-xs text-amber-300">{geoError}</p>}
@@ -728,40 +719,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <p className="min-w-0 flex-1 text-white/75"><strong className="text-white">{positionUncertain?'Perto do limite do mapa':'Fora do mapa'}</strong> · {positionUncertain?'Precisão do GPS insuficiente.':closestEntrance?'Entrada '+closestEntrance.name+' a ~'+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Borda a ~'+formatMapDistance(myOutside.outsideMeters)+'.'}</p>
   {directionsUrl&&<a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#c4ff40]/50 px-2.5 py-1.5 font-bold text-[#c4ff40]"><Navigation size={13}/> Como chegar à entrada</a>}
  </section>}
- {locationSetupOpen&&<div role="presentation" className="fixed inset-0 z-[120] flex items-end justify-center bg-black/85 p-2 sm:items-center"
-  onClick={e=>{if(e.currentTarget===e.target)setLocationSetupOpen(false);}}>
-  <section role="dialog" aria-modal="true" aria-label="Configurações de localização"
-   className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#c4ff40]/30 bg-[#1b1422]">
-   <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 p-4">
-    <div><h3 className="text-lg font-bold">Configurações de localização</h3><p className="text-xs text-white/55">O GPS funciona offline. Ajuste como compartilhar com amigos.</p></div>
-    <button type="button" aria-label="Fechar configurações de localização" onClick={()=>setLocationSetupOpen(false)} className="rounded-lg border border-white/15 p-2"><X size={18}/></button>
-   </header>
-   <div className="min-h-0 space-y-3 overflow-y-auto p-4">
-    <p className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/70">{dontShareWithFriends?'Você marcou Não compartilhar com amigos em Perfil → Permissões. O GPS ficará somente no seu aparelho.':'Com a opção Não compartilhar com amigos desmarcada em Perfil → Permissões, ativar o GPS também compartilha sua posição com amigos quando houver conexão.'}</p>
-    <fieldset className="space-y-2">
-     <legend className="mb-2 text-sm font-semibold">Por quanto tempo compartilhar?</legend>
-     {([
-      {value:'event',title:'Até o fim da festa',hint:activeEvent?.ends_at?'Encerra em '+eventEndLabel(activeEvent.ends_at):'Usa o encerramento do evento'},
-      {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
-      {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
-     ] as const).map(option=><label key={option.value} className={'flex items-center gap-3 rounded-xl border p-3 '+(shareMode===option.value?'border-[#c4ff40]/55 bg-[#c4ff40]/10':'border-white/15')}>
-      <input type="radio" name="gps-share-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} className="h-4 w-4 accent-[#c4ff40]"/>
-      <span><strong className="block text-sm">{option.title}</strong><span className="block text-xs text-white/55">{option.hint}</span></span>
-     </label>)}
-    </fieldset>
-    <label className="flex items-start gap-3 rounded-xl border border-white/15 p-3">
-     <input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 accent-[#c4ff40]"/>
-     <span><strong className="block text-sm">Compartilhar também com meus grupos</strong><span className="block text-xs text-white/55">Opcional. Por padrão, apenas amigos podem ver sua localização.</span></span>
-    </label>
-    <p className="text-xs text-white/45">Para interromper o compartilhamento com amigos, use Perfil → Permissões. A localização no aparelho segue a permissão do navegador.</p>
-   </div>
-   <footer className="flex shrink-0 gap-2 border-t border-white/10 p-4">
-    <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm">Cancelar</button>
-    <button type="button" disabled={prefsSaving} onClick={()=>void saveLocationSettings()} className="flex-[1.3] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-bold text-black disabled:opacity-50">{prefsSaving?'Salvando...':'Salvar configurações'}</button>
-   </footer>
-  </section>
- </div>}
-{pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{publicPointName(marker.name,!!mapIsDemo)}</h3><p className="mt-1 text-xs text-white/60">{displayPublicDescription(marker.description)||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{displayPublicDescription(p.description)&&<p className="mt-1 text-xs text-white/55">{displayPublicDescription(p.description)}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
+ {pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{publicPointName(marker.name,!!mapIsDemo)}</h3><p className="mt-1 text-xs text-white/60">{displayPublicDescription(marker.description)||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{displayPublicDescription(p.description)&&<p className="mt-1 text-xs text-white/55">{displayPublicDescription(p.description)}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
   <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting||localGpsEnabled?'Obtendo sua posição pelo GPS...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapIsDemo?'A localização nesta planta estará disponível após a calibração GPS do local.':mapped.inside?'Você está no mapa.':positionUncertain?'Você está próximo ao limite do mapa, mas o GPS está impreciso.':closestEntrance?'Você está fora do mapa. Entrada a aproximadamente '+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+' da borda.'}</p>

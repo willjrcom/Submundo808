@@ -105,7 +105,10 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    const payload=await response.json().catch(()=>null);
    if(!response.ok)throw Error(payload?.error||'Não foi possível atualizar sua autorização.');
    setCrowdPrefs(previous=>previous?{...previous,analyticsEnabled:payload.analyticsEnabled===true}:previous);
-   setCrowdMessage(payload.analyticsEnabled===true?'Você autorizou as estatísticas anônimas deste evento.':'Autorização revogada. Sua localização deixou de participar das novas estatísticas.');
+   window.dispatchEvent(new CustomEvent('submundo-statistics-consent',{
+    detail:{eventId:crowdPrefs.eventId,enabled:payload.analyticsEnabled===true}
+   }));
+   setCrowdMessage(payload.analyticsEnabled===true?'Você autorizou as Estatísticas agregadas deste evento.':'Autorização revogada. Sua localização deixou de contribuir para novas Estatísticas.');
   }catch(error){setCrowdError(error instanceof Error?error.message:'Não foi possível alterar a autorização.');}
   finally{setCrowdBusy(false);}
  }
@@ -222,7 +225,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
      className="mt-1 h-5 w-5 shrink-0 accent-[#c4ff40] disabled:opacity-45"/>
     <span className="min-w-0">
      <strong className="block text-sm">Não compartilhar com amigos</strong>
-     <span className="mt-1 block text-xs leading-relaxed text-white/60">Desmarcado por padrão. Ao tocar em Ativar GPS na aba Mapa, sua localização também será compartilhada com seus amigos até o fim da festa, se houver internet e o evento permitir. Marque para usar o GPS somente na sua planta. A permissão do Android, sozinha, não inicia o compartilhamento.</span>
+     <span className="mt-1 block text-xs leading-relaxed text-white/60">Desmarcado por padrão. Ao tocar em Ativar GPS e compartilhar no Mapa, sua posição fica visível aos amigos até o fim da festa, se o evento permitir e houver internet. Marque para manter o GPS somente no aparelho. A permissão do Android, sozinha, não inicia o compartilhamento.</span>
     </span>
    </label>
    {!friendPrivacyReady&&<p className="text-xs text-amber-200">Conecte-se e entre na conta para configurar o compartilhamento.</p>}
@@ -232,7 +235,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    <MapPin size={22} className="shrink-0 text-[#c4ff40]"/>
    <div className="min-w-0 flex-1">
     <p className="font-semibold">Estatísticas anônimas do evento</p>
-    <p className="text-xs leading-relaxed text-white/55">Opcional: permite contar pessoas por ambiente enquanto sua localização já está sendo compartilhada. O organizador vê somente dados agregados, sem nomes ou trajetos individuais. Os totais anteriores continuam no histórico após a revogação.</p>
+    <p className="text-xs leading-relaxed text-white/55">Ao tocar em Ativar GPS e compartilhar no Mapa, sua localização também contribui para Estatísticas agregadas da festa. O organizador não vê nomes nem trajetos individuais neste painel. Você pode revogar aqui a qualquer momento; os totais históricos agregados anteriores permanecem.</p>
     <p className={'mt-1 text-xs font-bold '+(crowdPrefs?.analyticsEnabled?'text-[#c4ff40]':'text-white/50')}>{crowdLoading?'Consultando autorização...':crowdPrefs?.analyticsEnabled?'Autorizada':crowdPrefs?.shareEnabled?'Não autorizada':'Ative o compartilhamento na aba Mapa para autorizar'}</p>
    </div>
    <button type="button" disabled={crowdLoading||crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId} onClick={()=>void toggleCrowdConsent()} className={'min-w-[98px] rounded-xl border px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40 '+(crowdPrefs?.analyticsEnabled?'border-amber-400/50 text-amber-200':'border-[#c4ff40]/50 text-[#c4ff40]')}>{crowdBusy?'Aguarde...':crowdPrefs?.analyticsEnabled?'Revogar':'Autorizar'}</button>

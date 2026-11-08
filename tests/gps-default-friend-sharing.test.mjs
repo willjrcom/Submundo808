@@ -42,21 +42,36 @@ test('um botão de GPS acima do mapa, compartilhando por padrão só após toque
  assert.match(map,/if\(!dontShareRef\.current&&navigator\.onLine/);
  assert.match(map,/startSharing\(\)/);
  assert.match(map,/toggleLocalPosition\(\)/);
- assert.match(map,/Ao ativar o GPS, sua posição também fica visível aos amigos/);
- assert.match(map,/\{gpsActive\?'Parar GPS':'Ativar GPS'\}/);
+ assert.match(map,/sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas/);
+ assert.match(map,/Ativar GPS e compartilhar/);
+ assert.match(map,/\{\(!tracking\|\|!location\)&&<div/);
+ assert.match(map,/analyticsEnabled:shareEnabled&&statisticsEnabled/);
+ assert.match(map,/mode:'event'/);
  assert.doesNotMatch(map,/Localização com amigos<\/h3>/);
  assert.doesNotMatch(map,/Minha posição na planta/);
 });
-test('duração e grupos permanecem num modal, o fluxo não pede confirmação duplicada',()=>{
- assert.match(map,/role="dialog" aria-modal="true" aria-label="Configurações de localização"/);
- assert.match(map,/onClick=\{\(\)=>setLocationSetupOpen\(true\)\}/);
- assert.match(map,/Por quanto tempo compartilhar\?/);
- assert.match(map,/Até o fim da festa/);
- assert.match(map,/Por 4 horas/);
- assert.match(map,/Por 1 hora/);
- assert.match(map,/Compartilhar também com meus grupos/);
- assert.match(map,/Salvar configurações/);
- assert.doesNotMatch(map,/Confirmar e ativar/);
+test('o mapa oferece apenas um botão de GPS, sem engrenagem ou modal de duração',()=>{
+ assert.match(map,/Ativar GPS e compartilhar/);
+ assert.match(map,/contribuirá para Estatísticas agregadas até o fim da festa/);
+ assert.match(map,/await savePrefs\(true,true,activeEventId,true\)/);
+ assert.doesNotMatch(map,/Configurações de localização/);
+ assert.doesNotMatch(map,/Configurar localização/);
+ assert.doesNotMatch(map,/locationSetupOpen|setLocationSetupOpen/);
+ assert.doesNotMatch(map,/Por quanto tempo compartilhar\?|Por 4 horas|Por 1 hora|Salvar configurações/);
+ assert.doesNotMatch(map,/Compartilhar também com meus grupos/);
+ assert.doesNotMatch(map,/Parar GPS/);
+ assert.match(map,/Perfil → Permissões/);
+});
+test('consentimento de Estatísticas preservado em retomadas, com revogação independente no Perfil',()=>{
+ assert.match(map,/statisticsEnabledRef=useRef\(false\)/);
+ assert.match(map,/statisticsEventRef=useRef<string\|null>\(null\)/);
+ assert.match(map,/statisticsEnabledRef\.current=p\.analyticsEnabled===true/);
+ assert.match(map,/await savePrefs\(true,true,activeEventId,true\)/);
+ assert.match(map,/await savePrefs\(true,true,activeEventId,statisticsEnabledRef\.current&&statisticsEventRef\.current===activeEventId\)/);
+ assert.match(map,/submundo-statistics-consent/);
+ assert.match(permissions,/window\.dispatchEvent\(new CustomEvent\('submundo-statistics-consent'/);
+ assert.match(permissions,/analytics-consent/);
+ assert.match(permissions,/Revogar/);
 });
 test('opt-out remove só compartilhamento, mantém GPS e bloqueia novos envios até reautorização',()=>{
  assert.match(map,/const onPrivacyChange=\(event:Event\)=>\{/);
@@ -79,7 +94,7 @@ test('prazo finalizado ou revogação não reativa compartilhamento automaticame
 });
 test('GPS local aparece antes da resposta da API e dados offline não esperam localização de amigos',()=>{
  const callback=map.indexOf('const onGpsSuccess='),render=map.indexOf('consumeGpsPosition(position);',callback);
- const prefs=map.indexOf('await savePrefs(true,true,shareMode,activeEventId)',callback);
+ const prefs=map.indexOf('await savePrefs(true,true,activeEventId,true)',callback);
  assert.ok(callback>=0&&render>callback&&prefs>render);
  assert.match(map,/setTimeout\(\(\)=>controller\.abort\(\),10000\)/);
  assert.match(map,/const showLoading=useMinimumLoading\(!!activeEventId&&\(!mapsReady\|\|loadedForEventId!==activeEventId\|\|!mapResolved\)\)/);
