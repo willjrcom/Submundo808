@@ -1,10 +1,11 @@
 import FriendQR from './friend-qr';
 import FriendGroups from './friend-groups';
+import GroupAvatar from './group-avatar';
 import OfflineGroupInvites from './offline-group-invites';
 import {getCachedGroupInvites} from './group-invite-cache';
 import {privateParticipantGet,hasOfflineParticipantData} from './offline-private-data';
 import Account from './account';
-import {captureGroupInviteFromUrl,getPendingGroupInvite} from './pending-group-invite';
+import {captureGroupInviteFromUrl,getPendingGroupInvite,clearPendingGroupInvite} from './pending-group-invite';
 import SocialAvatar from './social-avatar';
 import { useEffect, useRef, useState } from 'react';
 import { CameraOff, ScanLine, UserPlus, Users, X, RefreshCw, Link2, Search } from 'lucide-react';
@@ -12,6 +13,7 @@ import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 type Friend={id:string;name:string;avatar?:string};
 type SearchPerson=Friend&{relation:'friends'|'sent'|'received'|'none'};
+type InvitePreview={name:string;color:string;icon?:string;photo?:string};
 async function api(route:string, payload?:object){
  if(!payload&&route==='')return privateParticipantGet<{friends:Friend[]}>('/api/friends');
  if(!navigator.onLine)throw Error('Esta ação precisa de internet para ser sincronizada.');
@@ -23,6 +25,25 @@ export default function Friends(){
   const peopleView=()=>new URLSearchParams(window.location.search).has('invite')||new URLSearchParams(window.location.search).get('view')==='people';
   const [tab,setTab]=useState<'people'|'groups'>(peopleView()?'people':'groups');
   const [pendingInvite,setPendingInvite]=useState(()=>captureGroupInviteFromUrl());
+  const [invitePreview,setInvitePreview]=useState<InvitePreview|null>(null),[invitePreviewError,setInvitePreviewError]=useState(''),[invitePreviewLoading,setInvitePreviewLoading]=useState(false);
+  useEffect(()=>{
+    if(!pendingInvite){setInvitePreview(null);setInvitePreviewError('');setInvitePreviewLoading(false);return;}
+    let active=true;
+    const controller=new AbortController();
+    setInvitePreview(null);setInvitePreviewError('');setInvitePreviewLoading(true);
+    void fetch('/api/public/group-invite?token='+encodeURIComponent(pendingInvite),{credentials:'same-origin',signal:controller.signal})
+      .then(async response=>{const result=await response.json();if(!response.ok)throw Error(result.error||'Não foi possível abrir este convite.');return result.group as InvitePreview;})
+      .then(group=>{if(active)setInvitePreview(group);})
+      .catch(e=>{if(active&&e.name!=='AbortError')setInvitePreviewError(e instanceof Error?e.message:'Convite indisponível.');})
+      .finally(()=>{if(active)setInvitePreviewLoading(false);});
+    return()=>{active=false;controller.abort();};
+  },[pendingInvite]);
+  function dismissInvite(){
+    clearPendingGroupInvite();setPendingInvite('');setInvitePreview(null);setInvitePreviewError('');
+    const url=new URL(window.location.href);
+    url.searchParams.delete('group_invite');
+    window.history.replaceState({},'',url.pathname+url.search+url.hash);
+  }
   const [groupDetailOpen,setGroupDetailOpen]=useState(false);
   const switchTab=(next:'people'|'groups')=>{setTab(next);setError('');window.history.pushState({social:next},'',next==='groups'?'/friends':'/friends?view=people');window.scrollTo(0,0);};
   useEffect(()=>{const sync=()=>setTab(peopleView()?'people':'groups');window.addEventListener('popstate',sync);window.addEventListener('submundo-navigation',sync);return()=>{window.removeEventListener('popstate',sync);window.removeEventListener('submundo-navigation',sync);};},[]);
@@ -172,11 +193,21 @@ export default function Friends(){
   if(access==='error'&&!navigator.onLine)return <div className="space-y-3"><p role="status" className="rounded-xl border border-amber-400/30 px-3 py-3 text-xs text-amber-200">Os dados de Amigos ainda não foram sincronizados neste aparelho.</p><OfflineGroupInvites/></div>;
   if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
-    <div className="mb-5"><p className={'text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40] '+(tab==='people'?'mb-2':'')}>Sua galera</p>{tab==='people'&&<h2 className="font-display text-2xl font-black uppercase">Meus amigos</h2>}</div>
+    {!(access==='guest'&&pendingInvite)&&<div className="mb-5"><p className={'text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40] '+(tab==='people'?'mb-2':'')}>Sua galera</p>{tab==='people'&&<h2 className="font-display text-2xl font-black uppercase">Meus amigos</h2>}</div>}
     {tab==='people'&&<button type="button" onClick={()=>{stop();switchTab('groups');}} className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75">← Voltar aos grupos</button>}
     {access==='guest'&&hasSavedAccount&&!navigator.onLine?<div className="rounded-xl border border-white/15 p-3 text-sm text-white/65">Os dados anteriores estão salvos, mas não foi possível recuperar a sessão. Reconecte para atualizar.</div>:access==='guest'?pendingInvite?<div className="space-y-4" aria-label="Entrar no grupo convidado">
-     <div className="rounded-2xl border border-[#c4ff40]/30 bg-[#c4ff40]/[.055] p-4"><p className="font-bold text-[#c4ff40]">Você recebeu um convite de grupo</p><p className="mt-2 text-sm text-white/70">Seu convite está guardado neste aparelho. Entre na sua conta ou cadastre-se aqui mesmo para continuar e confirmar sua entrada no grupo.</p></div>
-     <Account onUser={user=>{if(user){setAccess('loading');void load();}}}/>
+     <div className="rounded-2xl border border-[#c4ff40]/30 bg-[#c4ff40]/[.055] p-4" aria-label="Grupo convidado">
+      <p className="text-[11px] font-bold uppercase tracking-widest text-[#c4ff40]">Você foi convidado para um grupo</p>
+      {invitePreviewLoading&&<p role="status" className="mt-3 text-sm text-white/65">Carregando convite...</p>}
+      {invitePreview&&<div className="mt-3 flex items-center gap-3">
+       <GroupAvatar name={invitePreview.name} color={invitePreview.color} icon={invitePreview.icon} photo={invitePreview.photo} size="md"/>
+       <h2 className="min-w-0 break-words text-xl font-black">{invitePreview.name}</h2>
+      </div>}
+      {invitePreviewError&&<p role="alert" className="mt-3 text-sm text-red-300">{invitePreviewError}</p>}
+      {!invitePreviewError&&<p className="mt-3 text-sm text-white/70">Entre com sua conta ou cadastre-se. Você será adicionado ao grupo automaticamente após o login.</p>}
+      <button type="button" onClick={dismissInvite} className="mt-3 rounded-lg px-1 py-2 text-xs font-semibold text-white/60 underline">Ignorar convite</button>
+     </div>
+     {!invitePreviewError&&<Account onUser={user=>{if(user){setAccess('loading');void load();}}}/>} 
     </div>:!navigator.onLine&&hasOfflineGroupInvites?<OfflineGroupInvites/>:<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<><FriendGroups onDetailChange={setGroupDetailOpen}/>{!groupDetailOpen&&<button type="button" onClick={()=>switchTab('people')} className="mt-6 flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[.035] px-4 py-4 text-left"><span className="flex items-center gap-3"><Users size={20} className="text-[#c4ff40]"/><span><span className="block font-bold">Meus amigos</span><span className="text-xs text-white/55">Contatos salvos para suas próximas festas</span></span></span><span className="text-xs text-[#c4ff40]">{friends.length} amigo(s) ›</span></button>}</>:<>
       <div className="mb-5 space-y-3">
        <label className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/[.04] px-3"><Search className="shrink-0 text-white/45" size={18}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar pessoas pelo nome" className="min-w-0 w-full bg-transparent p-3 text-base text-white outline-none"/></label>
