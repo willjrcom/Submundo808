@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {Bell,MapPin,Camera,CheckCircle2,Download,Share,Smartphone,X,ExternalLink,AlertTriangle} from 'lucide-react';
 import {isIosDevice,isPwaInstalled,requiresIosInstallationForPush} from './pwa-installation';
 type State='granted'|'denied'|'prompt'|'unsupported';
+type CrowdPreferences={shareEnabled:boolean;eventId:string|null;analyticsEnabled:boolean};
 /** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
 export async function hasPendingAppPermissions():Promise<boolean>{
  if(typeof navigator==='undefined'||typeof window==='undefined')return false;
@@ -25,6 +26,9 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [installed,setInstalled]=useState(isPwaInstalled);
  const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
  const [tutorialOpen,setTutorialOpen]=useState(false);
+ const [crowdPrefs,setCrowdPrefs]=useState<CrowdPreferences|null>(null);
+ const [crowdLoading,setCrowdLoading]=useState(true),[crowdBusy,setCrowdBusy]=useState(false);
+ const [crowdMessage,setCrowdMessage]=useState(''),[crowdError,setCrowdError]=useState('');
  const ios=isIosDevice();
  const needsIosInstall=ios&&!installed;
  useEffect(()=>{
@@ -45,6 +49,34 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    document.removeEventListener('visibilitychange',onVisible);
   };
  },[]);
+ // This independent, voluntary consent never triggers GPS or friend sharing.
+ useEffect(()=>{
+  let alive=true;
+  const refresh=async()=>{
+   try{
+    const response=await fetch('/api/location/preferences',{credentials:'same-origin'});
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok)throw Error(payload?.error||'Não foi possível consultar as estatísticas.');
+    if(alive)setCrowdPrefs({shareEnabled:payload.shareEnabled===true,eventId:payload.eventId||null,analyticsEnabled:payload.analyticsEnabled===true});
+   }catch(error){if(alive)setCrowdError(error instanceof Error?error.message:'Não foi possível consultar as preferências.');}
+   finally{if(alive)setCrowdLoading(false);}
+  };
+  void refresh();
+  return()=>{alive=false;};
+ },[]);
+ async function toggleCrowdConsent(){
+  if(crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId)return;
+  setCrowdBusy(true);setCrowdMessage('');setCrowdError('');
+  try{
+   const next=!crowdPrefs.analyticsEnabled;
+   const response=await fetch('/api/location/analytics-consent',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:crowdPrefs.eventId,enabled:next})});
+   const payload=await response.json().catch(()=>null);
+   if(!response.ok)throw Error(payload?.error||'Não foi possível atualizar sua autorização.');
+   setCrowdPrefs(previous=>previous?{...previous,analyticsEnabled:payload.analyticsEnabled===true}:previous);
+   setCrowdMessage(payload.analyticsEnabled===true?'Você autorizou as estatísticas anônimas deste evento.':'Autorização revogada. Sua localização deixou de participar das novas estatísticas.');
+  }catch(error){setCrowdError(error instanceof Error?error.message:'Não foi possível alterar a autorização.');}
+  finally{setCrowdBusy(false);}
+ }
  async function installApp(){
   clearNotice();
   if(ios){setTutorialOpen(true);return;}
@@ -151,6 +183,17 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    </div>;
   })}
   
+  <section aria-label="Permissão para estatísticas anônimas" className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
+   <MapPin size={22} className="shrink-0 text-[#c4ff40]"/>
+   <div className="min-w-0 flex-1">
+    <p className="font-semibold">Estatísticas anônimas do evento</p>
+    <p className="text-xs leading-relaxed text-white/55">Opcional: permite contar pessoas por ambiente enquanto sua localização já está sendo compartilhada. O organizador vê somente dados agregados, sem nomes ou trajetos individuais. Os totais anteriores continuam no histórico após a revogação.</p>
+    <p className={'mt-1 text-xs font-bold '+(crowdPrefs?.analyticsEnabled?'text-[#c4ff40]':'text-white/50')}>{crowdLoading?'Consultando autorização...':crowdPrefs?.analyticsEnabled?'Autorizada':crowdPrefs?.shareEnabled?'Não autorizada':'Ative o compartilhamento na aba Mapa para autorizar'}</p>
+   </div>
+   <button type="button" disabled={crowdLoading||crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId} onClick={()=>void toggleCrowdConsent()} className={'min-w-[98px] rounded-xl border px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40 '+(crowdPrefs?.analyticsEnabled?'border-amber-400/50 text-amber-200':'border-[#c4ff40]/50 text-[#c4ff40]')}>{crowdBusy?'Aguarde...':crowdPrefs?.analyticsEnabled?'Revogar':'Autorizar'}</button>
+   {crowdMessage&&<p role="status" className="w-full text-xs text-[#c4ff40]">{crowdMessage}</p>}
+   {crowdError&&<p role="alert" className="w-full text-xs text-rose-300">{crowdError}</p>}
+  </section>
   <p className="text-xs text-white/45">Se uma permissão foi bloqueada, ajuste-a nas configurações do navegador ou do dispositivo. O aplicativo não pode autorizar permissões automaticamente.</p>
   {onClose&&<button type="button" onClick={onClose} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">Concluir</button>}
   {tutorialOpen&&<div role="presentation" onClick={e=>{if(e.target===e.currentTarget)setTutorialOpen(false);}} className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 p-3">
