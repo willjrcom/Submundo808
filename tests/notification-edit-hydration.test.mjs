@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const source=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-engagement.tsx',import.meta.url),'utf8');
 test('editor de notificação recupera campos persistidos ao abrir modelo',()=>{
- for(const field of ['setEventId(n.kind===\'survey\'||n.audience===\'event\'?','setTitle(n.title)','setMessage(n.body)','setKind(n.kind)','setTargetKind(n.kind===\'survey\'?','setTargetId(n.kind===\'survey\'||n.audience===\'all\'?','setAudience(n.audience)']){
+ for(const field of ['setEventId(n.kind===\'survey\'||n.audience===\'event\'?','setTitle(n.title)','setMessage(n.body)','setKind(n.kind)','setTargetKind(n.kind===\'survey\'?','setTargetId(n.kind===\'survey\'||n.audience===\'all\'?','setAudience(n.kind===\'survey\'?\'event\':n.audience)']){
   assert.ok(source.includes(field),'É necessário recuperar o campo '+field);
  }
 });
