@@ -83,7 +83,7 @@ function saveUser(data:{user?:SessionUser|null}):void{
  const user=data.user;
  if(!user?.id)return;
  const previous=readRaw();
- const responses=previous?.ownerId===user.id?{...previous.responses}:{};
+ const responses:Record<string,unknown>=previous?.ownerId===user.id?{...previous.responses}:{};
  responses['/api/auth/me']=sanitise({user}) as object;
  persist({ownerId:user.id,updatedAt:Date.now(),responses,friendCode:previous?.ownerId===user.id?previous.friendCode:undefined});
 }
@@ -161,9 +161,10 @@ export function warmParticipantPrivateOffline():Promise<void>{
   if(groups.status==='fulfilled'){
    const items=groups.value.groups||[];
    for(let offset=0;offset<Math.min(items.length,maxGroups);offset+=5){
-    await Promise.allSettled(items.slice(offset,offset+5).map(item=>
-     privateParticipantGet('/api/groups/detail?id='+encodeURIComponent(item.id))
-    ));
+    await Promise.allSettled(items.slice(offset,offset+5).flatMap(item=>[
+     privateParticipantGet('/api/groups/detail?id='+encodeURIComponent(item.id)),
+     privateParticipantGet('/api/groups/alerts?id='+encodeURIComponent(item.id))
+    ]));
    }
   }
   void friends;
