@@ -4,6 +4,8 @@ import SocialAvatar from './social-avatar';
 import GroupAvatar from './group-avatar';
 import {optimizeAvatar} from './optimized-avatar';
 import GroupQrScanner from './group-qr-scanner';
+import GroupInviteQRCode from './group-invite-qr-code';
+import {cacheGroupInvite,findCachedGroupInvite,groupInviteUrl,removeCachedGroupInvite} from './group-invite-cache';
 import {captureGroupInviteFromUrl,getPendingGroupInvite,clearPendingGroupInvite,savePendingGroupInvite} from './pending-group-invite';
 
 type Person={id:string;name:string;avatar?:string};
@@ -84,10 +86,20 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  async function addGroupFriend(id:string){if(!selected)return;setBusy(true);setError('');try{const r=await fetch('/api/friends/request',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:id})});const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível solicitar amizade.');setStatus(j.status==='friends'?'Vocês já são amigos.':'Solicitação de amizade enviada.');const detail=await groupApi('/detail?id='+encodeURIComponent(selected.id));setSelected(detail.group);}catch(e){showError(e);}finally{setBusy(false);}}
  async function invite(){
   if(!selected)return;
-  setInviteModalOpen(true);setInviteLink('');setQrOpen(false);setCopied(false);setInviteError('');
+  const cached=findCachedGroupInvite(selected.id);
+  setInviteModalOpen(true);setInviteLink(cached?groupInviteUrl(cached.token):'');
+  setQrOpen(false);setCopied(false);setInviteError('');
+  if(!navigator.onLine){
+   if(!cached)setInviteError('Abra o convite com internet ao menos uma vez para disponibilizar seu QR Code offline neste aparelho.');
+   return;
+  }
   setBusy(true);
-  try{const j=await groupApi('/invite',{id:selected.id});setInviteLink(window.location.origin+'/groups?group_invite='+j.token);}
-  catch(e){setInviteError(e instanceof Error?e.message:'Não foi possível gerar o convite.');}
+  try{
+   const j=await groupApi('/invite',{id:selected.id});
+   if(!/^[a-f0-9]{64}$/.test(j.token))throw Error('O servidor retornou um convite inválido.');
+   cacheGroupInvite(selected.id,selected.name,j.token);
+   setInviteLink(groupInviteUrl(j.token));
+  }catch(e){if(!cached)setInviteError(e instanceof Error?e.message:'Não foi possível gerar o convite.');}
   finally{setBusy(false);}
  }
  function closeInviteModal(){setInviteModalOpen(false);setQrOpen(false);setInviteError('');setCopied(false);}
@@ -110,6 +122,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   setBusy(true);setError('');
   try{
    const result=await groupApi(dialog==='delete'?'/delete':'/leave',{id:selected.id,successorId,confirmation});
+   removeCachedGroupInvite(selected.id);
    setDialog(null);setSelected(null);setInviteLink('');setInviteModalOpen(false);await load();setStatus(result.deleted?'Grupo excluído.':'Você saiu do grupo.');
   }catch(e){showError(e);}finally{setBusy(false);}
  }
@@ -204,8 +217,8 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
        <button type="button" onClick={()=>void share()} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border border-white/20 px-2 py-2 text-xs font-bold"><Share2 size={19}/> Compartilhar</button>
        <button type="button" aria-label={qrOpen?'Ocultar QR Code':'Mostrar QR Code'} aria-expanded={qrOpen} onClick={()=>setQrOpen(v=>!v)} className={'flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-xs font-bold '+(qrOpen?'border-[#c4ff40] bg-[#c4ff40]/10 text-[#c4ff40]':'border-white/20')}><QrCode size={19}/> QR Code</button>
       </div>
-      {qrOpen&&<div className="space-y-2 rounded-xl border border-white/10 bg-white/[.035] p-4 text-center"><p className="text-xs font-semibold text-white">Escaneie para entrar no grupo</p><div className="mx-auto w-fit rounded-xl bg-white p-3"><img width={220} height={220} alt="QR Code para entrar no grupo" src={'https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data='+encodeURIComponent(inviteLink)}/></div></div>}
-      <p className="text-xs leading-relaxed text-white/50">Entrar no grupo não ativa o compartilhamento de localização.</p>
+      {qrOpen&&<div className="space-y-2 rounded-xl border border-white/10 bg-white/[.035] p-4 text-center"><p className="text-xs font-semibold text-white">Escaneie para entrar no grupo</p><div className="mx-auto w-fit rounded-xl bg-white p-3"><GroupInviteQRCode link={inviteLink} size={220}/></div></div>}
+      <p className="text-xs leading-relaxed text-white/50">O QR Code é gerado no aparelho e continua disponível offline após a primeira abertura conectada. A entrada de integrantes exige internet. Entrar no grupo não ativa o compartilhamento de localização.</p>
      </div>}
     </div>
    </div>
