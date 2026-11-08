@@ -567,13 +567,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     void stopSharing();
     return;
    }
-   // The server may remember a past session while Android GPS is no longer on.
-   // A new user gesture must be able to restart the device GPS.
-   if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
-    autoShareSuppressed.current=false;
-    startSharing();
-    return;
-   }
+   // Mesmo se uma sessão antiga existir, um novo gesto informa a ativação
+   // conjunta de amigos e Estatísticas. Não copiar consentimento silenciosamente.
    autoShareSuppressed.current=false;
    // Somente o toque explícito autoriza amigos e Estatísticas.
    // Uma preferência antiga não é revogada silenciosamente ao carregar a tela.
