@@ -6,9 +6,9 @@ const source=readFileSync(new URL('../artifacts/submundo-808/src/components/venu
 
 test('the participant gets a blue arrow only when their GPS projects outside the map',()=>{
  assert.match(source,/const myOutside=mapped&&bounds&&!mapped\.inside\?offMapInfo\(mapped,bounds\):null/);
- assert.match(source,/\{myOutside&&<div\s*role="img"/);
+ assert.match(source,/\{myOutside&&directionPoint&&!mapIsDemo&&<div\s*role="img"/);
  assert.match(source,/bg-blue-500/);
- assert.match(source,/myOutside\.angleDegrees/);
+ assert.match(source,/directionAngle/);
  assert.match(source,/ArrowUp size=\{22\}/);
 });
 test('the map says which side of the festival the participant is on',()=>{
@@ -31,5 +31,5 @@ test('existing blue in-map dot and friend positions are preserved',()=>{
 test('without GPS or calibration, no invented position appears',()=>{
  assert.match(source,/!bounds\?'Aguardando calibração do mapa\.'/);
  assert.match(source,/!mapped\?'Não foi possível calcular sua posição/);
- assert.match(source,/const mapped=location&&bounds\?gpsToMap\(location,bounds\):null/);
+ assert.match(source,/const mapped=location&&bounds&&!mapIsDemo\?gpsToMap\(location,bounds\):null/);
 });
