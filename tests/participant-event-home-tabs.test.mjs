@@ -59,7 +59,7 @@ test('Programação lists saved DJs, real schedule times and optional external m
 });
 
 test('Info retains real event address, ticket links, contact and general rules',()=>{
- for(const text of ['Abertura dos portões','Período do evento','Sobre o evento','Copiar endereço','Ingressos','Site oficial','Abrir no Maps','Contato oficial','Política de cancelamento','Documentos aceitos']){
+ for(const text of ['Abertura dos portões','Período do evento','Sobre o evento','Ver no Maps','Ingressos','Site oficial','Contato oficial','Política de cancelamento','Documentos aceitos']){
   assert.ok(detail.includes(text),text);
  }
  assert.match(detail,/navigator\.clipboard\.writeText\(value\)/);
@@ -76,4 +76,33 @@ test('start screen does not duplicate internal Mapa or Cardápio navigation',()=
  assert.match(app,/id: 'cardapio'/);
  assert.match(map,/function VenueMap\(/);
  assert.match(menu,/function EventMenu\(/);
+});
+
+test('Destaque mantém ingresso sempre acessível quando o evento tem link configurado',()=>{
+ assert.match(detail,/section==='destaque'&&<section/);
+ assert.match(detail,/event\.tickets_url\?<a href=\{safeLink\(event\.tickets_url\)\}/);
+ assert.match(detail,/Ingressos <ExternalLink size=\{13\}\/>/);
+ assert.match(detail,/target="_blank" rel="noopener noreferrer"/);
+ assert.match(detail,/\{featured\?<article/);
+ assert.match(detail,/Programação encerrada/);
+});
+
+test('cabeçalho compacto reúne trocar evento, data resumida e endereço clicável no Maps',()=>{
+ assert.match(detail,/return <div className="space-y-3">/);
+ assert.match(detail,/<header className="relative isolate overflow-hidden rounded-2xl/);
+ assert.match(detail,/className="relative space-y-2\.5 px-4 py-4 sm:px-6 sm:py-5"/);
+ assert.match(detail,/className="max-w-lg break-words font-display text-2xl/);
+ assert.match(detail,/onClick=\{onBack\}/);
+ assert.match(detail,/dateShort\(event\.starts_at\)/);
+ assert.match(detail,/const mapsUrl=fullAddress\?'https:\/\/www\.google\.com\/maps\/search\/\?api=1&query='\+encodeURIComponent\(fullAddress\)/);
+ assert.match(detail,/\{mapsUrl&&<a href=\{mapsUrl\}/);
+ assert.match(detail,/Local · Ver no Maps/);
+ assert.doesNotMatch(detail,/Copiar endereço|Copiar endereço do evento|setCopiedAddress/);
+});
+
+test('abas internas ficam legíveis no celular sem truncar Programação',()=>{
+ assert.match(detail,/grid-cols-\[1fr_1\.35fr_\.75fr\]/);
+ assert.match(detail,/className="hidden shrink-0 sm:block"/);
+ assert.match(detail,/className="whitespace-nowrap"/);
+ assert.doesNotMatch(detail,/<span className="truncate">\{label\}<\/span>/);
 });
