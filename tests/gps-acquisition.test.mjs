@@ -77,7 +77,7 @@ test('exceção do provedor não deixa a tela esperando para sempre',()=>{
 test('o botão principal ativa geolocalização antes de qualquer await/fetch',()=>{
  const source=readFileSync(new URL('../artifacts/submundo-808/src/components/venue-map.tsx',import.meta.url),'utf8');
  const from=source.indexOf('const startSharing=()=>{');
- const until=source.indexOf('\n\n const mapped=',from);
+ const until=source.indexOf('const enableSharingWithActiveGps=',from);
  assert.ok(from>=0&&until>from);
  const handler=source.slice(from,until);
  assert.ok(handler.indexOf('startInitialGps(navigator.geolocation')>0);
@@ -86,6 +86,6 @@ test('o botão principal ativa geolocalização antes de qualquer await/fetch',(
  assert.ok(callbackStart>0);
  assert.doesNotMatch(handler.slice(0,callbackStart),/await\s|fetch\(/);
  assert.match(handler.slice(callbackStart),/await savePrefs\(true,true\)/);
- assert.match(source,/Cancelar busca de localização/);
+ assert.match(source,/Busca de localização cancelada/);
  assert.match(source,/gpsActivatingRef\.current/);
 });
