@@ -35,11 +35,11 @@ test('criação de admin é apresentada só quando o servidor habilita e preserv
 test('o endpoint de provedores só oferece admin de teste com duas flags explícitas',async()=>{
  const priorUsers=process.env.ENABLE_DEMO_USERS;
  const priorAdmin=process.env.ENABLE_DEMO_ADMIN;
- const oauth=createOauth({db:{exec(){}},secret:'test-secret',getUser:()=>null,createSession(){},passwordHash:()=>''});
+ const handle=createOauth({db:{exec(){}},secret:'test-secret',getUser:()=>null,createSession(){},passwordHash:()=>''});
  async function capabilities(){
   let status=0,body='';
   const res={writeHead(code){status=code;},end(content){body=content;}};
-  await oauth.handle({method:'GET'},res,new URL('https://local.invalid/api/auth/providers'));
+  await handle({method:'GET'},res,new URL('https://local.invalid/api/auth/providers'));
   assert.equal(status,200);
   return JSON.parse(body);
  }
