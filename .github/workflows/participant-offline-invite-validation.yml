@@ -19,6 +19,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Offline and group-invite regression
         run: node --test tests/group-invite-auth-resume.test.mjs tests/group-invite-modal.test.mjs tests/participant-offline-pwa.test.mjs tests/map-location-utils.test.mjs tests/location-sharing-ui.test.mjs
+      - name: Audit frontend TypeScript
+        continue-on-error: true
+        run: pnpm --filter @workspace/submundo-808 typecheck
       - name: Validate service worker syntax
         run: node --check artifacts/submundo-808/public/sw.js
       - name: Build frontend with precache manifest
