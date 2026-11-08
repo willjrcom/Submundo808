@@ -1,0 +1,33 @@
+name: Validate participant offline GPS and invite flow (temporary)
+on:
+  push:
+    branches:
+      - feat/offline-participant-gps-invite-auth
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Offline and group-invite regression
+        run: node --test tests/group-invite-auth-resume.test.mjs tests/group-invite-modal.test.mjs tests/participant-offline-pwa.test.mjs tests/map-location-utils.test.mjs tests/location-sharing-ui.test.mjs
+      - name: Validate service worker syntax
+        run: node --check artifacts/submundo-808/public/sw.js
+      - name: Build frontend with precache manifest
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build
+      - name: Verify offline assets produced
+        run: |
+          test -s artifacts/submundo-808/dist/public/offline-assets.json
+          node --input-type=module -e "import fs from 'node:fs';const m=JSON.parse(fs.readFileSync('artifacts/submundo-808/dist/public/offline-assets.json'));if(!m.version||!m.assets.includes('./index.html')||!m.assets.some(x=>x.endsWith('.js')))process.exit(1);"
