@@ -2,6 +2,7 @@ import MeapleTickets from './meaple-tickets';
 import ProfilePermissions, {hasPendingAppPermissions} from './profile-permissions';
 import {optimizeAvatar} from './optimized-avatar';
 import {clearCachedGroupInvites} from './group-invite-cache';
+import {getPendingGroupInvite} from './pending-group-invite';
 import {privateParticipantGet,clearOfflineParticipantData,warmParticipantPrivateOffline} from './offline-private-data';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
@@ -42,6 +43,7 @@ const btn='w-full rounded-xl bg-[#c4ff40] px-4 py-3.5 text-sm font-black text-bl
 export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [user,setUser]=useState<User|null>(null);
   const [mode,setMode]=useState<Mode>('login');
+  const [emailLoginOpen,setEmailLoginOpen]=useState(false);
   const [providers,setProviders]=useState({google:false,meaple:false});
   const [connections,setConnections]=useState<string[]>([]);
   useEffect(()=>{void fetch('/api/auth/providers').then(r=>r.json()).then(setProviders).catch(()=>{});},[]);
@@ -50,7 +52,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [profileEditing,setProfileEditing]=useState(false),[profilePhone,setProfilePhone]=useState(''),[profileInstagram,setProfileInstagram]=useState(''),[profileName,setProfileName]=useState(''),[phone,setPhone]=useState('');
   const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [current,setCurrent]=useState('');
   const [error,setError]=useState('');const [success,setSuccess]=useState('');const [busy,setBusy]=useState(false);const [loading,setLoading]=useState(true);const [initialError,setInitialError]=useState(false);
-  useEffect(()=>{const code=new URLSearchParams(window.location.search).get('auth_error');if(code){const messages:Record<string,string>={expired:'Sua tentativa de login expirou. Tente novamente.',denied:'A autorização foi cancelada.',invalid:'Não foi possível validar o login externo. Tente novamente.',linked:'Esta conta externa já está associada a outro usuário.',link_required:'Este e-mail já tem uma conta Submundo. Entre com e-mail e senha e vincule o provedor no Perfil.',provider:'Não foi possível autenticar pelo provedor. Confira a configuração e tente novamente.'};setError(messages[code]||'Não foi possível concluir o login externo.');}},[]);
+  useEffect(()=>{const code=new URLSearchParams(window.location.search).get('auth_error');if(code){const messages:Record<string,string>={expired:'Sua tentativa de login expirou. Tente novamente.',denied:'A autorização foi cancelada.',invalid:'Não foi possível validar o login externo. Tente novamente.',linked:'Esta conta externa já está associada a outro usuário.',link_required:'Este e-mail já tem uma conta Submundo. Entre com e-mail e senha e vincule o provedor no Perfil.',provider:'Não foi possível autenticar pelo provedor. Confira a configuração e tente novamente.'};setError(messages[code]||'Não foi possível concluir o login externo.');if(code==='link_required')setEmailLoginOpen(true);}},[]);
   const resetToken=new URLSearchParams(window.location.search).get('reset');
   const pathMode=():Mode=>{const path=window.location.pathname;return path==='/register'||path==='/cadastrar'?'register':path==='/recovery'||path==='/esqueci-a-senha'?'forgot':path==='/reset-password'?'reset':path==='/change-password'?'password':'login';};
   useEffect(()=>{const sync=()=>{if(!user)setMode(resetToken?'reset':pathMode());};window.addEventListener('popstate',sync);sync();return()=>window.removeEventListener('popstate',sync);},[user,resetToken]);
@@ -64,13 +66,13 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       .finally(()=>{if(active)setLoading(false);});
     return()=>{active=false;};
   },[]);
-  const change=(next:Mode)=>{setMode(next);setError('');setSuccess('');setPassword('');setConfirm('');setCurrent('');const path=next==='register'?'/register':next==='forgot'?'/recovery':next==='password'?'/change-password':next==='reset'?'/reset-password':user?'/profile':'/login';if(window.location.pathname!==path)window.history.pushState({},'',path);};
+  const change=(next:Mode)=>{setMode(next);if(next==='login')setEmailLoginOpen(false);setError('');setSuccess('');setPassword('');setConfirm('');setCurrent('');const path=next==='register'?'/register':next==='forgot'?'/recovery':next==='password'?'/change-password':next==='reset'?'/reset-password':user?'/profile':'/login';if(window.location.pathname!==path)window.history.pushState({},'',path);};
   async function submit(event:React.FormEvent) {
     event.preventDefault();setError('');setSuccess('');
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');void warmParticipantPrivateOffline();if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');void warmParticipantPrivateOffline();if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});window.history.replaceState({},'',getPendingGroupInvite()?'/groups':'/profile');setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
@@ -117,6 +119,14 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   if(user && mode==='password') return <div><button onClick={()=>change('login')} className="mb-5 flex items-center gap-2 text-sm text-white/70"><ArrowLeft size={18}/> Voltar ao perfil</button><div className="mb-4 font-display text-xl font-black uppercase">Alterar senha</div><form onSubmit={submit} className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5"><label className="block text-sm font-bold">Senha atual<input required type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} className={field+' mt-2'}/></label><label className="block text-sm font-bold">Nova senha<input required type="password" minLength={10} maxLength={128} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)} className={field+' mt-2'}/></label><label className="block text-sm font-bold">Confirmar senha<input required type="password" minLength={10} maxLength={128} autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)} className={field+' mt-2'}/></label>{error&&<p role="alert" className="text-xs text-red-300">{error}</p>}{success&&<p role="status" className="text-xs text-[#c4ff40]">{success}</p>}<button disabled={busy} className={btn}>{busy?'Aguarde...':'Salvar nova senha'}</button></form></div>;
   return <div>
     <div className="mb-6 flex items-center gap-3"><div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#c4ff40]/10 text-[#c4ff40]"><UserRound size={25}/></div><div><p className="text-[11px] font-bold uppercase tracking-widest text-[#c4ff40]">Conta Submundo 808</p><h2 className="font-display text-xl font-black uppercase">{({login:'Entrar na conta',register:'Criar minha conta',forgot:'Recuperar acesso',password:'Alterar senha',reset:'Nova senha'})[mode]}</h2></div></div>
+    {mode==='login'&&!emailLoginOpen?
+     <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[.04] p-4 sm:p-5" aria-label="Escolha como entrar na conta">
+      {error&&<p role="alert" className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}
+      <button type="button" onClick={()=>{setEmailLoginOpen(true);setError('');}} className={btn+' flex min-h-12 items-center justify-center gap-2'}><Mail size={19}/> Continuar com e-mail</button>
+      {providers.google&&<a href="/api/auth/google/start" className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-white/20 bg-white px-4 py-3 text-sm font-bold text-[#202124] transition hover:bg-[#f1f3f4]"><span aria-hidden="true" className="text-xl font-black" style={{background:'conic-gradient(#4285f4 0deg 100deg,#34a853 100deg 175deg,#fbbc05 175deg 230deg,#ea4335 230deg 300deg,#4285f4 300deg)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>G</span>Continuar com Google</a>}
+      {providers.meaple&&<a href="/api/auth/meaple/start" className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-violet-400/50 bg-violet-500/15 px-4 py-3 text-sm font-bold text-violet-100 transition hover:bg-violet-500/25"><Ticket size={19} className="text-violet-300"/>Continuar com Meaple</a>}
+      <button type="button" onClick={()=>change('register')} className="block w-full pt-3 text-center text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button>
+     </div>:
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
       {mode==='register'&&<><p className="text-sm font-bold text-[#c4ff40]">Seu perfil (opcional)</p><label className="block text-sm font-bold">Nome ou apelido<input minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field+' mt-2'} placeholder="Como quer ser chamado?"/></label><label className="block text-sm font-bold">Celular / WhatsApp<input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={15} value={phone} onChange={e=>setPhone(formatMobile(e.target.value))} className={field+' mt-2'} placeholder="(15) 99999-9999"/></label><p className="text-xs text-white/50">Nenhum desses dados é obrigatório. O celular não será exibido aos amigos.</p></>}
       {['login','forgot','register'].includes(mode)&&<label className="block text-sm font-bold">E-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field+' mt-2'} placeholder="voce@email.com"/></label>}
@@ -126,10 +136,13 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       {error&&<p role="alert" className="rounded-lg border border-red-400/30 bg-red-400/10 p-3 text-xs text-red-200">{error}</p>}
       {success&&<p role="status" className="rounded-lg border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-3 text-xs text-[#c4ff40]">{success}</p>}
       <button disabled={busy} className={btn}>{busy?'Aguarde...':mode==='register'?'Criar conta':({login:'Entrar',forgot:'Enviar link de recuperação',password:'Salvar nova senha',reset:'Redefinir senha'})[mode]}</button>
-      {mode==='login'&&(providers.google||providers.meaple)&&<div className="space-y-2 border-t border-white/10 pt-4"><p className="text-center text-xs text-white/50">Ou continuar com</p>{providers.google&&<a href="/api/auth/google/start" className="flex items-center justify-center gap-3 rounded-xl border border-white/20 bg-white px-4 py-3.5 text-sm font-bold text-[#202124] transition hover:bg-[#f1f3f4]"><span aria-hidden="true" className="text-xl font-black" style={{background:'conic-gradient(#4285f4 0deg 100deg,#34a853 100deg 175deg,#fbbc05 175deg 230deg,#ea4335 230deg 300deg,#4285f4 300deg)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>G</span>Continuar com Google</a>}{providers.meaple&&<a href="/api/auth/meaple/start" className="flex items-center justify-center gap-3 rounded-xl border border-violet-400/50 bg-violet-500/15 px-4 py-3.5 text-sm font-bold text-violet-100 transition hover:bg-violet-500/25"><Ticket size={20} className="text-violet-300"/>Continuar com Meaple</a>}</div>}
-      {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2"><button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button><button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button></div>}
+      {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2">
+       <button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button>
+       <button type="button" onClick={()=>{setEmailLoginOpen(false);setError('');setPassword('');}} className="inline-flex items-center gap-2 text-sm font-bold text-[#c4ff40]"><ArrowLeft size={15}/> Outras formas de entrar</button>
+       <button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button>
+      </div>}
       {mode!=='login'&&<button type="button" onClick={()=>{if(user){change('login');}else{change('login');}}} className="flex w-full items-center justify-center gap-2 pt-2 text-xs text-white/60"><ArrowLeft size={14}/> {user?'Voltar':'Voltar para login'}</button>}
-    </form>
+    </form>}
     {mode==='forgot'&&<p className="mt-4 text-xs leading-relaxed text-white/50">O envio de e-mails depende da configuração do serviço de recuperação pelo administrador.</p>}
     <p className="mt-5 text-center text-xs leading-relaxed text-white/40"><LockKeyhole size={13} className="mr-1 inline"/> Sua senha não fica salva no navegador. O acesso usa sessão protegida.</p>
   </div>;

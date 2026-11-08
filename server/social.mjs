@@ -49,6 +49,16 @@ const groupAlerts={
 
 export async function handleSocialApi({db,req,res,url,getUser,readBody,json,friendSecret,drainPushQueue}){
  const pathname=url.pathname;
+ // Um link válido permite mostrar apenas a identidade visual do grupo antes do login.
+ // Não expor identificadores, lista de membros, relações sociais nem o token.
+ if(pathname==='/api/public/group-invite'){
+  if(req.method!=='GET'){json(res,405,{error:'Método não permitido.'});return true;}
+  const token=String(url.searchParams.get('token')||'');
+  if(!/^[a-f0-9]{64}$/.test(token)){json(res,400,{error:'Convite de grupo inválido.'});return true;}
+  const group=db.prepare('SELECT name,color,icon,photo_data FROM friend_groups WHERE invite_hash=?').get(sha256(token));
+  if(!group){json(res,404,{error:'Este convite não está disponível.'});return true;}
+  json(res,200,{group:{name:group.name,color:group.color,icon:group.icon||'users',photo:group.photo_data||''}});return true;
+ }
  const route=pathname.startsWith('/api/groups/')||pathname==='/api/groups'||[
   '/api/friends','/api/friends/add','/api/friends/search','/api/friends/request','/api/friends/respond','/api/friends/requests'
  ].includes(pathname);
@@ -291,7 +301,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(!/^[a-f0-9]{64}$/.test(token))return reject(400,'Link de convite inválido.');
    const g=db.prepare('SELECT * FROM friend_groups WHERE invite_hash=?').get(sha256(token));
    if(!g)return reject(404,'Grupo não encontrado.');
-   if(member(g.id))return json(res,200,{ok:true,joined:true,id:g.id});
+   if(member(g.id)){json(res,200,{ok:true,joined:true,id:g.id});return true;}
    const count=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
    if(count>=50)return reject(409,'O grupo atingiu o limite de 50 pessoas.');
    const mine=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE user_id=?').get(user.id).n;

@@ -25,6 +25,8 @@ jobs:
         run: |
           node --test \
             tests/admin-company-profile.test.mjs \
+            tests/group-invite-auth-resume.test.mjs \
+            tests/social.test.mjs \
             tests/participant-event-home-tabs.test.mjs \
             tests/participant-public-copy-gps-cta.test.mjs \
             tests/public-event-navigation.test.mjs \
