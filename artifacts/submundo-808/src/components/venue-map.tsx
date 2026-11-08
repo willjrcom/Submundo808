@@ -142,6 +142,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
   const dontShareRef=useRef(false);
+  const prefsQueue=useRef<Promise<void>>(Promise.resolve());
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
@@ -176,15 +177,21 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   };
   const watch=useRef<number|null>(null);
   const trackingRef=useRef(false);
-  const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
-   setPrefsSaving(true);
-   try{
-    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:false});
-    setSharingExpiresAt(result.expiresAt||null);
-    setSharingEventId(result.eventId||null);
-    return result;
-   }catch(e){setFriendError(e instanceof Error?e.message:'Falha ao salvar preferências.');throw e;}
-   finally{setPrefsSaving(false);}
+  const savePrefs=(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
+   // Serialize enable/disable writes so a slow enable cannot overwrite a newer stop.
+   const run=async()=>{
+    setPrefsSaving(true);
+    try{
+     const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:false});
+     setSharingExpiresAt(result.expiresAt||null);
+     setSharingEventId(result.eventId||null);
+     return result;
+    }catch(error){setFriendError(error instanceof Error?error.message:'Falha ao salvar preferências.');throw error;}
+    finally{setPrefsSaving(false);}
+   };
+   const next=prefsQueue.current.then(run,run);
+   prefsQueue.current=next.then(()=>{},()=>{});
+   return next;
   };
   useEffect(()=>{
    let alive=true;
@@ -239,7 +246,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     setDontShareWithFriends(dontShareRef.current);
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
-    if(p.shareEnabled&&!dontShareRef.current){
+    if(p.shareEnabled&&!dontShareRef.current&&localStorage.getItem('submundo-gps-stop-pending')!=='1'){
      if(!activeEventRef.current||p.eventId!==activeEventRef.current){
       // Do not resume GPS from a different festival or a legacy unscoped session.
       void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
@@ -528,7 +535,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    }
   };
   const toggleUnifiedGps=()=>{
-   if(localGpsWatch.current!==null||watch.current!==null||gpsStarting||sharingRef.current){
+   if(localGpsWatch.current!==null&&!sharingRef.current){
+    toggleLocalPosition();
+    return;
+   }
+   if(watch.current!==null||gpsStarting||sharingRef.current){
     void stopSharing();
     return;
    }
