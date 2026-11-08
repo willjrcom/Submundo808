@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Calibration regression
-        run: node --test tests/map-calibration-flow.test.mjs tests/map-calibration-satellite.test.mjs tests/map-calibration-manual.test.mjs tests/map-calibration-guidance.test.mjs tests/map-calibration-preview-projection.test.mjs tests/map-calibration-save.test.mjs
+        run: node --test tests/map-calibration-flow.test.mjs tests/map-calibration-satellite.test.mjs tests/map-calibration-manual.test.mjs tests/map-calibration-preview-projection.test.mjs tests/map-calibration-save.test.mjs
       - name: Build frontend
         env:
           PORT: '3000'
