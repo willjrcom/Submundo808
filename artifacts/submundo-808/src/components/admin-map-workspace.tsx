@@ -127,6 +127,10 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  const passages=sharedEdges(areas);
  const visibleRooms=visibleAreas(areas);
  const grouped=isGrouped(areas,active?.id||'');
+ const deleteTarget=pendingDelete?.kind==='area'?areas.find(a=>a.id===pendingDelete.id):undefined;
+ const deleteGrouped=!!deleteTarget&&(!!deleteTarget.geometry?.groupId||isGrouped(areas,deleteTarget.id));
+ const deleteLinkedPoints=deleteTarget?markers.filter(m=>m.area_id===deleteTarget.id||m.from_area_id===deleteTarget.id||m.to_area_id===deleteTarget.id):[];
+ const deleteBlocked=deleteGrouped||deleteLinkedPoints.length>0;
  const groupCandidates=active?visibleRooms.filter(a=>a.id!==active.id&&canGroup(areas,active.id,a.id)):[];
  const curveParts=active?groupMembers(areas,active.id):[];
  const curveHandles=active?outerResizeHandles(areas,active.id):[];
@@ -317,21 +321,19 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   setSelected(id);setEditLayout(true);setFrameEditing(false);setResizeId(null);setNotice('Ponto criado. Arraste para reposicionar.');
  }
  function removeSelected(){
-  if(active&&isGrouped(areas,active.id)){setError('Desagrupe o ambiente antes de excluí-lo, para não perder as partes originais.');return;}
   const item=active?{id:active.id,name:active.name,kind:'area' as const}:selectedMarker?{id:selectedMarker.id,name:selectedMarker.name,kind:'marker' as const}:null;
-  if(item)setPendingDelete(item);
+  if(item){setError('');setEditMenuOpen(false);setPendingDelete(item);}
  }
  function confirmDelete(){
   if(!pendingDelete)return;
   const item=pendingDelete;
   if((item.kind==='area'&&!areas.some(a=>a.id===item.id))||(item.kind==='marker'&&!markers.some(m=>m.id===item.id))){setPendingDelete(null);return;}
+  // Never remove a room while grouped or referenced by points/passages.
+  // Keep this guard at mutation time as well as in the confirmation modal.
+  if(item.kind==='area'&&deleteBlocked)return;
   checkpoint();
-  if(item.kind==='area'){
-   setAreas(v=>v.filter(a=>a.id!==item.id));
-   // Keep regular points on the map, but unlink them; a passage cannot exist without both rooms.
-   setMarkers(v=>v.filter(m=>!(m.type==='passagem'&&(m.from_area_id===item.id||m.to_area_id===item.id)))
-    .map(m=>m.area_id===item.id?{...m,area_id:undefined,anchor:m.anchor?.scope==='area'?undefined:m.anchor}:m));
-  }else setMarkers(v=>v.filter(m=>m.id!==item.id));
+  if(item.kind==='area')setAreas(v=>v.filter(a=>a.id!==item.id));
+  else setMarkers(v=>v.filter(m=>m.id!==item.id));
   setSelected('');setResizeId(null);setGroupOpen(false);setCurveOpen(false);setPendingDelete(null);
   setNotice('Item removido do editor. Salve o mapa para confirmar a exclusão.');
  }
@@ -654,6 +656,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
         {grouped&&<button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);detachGroup();}}><Unplug size={17}/> Desagrupar</button>}
         <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();setEditMenuOpen(false);setGroupChoice('');setCurveOpen(false);setGroupOpen(true);}}><Group size={17}/> Agrupar</button>
         <button type="button" role="menuitem" title="Editar formato e curvaturas externas" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-white/10" onClick={e=>{e.stopPropagation();openCurveEditor();}}><Blend size={17}/> Formato</button>
+        <button type="button" role="menuitem" className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-red-300 hover:bg-red-500/10" onClick={e=>{e.stopPropagation();removeSelected();}}><Trash2 size={17}/> Excluir ambiente</button>
        </div>}
       </div>}
      <div ref={setCanvasRef}
@@ -751,7 +754,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
     </div>
    </div>
    <aside className="min-w-0 space-y-4 self-start rounded-xl border border-white/10 bg-[#16111e] p-4">
-    <div className="flex items-center justify-between gap-2"><h3 className="font-black">{curveOpen&&active?'Formato · '+active.name:frameEditing?'Editar área do mapa':'Editar item'}</h3>{curveOpen&&active?<button type="button" onClick={cancelCurve} aria-label="Cancelar edição do formato" className={button}><X size={16}/></button>:(active||selectedMarker)&&<button onClick={removeSelected} aria-label="Excluir item" className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10"><Trash2 size={16}/></button>}</div>
+    <div className="flex items-center justify-between gap-2"><h3 className="font-black">{curveOpen&&active?'Formato · '+active.name:frameEditing?'Editar área do mapa':'Editar item'}</h3><div className="flex items-center gap-2">{curveOpen&&active&&<button type="button" onClick={cancelCurve} aria-label="Cancelar edição do formato" className={button}><X size={16}/></button>}{(active||selectedMarker)&&<button type="button" onClick={removeSelected} aria-label="Excluir item" className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10"><Trash2 size={16}/></button>}</div></div>
     {curveOpen&&active?<section aria-label="Controles de curvatura" className="space-y-3">
      <p role="status" className="text-xs text-[#c4ff40]">Prévia em tempo real no mapa ao lado. As alterações só são aplicadas ao confirmar.</p>
    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Escolher formato do ambiente">
@@ -885,14 +888,28 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
      </div>
     </div>
    </div>}
-  {pendingDelete&&<div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPendingDelete(null);}} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4">
-    <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-remove-title" aria-describedby="confirm-remove-description" className="w-full max-w-md rounded-2xl border border-white/15 bg-[#191320] p-5 shadow-2xl sm:p-6">
-     <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-red-400/30 bg-red-400/10 text-red-300"><Trash2 size={22}/></div>
-     <h3 id="confirm-remove-title" className="text-xl font-black text-white">Excluir {pendingDelete.kind==='area'?'ambiente':'ponto'}?</h3>
-     <p id="confirm-remove-description" className="mt-3 break-words text-sm leading-relaxed text-white/65">Deseja remover <strong className="text-white">{pendingDelete.name}</strong>? A exclusão só será aplicada ao servidor quando você clicar em <strong className="text-white">Salvar mapa</strong>.</p>
+  {pendingDelete&&<div role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setPendingDelete(null);}} className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-3 sm:p-4">
+    <div role="alertdialog" aria-modal="true" aria-labelledby="confirm-remove-title" aria-describedby="confirm-remove-description" className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/15 bg-[#191320] p-5 shadow-2xl sm:p-6">
+     <div className={'mb-4 flex h-12 w-12 items-center justify-center rounded-xl border '+(deleteBlocked?'border-amber-400/30 bg-amber-400/10 text-amber-300':'border-red-400/30 bg-red-400/10 text-red-300')}>{deleteBlocked?<AlertTriangle size={22}/>:<Trash2 size={22}/>}</div>
+     <h3 id="confirm-remove-title" className="text-xl font-black text-white">{deleteBlocked?'Não é possível excluir este ambiente':`Excluir ${pendingDelete.kind==='area'?'ambiente':'ponto'}?`}</h3>
+     {deleteBlocked?<div id="confirm-remove-description" className="mt-3 space-y-4 text-sm leading-relaxed text-white/70">
+      <p>O ambiente <strong className="break-words text-white">{pendingDelete.name}</strong> ainda possui dependências. Para preservar a planta e seus pontos, resolva os itens abaixo antes de excluí-lo.</p>
+      {deleteGrouped&&<section className="space-y-1.5 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3">
+       <h4 className="font-bold text-amber-200">Ambiente agrupado</h4>
+       <p>Este ambiente faz parte de um conjunto de ambientes agrupados. Excluí-lo agora poderia deixar partes do grupo inconsistentes.</p>
+       <p><strong className="text-white">Como resolver:</strong> Desagrupe o ambiente antes de excluí-lo. Selecione o ambiente no mapa, abra <strong className="text-white">Editar</strong> e escolha <strong className="text-white">Desagrupar</strong>.</p>
+      </section>}
+      {deleteLinkedPoints.length>0&&<section className="space-y-2 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3">
+       <h4 className="font-bold text-amber-200">{deleteLinkedPoints.length} {deleteLinkedPoints.length===1?'ponto ou passagem vinculado':'pontos ou passagens vinculados'}</h4>
+       <p>Estes itens dependem deste ambiente para definir sua posição ou passagem. Não serão apagados ou desvinculados automaticamente:</p>
+       <ul className="max-h-32 list-disc space-y-1 overflow-y-auto pl-5 text-white/85">{deleteLinkedPoints.map(m=><li key={m.id} className="break-words">{m.name} <span className="text-white/50">({m.type==='passagem'?'passagem':'ponto'})</span></li>)}</ul>
+       <p><strong className="text-white">Como resolver:</strong> Na lista <strong className="text-white">Pontos</strong>, selecione e exclua cada ponto ou passagem listado acima. Depois, selecione novamente o ambiente e tente excluí-lo.</p>
+      </section>}
+      <p className="text-xs text-white/55">Quando todas as dependências forem resolvidas, a exclusão será liberada. Clique em <strong>Salvar mapa</strong> para publicar as alterações.</p>
+     </div>:<p id="confirm-remove-description" className="mt-3 break-words text-sm leading-relaxed text-white/65">Deseja remover <strong className="text-white">{pendingDelete.name}</strong>? A exclusão só será aplicada ao servidor quando você clicar em <strong className="text-white">Salvar mapa</strong>.</p>}
      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-      <button type="button" autoFocus onClick={()=>setPendingDelete(null)} className={button+' w-full sm:w-auto'}>Cancelar</button>
-      <button type="button" onClick={confirmDelete} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-200 transition hover:bg-red-500/25 sm:w-auto"><Trash2 size={16}/> Excluir item</button>
+      <button type="button" autoFocus onClick={()=>setPendingDelete(null)} className={button+' w-full sm:w-auto'}>{deleteBlocked?'Entendi':'Cancelar'}</button>
+      {!deleteBlocked&&<button type="button" onClick={confirmDelete} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/40 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-200 transition hover:bg-red-500/25 sm:w-auto"><Trash2 size={16}/> Excluir item</button>}
      </div>
     </div>
    </div>}
