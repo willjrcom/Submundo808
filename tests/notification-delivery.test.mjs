@@ -139,3 +139,9 @@ test('redirecionamentos de push preservam evento, mapa, cardápio e pesquisa',()
  assert.equal(notificationTargetUrl({target_kind:'map',event_id:'a'}),'/map?event=a');
  assert.equal(notificationTargetUrl({target_kind:'survey',event_id:'a'}),'/schedule/a?review=1');
 });
+
+test('pesquisa de satisfação abre avaliação também para notificações antigas com destino evento',()=>{
+ assert.equal(notificationTargetUrl({kind:'survey',target_kind:'event',event_id:'evento-1',target_id:''}),'/schedule/evento-1?review=1');
+ assert.equal(notificationTargetUrl({kind:'survey',target_kind:'menu',event_id:'evento 2',target_id:''}),'/schedule/evento%202?review=1');
+ assert.equal(notificationTargetUrl({kind:'promo',target_kind:'menu',event_id:'evento-1',target_id:''}),'/menu?event=evento-1');
+});
