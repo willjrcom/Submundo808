@@ -1,4 +1,5 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
+import {applyEventLocationSharing} from './event-location-sharing.mjs';
 import {venueMediaFields} from './venue-media.mjs';
 import {hasSubmittedReview,insertReviewOnce} from './review-once.mjs';
 import {getAdminReviewStats} from './review-summary.mjs';
@@ -118,7 +119,7 @@ if(!db.prepare('PRAGMA table_info(app_branding)').all().some(c=>c.name==='cover_
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
-// Habilitação explícita por evento, depois do teste de precisão no local.
+// Valor legado 0 preserva a escolha de eventos antigos; os novos eventos são criados com 1 pela API.
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='location_sharing_enabled')) db.exec('ALTER TABLE events ADD COLUMN location_sharing_enabled INTEGER NOT NULL DEFAULT 0');
 const DEFAULT_MAP_FRAME={x:22,y:22,width:56,height:56};
 const isValidMapFrame=f=>f&&typeof f==='object'&&!Array.isArray(f)&&
@@ -868,6 +869,15 @@ http.createServer(async (req,res)=>{
           delete gps.spacingMeters;delete gps.widthMeters;delete gps.heightMeters;delete gps.accuracyMeters;delete gps.generatedAt;
           db.prepare('UPDATE map_areas SET gps_json=? WHERE id=?').run(JSON.stringify(gps),b.id);return json(res,200,{gps});
         }
+        if(req.method==='POST'&&key==='set-event-location-sharing'){
+          const b=await body(req),id=String(b.id||''),enabled=b.enabled;
+          if(!id||id.length>160||typeof enabled!=='boolean')return json(res,400,{error:'Informe o evento e se a localização deve ser permitida.'});
+          if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return json(res,404,{error:'Evento não encontrado.'});
+          db.exec('BEGIN');
+          try{applyEventLocationSharing(db,id,enabled);db.exec('COMMIT');}
+          catch(error){db.exec('ROLLBACK');throw error;}
+          return json(res,200,{ok:true,location_sharing_enabled:enabled?1:0});
+        }
         if(req.method==='POST'&&key==='set-event-publication'){
           const b=await body(req),id=String(b.id||''),publish=b.published===true;
           const event=db.prepare('SELECT e.*,v.id AS valid_venue FROM events e LEFT JOIN venues v ON v.id=e.venue_id WHERE e.id=?').get(id);
@@ -890,7 +900,7 @@ http.createServer(async (req,res)=>{
             db.prepare('INSERT INTO events(id,venue_id,name,description,starts_at,ends_at,site_url,tickets_url,instagram_url,lineup_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,venueId,name,String(b.description||''),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(Array.isArray(b.lineup)?b.lineup:[]),Date.now());
             updateEventExtras(db,id,b);
             db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
-            db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled===true?1:0,id);
+            db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled!==false?1:0,id);
             for(const mapId of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mapId);
              db.prepare('UPDATE events SET is_published=0 WHERE id=?').run(id);
             db.exec('COMMIT');
@@ -930,14 +940,7 @@ http.createServer(async (req,res)=>{
             db.prepare('UPDATE events SET name=?,venue_id=?,description=?,starts_at=?,ends_at=?,site_url=?,tickets_url=?,instagram_url=?,lineup_json=? WHERE id=?').run(name,venueId,String(b.description||'').slice(0,2000),String(b.starts_at||''),String(b.ends_at||''),String(b.site_url||''),String(b.tickets_url||''),String(b.instagram_url||''),JSON.stringify(b.lineup),id);
             updateEventExtras(db,id,b);
              db.prepare('UPDATE events SET meaple_event_id=? WHERE id=?').run(String(b.meaple_event_id||'').trim().slice(0,120),id);
-            if(typeof b.location_sharing_enabled==='boolean'){
-              db.prepare('UPDATE events SET location_sharing_enabled=? WHERE id=?').run(b.location_sharing_enabled?1:0,id);
-              if(!b.location_sharing_enabled){
-                // Revogação imediata, sem aguardar a limpeza periódica.
-                db.prepare('DELETE FROM live_locations WHERE user_id IN (SELECT user_id FROM location_preferences WHERE share_event_id=?)').run(id);
-                db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,share_with_groups=0,share_expires_at=NULL,share_event_id=NULL,analytics_enabled=0,analytics_event_id=NULL,updated_at=? WHERE share_event_id=?').run(Date.now(),id);
-              }
-            }
+            if(typeof b.location_sharing_enabled==='boolean')applyEventLocationSharing(db,id,b.location_sharing_enabled);
             db.prepare('DELETE FROM event_maps WHERE event_id=?').run(id);
             for(const mid of ids)db.prepare('INSERT INTO event_maps VALUES(?,?)').run(id,mid);
             db.exec('COMMIT');
