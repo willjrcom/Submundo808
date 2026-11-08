@@ -38,8 +38,8 @@ test('compartilhamento e Estatísticas só começam no novo toque informado do u
  assert.match(map,/analyticsEnabled:shareEnabled&&statisticsEnabled/);
  assert.match(map,/unifiedActivation:shareEnabled&&unifiedActivation/);
  assert.match(map,/mode:'event'/);
- assert.match(map,/Ativar GPS e compartilhar/);
- assert.match(map,/sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas/);
+ assert.match(map,/Ativar e compartilhar/);
+ assert.match(map,/Compartilhe com amigos e contribua para estatísticas agregadas/);
  assert.match(map,/\{\(!tracking\|\|!location\)&&<div/);
  assert.doesNotMatch(map,/Configurações de localização|Configurar localização|locationSetupOpen/);
  assert.doesNotMatch(map,/Por quanto tempo compartilhar\?|Por 4 horas|Por 1 hora|Salvar configurações/);
