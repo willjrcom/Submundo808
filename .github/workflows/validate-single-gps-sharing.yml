@@ -19,6 +19,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Validate privacy, GPS, offline and map regressions
         run: node --test tests/gps-default-friend-sharing.test.mjs tests/location-sharing-ui.test.mjs tests/location-permission.test.mjs tests/gps-acquisition.test.mjs tests/location-sharing.test.mjs tests/participant-map-first.test.mjs tests/participant-offline-pwa.test.mjs tests/participant-full-offline.test.mjs tests/ios-installation-permissions.test.mjs tests/crowd-analytics.test.mjs tests/off-map-indicator.test.mjs tests/map-location-utils.test.mjs
+      - name: Typecheck participant frontend
+        run: pnpm --filter @workspace/submundo-808 typecheck
       - name: Validate backend syntax
         run: node --check server/index.mjs && node --check server/postgres-sync.mjs && node --check artifacts/submundo-808/public/sw.js
       - name: Compile participant frontend
