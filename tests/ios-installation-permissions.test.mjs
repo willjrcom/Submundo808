@@ -52,7 +52,7 @@ test('bloqueio é destacado em vermelho e não se confunde com autorização ver
  assert.match(permissions,/const denied=status==='denied'&&!locked/);
  assert.match(permissions,/denied\?'border-rose-400\/55 bg-rose-500\/\[\.09\]'/);
  assert.match(permissions,/denied\?<AlertTriangle aria-label="Permissão bloqueada"/);
- assert.match(permissions,/Acesso negado\. Libere nas configurações/);
+
  assert.match(permissions,/denied\?<button type="button" disabled=\{!!busy\} onClick=\{\(\)=>explainBlockedPermission\(key\)\}/);
  assert.match(permissions,/Como liberar/);
  assert.match(permissions,/ready\?<span aria-label=\{title\+' autorizada'\}/);

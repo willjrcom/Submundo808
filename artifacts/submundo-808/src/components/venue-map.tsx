@@ -138,8 +138,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
-  const [analyticsConsent,setAnalyticsConsent]=useState(false);
-  const [analyticsBusy,setAnalyticsBusy]=useState(false);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
   const [sharingEventId,setSharingEventId]=useState<string|null>(null);
   const [prefsReady,setPrefsReady]=useState(false);
@@ -158,7 +156,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
    setPrefsSaving(true);
    try{
-    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:shareEnabled&&analyticsConsent});
+    const result=await requestLocation('preferences',{gpsEnabled,shareEnabled,mode,eventId,shareWithGroups:shareEnabled&&shareWithGroups,analyticsEnabled:false});
     setSharingExpiresAt(result.expiresAt||null);
     setSharingEventId(result.eventId||null);
     return result;
@@ -214,7 +212,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     setPrefsReady(true);
     setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
     setShareWithGroups(p.shareWithGroups===true);
-    setAnalyticsConsent(p.analyticsEnabled===true);
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
     if(p.shareEnabled){
@@ -325,16 +322,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     },24000);
    }
   };
-  async function toggleAnalyticsConsent(){
-   if(analyticsBusy||!sharing||!activeEventId)return;
-   setAnalyticsBusy(true);setFriendError('');
-   try{
-    const next=!analyticsConsent;
-    const result=await requestLocation('analytics-consent',{eventId:activeEventId,enabled:next});
-    setAnalyticsConsent(result.analyticsEnabled===true);
-   }catch(e){setFriendError(e instanceof Error?e.message:'Não foi possível alterar a participação nas estatísticas.');}
-   finally{setAnalyticsBusy(false);}
-  }
   const endLocalSharing=(message:string)=>{
    gpsAttemptId.current++;
    gpsActivatingRef.current=false;
@@ -344,7 +331,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
    setTracking(false);setSharing(false);setGpsStarting(false);
    setLocation(null);locationRef.current=null;
-   setSharingExpiresAt(null);setSharingEventId(null);setAnalyticsConsent(false);
+   setSharingExpiresAt(null);setSharingEventId(null);
    setGeoError(message);
   };
   useEffect(()=>{
@@ -396,7 +383,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    cancelGpsStartup();
    try{
     await savePrefs(false,false);
-    setAnalyticsConsent(false);
+    
     shareEpoch.current++;sharingRef.current=false;setSharing(false);
     setLocationSetupOpen(false);
     setGpsPermissionRequired(false);lastSend.current=0;
@@ -515,69 +502,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  </div>;
 
  return <section className="space-y-3">
- {eventForSharing?.location_sharing_enabled!==1?<div className="rounded-2xl border border-white/15 bg-white/[.035] p-4 text-sm text-white/65"><p className="font-bold text-white">Localização de amigos indisponível neste evento</p><p className="mt-1 text-xs">O organizador desabilitou o compartilhamento neste local. O mapa e seus pontos de referência continuam disponíveis.</p></div>:<div className="rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
-  <div className="mb-2 flex items-center gap-2"><Navigation size={17} className="text-[#c4ff40]"/><h3 className="text-sm font-bold">Localização com amigos</h3></div>
-  {!locationSetupOpen&&<button
-   type="button" disabled={!prefsReady||prefsSaving} aria-busy={gpsStarting}
-   onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else if(sharing)startSharing();else setLocationSetupOpen(true);}}
-   className={'w-full rounded-xl px-4 py-3 text-sm font-bold disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
-  >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':sharing?'Retomar localização':'Ativar localização'}</button>}
-  {locationSetupOpen&&!sharing&&<div className="space-y-3">
-   <fieldset className="space-y-2">
-    <legend className="mb-1 text-xs font-bold text-white/70">Por quanto tempo compartilhar?</legend>
-    {([
-     {value:'event',title:'Até o fim da festa',hint:eventForSharing?.ends_at?'Encerra em '+eventEndLabel(eventForSharing.ends_at):'Usa o horário do evento selecionado'},
-     {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
-     {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
-    ] as const).map(option=><label key={option.value} className={'flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 '+(shareMode===option.value?'border-[#c4ff40]/60 bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}>
-     <input type="radio" name="sharing-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} value={option.value} className="h-4 w-4 shrink-0 accent-[#c4ff40]"/>
-     <span><span className="block text-sm font-bold">{option.title}</span><span className="text-[11px] text-white/50">{option.hint}</span></span>
-    </label>)}
-   </fieldset>
-   <label className="flex items-start gap-3 rounded-xl border border-white/15 p-3 text-sm"><input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Compartilhar também com meus grupos</strong><span className="mt-1 block text-xs text-white/55">Se ativado, membros dos seus grupos poderão ver sua posição neste evento. Participar de um grupo, sozinho, não ativa o GPS.</span></span></label>
-   <label className="flex items-start gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.035] p-3 text-sm"><input type="checkbox" checked={analyticsConsent} onChange={e=>setAnalyticsConsent(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Contribuir com estatísticas anônimas da festa (opcional)</strong><span className="mt-1 block text-xs leading-relaxed text-white/55">Autoriza usar sua posição enquanto o compartilhamento estiver ativo para contar movimentação por ambiente. O organizador vê somente totais agregados, sem nomes, localização individual ou trajetos. Os totais históricos continuam anônimos após você desativar.</span></span></label>
-   <div className="flex gap-2">
-    <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold text-white/75">Cancelar</button>
-    <button type="button" disabled={prefsSaving||gpsStarting} onClick={startSharing} className="flex-[1.4] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black disabled:opacity-50">Confirmar e ativar</button>
-   </div>
-   <p className="text-[11px] text-white/45">A localização só atualiza enquanto o dispositivo permite. Você pode desativar quando quiser.</p>
-  </div>}
-  {sharing&&sharingExpiresAt&&<p className="mt-2 text-xs text-[#c4ff40]">Compartilhando até {sharingDeadline}</p>}
-  {sharing&&!locationSetupOpen&&<div className="mt-3 rounded-xl border border-white/15 bg-white/[.025] p-3">
-   <div className="flex items-start justify-between gap-3">
-    <div className="min-w-0"><p className="text-xs font-bold">Estatísticas anônimas do evento</p><p className="mt-1 text-[11px] leading-relaxed text-white/55">{analyticsConsent?'Você autorizou a contagem agregada da sua posição. Pode revogar quando quiser.':'Desativado. Seu GPS não entra nos números do dashboard do organizador.'} Nenhum nome ou trajeto individual é exibido. Os totais já agregados permanecem no histórico.</p></div>
-    <button type="button" disabled={analyticsBusy||prefsSaving} onClick={()=>void toggleAnalyticsConsent()} className={'shrink-0 rounded-lg border px-3 py-2 text-xs font-bold disabled:opacity-40 '+(analyticsConsent?'border-amber-400/50 text-amber-200':'border-[#c4ff40]/50 text-[#c4ff40]')}>{analyticsBusy?'Aguarde...':analyticsConsent?'Revogar':'Autorizar'}</button>
-   </div>
-  </div>}
-  {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
-  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Aguardando o GPS do aparelho...</p>}
-  {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
-  {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
-  {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
-  {friends.length>0&&<details className="mt-2 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
- </div>}
- {myOutside&&!mapIsDemo&&<section aria-label="Orientação até o evento" className="space-y-3 rounded-2xl border border-[#c4ff40]/35 bg-[#211a29] p-4">
-  <div className="flex items-start gap-3"><Navigation size={23} className="mt-0.5 shrink-0 text-[#c4ff40]"/>
-   <div className="min-w-0 flex-1">
-    <h3 className="text-sm font-black">{positionUncertain?'Você está próximo do limite do mapa':'Você está fora do mapa'}</h3>
-    <p className="mt-1 text-xs leading-relaxed text-white/70">
-     {positionUncertain?'O erro estimado do GPS pode incluir sua posição dentro do local. Confira a seta e aguarde uma leitura melhor.':
-      closestEntrance?'Entrada '+closestEntrance.name+' a aproximadamente '+formatMapDistance(closestEntrance.meters)+'.':
-      'Você está a aproximadamente '+formatMapDistance(myOutside.outsideMeters)+' da borda do mapa.'}
-    </p>
-    {closestEntrance&&<p className="mt-1 text-[11px] text-white/50">Distância em linha reta, não é uma estimativa do trajeto a pé.</p>}
-    {!closestEntrance&&<p className="mt-1 text-[11px] text-amber-200/80">Entrada não cadastrada nesta planta; seta aponta apenas para a borda mais próxima.</p>}
-    <p className="mt-1 text-[11px] text-white/45">Precisão informada pelo aparelho: ±{Math.round(location?.accuracy||0)} m.</p>
-   </div>
-  </div>
-  {directionsUrl&&<a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-black text-black"><Navigation size={16}/> Como chegar à entrada</a>}
- </section>}
  <div className="flex flex-wrap items-center justify-between gap-2">
-  <h2 className="text-2xl font-black uppercase">Mapa do evento</h2>
-  {activeEvent&&<span className="max-w-[70%] truncate rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
+  <h2 className="text-xl font-black uppercase">Mapa do evento</h2>
+  {activeEvent&&<span className="max-w-[65%] truncate rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-2 py-1 text-[11px] font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
  </div>
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{publicMapName(m.name)}</option>)}</select>}
- {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-6"><p className="mb-3 text-sm font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
+ {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-3 sm:p-5"><p className="mb-2 text-xs font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Ambientes da planta">
   {data&&visibleAreas(data.areas).map(a=>{const color=validColor(a.color),name=publicPointName(a.name,!!mapIsDemo);
    return <path key={a.id} d={areaPath(data.areas,a.id)} fill={color+'33'} stroke={color} strokeWidth={0.45} vectorEffect="non-scaling-stroke" fillRule="evenodd"><title>{a.description||name}</title></path>;
@@ -613,6 +543,47 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  {visibleFriends.map(f=><span key={f.id} title={f.name+' · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full bg-pink-400 px-2 py-1 text-[10px] font-bold text-black" style={{left:f.point!.x+'%',top:f.point!.y+'%'}}>{f.name}</span>)}
  {outsideFriends.map(f=><span key={f.id} title={f.name+' fora da área de referência, a aproximadamente '+Math.round(f.edge!.outsideMeters)+' m do limite · precisão ±'+Math.round(f.accuracy)+' m'} className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1 rounded-lg border border-amber-300 bg-[#231b13] px-1.5 py-1 text-[10px] font-bold text-amber-100" style={{left:f.edge!.edgeX+'%',top:f.edge!.edgeY+'%'}}><ArrowUp size={13} style={{transform:'rotate('+f.edge!.angleDegrees+'deg)'}}/> {f.name.slice(0,12)} · {f.edge!.outsideMeters<=f.accuracy?'perto do limite':'~'+formatMapDistance(f.edge!.outsideMeters)}</span>)}
  </div></div>}
+
+ {eventForSharing?.location_sharing_enabled!==1?<div className="rounded-2xl border border-white/15 bg-white/[.035] p-4 text-sm text-white/65"><p className="font-bold text-white">Localização de amigos indisponível neste evento</p><p className="mt-1 text-xs">O organizador desabilitou o compartilhamento neste local. O mapa e seus pontos de referência continuam disponíveis.</p></div>:<div className="rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/[.035] px-3 py-2.5">
+  <div className="flex flex-wrap items-center justify-between gap-2">
+   <div className="flex min-w-0 items-center gap-2"><Navigation size={16} className="shrink-0 text-[#c4ff40]"/><div className="min-w-0"><h3 className="text-xs font-bold">Localização com amigos</h3>{sharing&&sharingExpiresAt&&<p className="text-[11px] text-[#c4ff40]">Até {sharingDeadline}</p>}</div></div>
+  {!locationSetupOpen&&<button
+   type="button" disabled={!prefsReady||prefsSaving} aria-busy={gpsStarting}
+   onClick={()=>{if(gpsStarting)cancelGpsStartup();else if(gpsActive)void stopSharing();else if(sharing)startSharing();else setLocationSetupOpen(true);}}
+   className={'shrink-0 rounded-lg px-3 py-2 text-xs font-bold disabled:opacity-50 '+(gpsActive?'border border-red-400/50 bg-red-400/5 text-red-200':'bg-[#c4ff40] text-black')}
+  >{gpsStarting?'Cancelar busca de localização':gpsActive?'Desativar localização':sharing?'Retomar localização':'Ativar localização'}</button>}
+  </div>
+  {locationSetupOpen&&!sharing&&<div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+   <fieldset className="space-y-2">
+    <legend className="mb-1 text-xs font-bold text-white/70">Por quanto tempo compartilhar?</legend>
+    {([
+     {value:'event',title:'Até o fim da festa',hint:eventForSharing?.ends_at?'Encerra em '+eventEndLabel(eventForSharing.ends_at):'Usa o horário do evento selecionado'},
+     {value:'4h',title:'Por 4 horas',hint:'Encerra automaticamente em 4 horas'},
+     {value:'1h',title:'Por 1 hora',hint:'Encerra automaticamente em 1 hora'}
+    ] as const).map(option=><label key={option.value} className={'flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 '+(shareMode===option.value?'border-[#c4ff40]/60 bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}>
+     <input type="radio" name="sharing-duration" checked={shareMode===option.value} onChange={()=>setShareMode(option.value)} value={option.value} className="h-4 w-4 shrink-0 accent-[#c4ff40]"/>
+     <span><span className="block text-sm font-bold">{option.title}</span><span className="text-[11px] text-white/50">{option.hint}</span></span>
+    </label>)}
+   </fieldset>
+   <label className="flex items-start gap-3 rounded-xl border border-white/15 p-3 text-sm"><input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Compartilhar também com meus grupos</strong><span className="mt-1 block text-xs text-white/55">Se ativado, membros dos seus grupos poderão ver sua posição neste evento. Participar de um grupo, sozinho, não ativa o GPS.</span></span></label>
+   <div className="flex gap-2">
+    <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm font-semibold text-white/75">Cancelar</button>
+    <button type="button" disabled={prefsSaving||gpsStarting} onClick={startSharing} className="flex-[1.4] rounded-xl bg-[#c4ff40] px-3 py-3 text-sm font-black text-black disabled:opacity-50">Confirmar e ativar</button>
+   </div>
+   <p className="text-[11px] text-white/45">A localização só atualiza enquanto o dispositivo permite. Você pode desativar quando quiser.</p>
+  </div>}
+  {sharing&&!gpsActive&&!gpsStarting&&<button type="button" onClick={()=>void stopSharing()} className="mt-2 text-xs text-white/50 underline underline-offset-2">Desativar compartilhamento</button>}
+  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Aguardando o GPS do aparelho...</p>}
+  {authRequired&&<p className="mt-2 text-xs text-amber-300">Entre no Perfil para compartilhar.</p>}
+  {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
+  {friendError&&<p className="mt-2 text-xs text-amber-300">{friendError}</p>}
+  {friends.length>0&&<details className="mt-2 border-t border-white/10 pt-2 text-xs text-white/65"><summary className="cursor-pointer">Amigos compartilhando: {friends.length} · no mapa: {visibleFriends.length}</summary><div className="mt-2 space-y-1">{friends.map(f=>{const info=friendMarkers.find(p=>p.id===f.id);return <p key={f.id}>{f.name} · {info?.point?.inside?'no mapa':info?.edge?'fora do mapa ('+Math.round(info.edge.outsideMeters)+' m)':'posição indisponível'}</p>;})}</div></details>}
+ </div>}
+ {myOutside&&!mapIsDemo&&<section aria-label="Orientação até o evento" className="flex flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/25 bg-[#211a29] px-3 py-2.5 text-xs">
+  <Navigation size={17} className="shrink-0 text-[#c4ff40]"/>
+  <p className="min-w-0 flex-1 text-white/75"><strong className="text-white">{positionUncertain?'Perto do limite do mapa':'Fora do mapa'}</strong> · {positionUncertain?'Precisão do GPS insuficiente.':closestEntrance?'Entrada '+closestEntrance.name+' a ~'+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Borda a ~'+formatMapDistance(myOutside.outsideMeters)+'.'}</p>
+  {directionsUrl&&<a href={directionsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#c4ff40]/50 px-2.5 py-1.5 font-bold text-[#c4ff40]"><Navigation size={13}/> Como chegar à entrada</a>}
+ </section>}
 {pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{publicPointName(marker.name,!!mapIsDemo)}</h3><p className="mt-1 text-xs text-white/60">{marker.description||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{p.description&&<p className="mt-1 text-xs text-white/55">{p.description}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>

@@ -157,11 +157,16 @@ test('histórico é separado por evento e expira após 30 dias',()=>{
 test('rotas exigem admin e a localização do participante exige consentimento separado',()=>{
  const index=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
  const map=readFileSync(new URL('../artifacts/submundo-808/src/components/venue-map.tsx',import.meta.url),'utf8');
+ const permissions=readFileSync(new URL('../artifacts/submundo-808/src/components/profile-permissions.tsx',import.meta.url),'utf8');
  assert.match(index,/if\(!isAdmin\(user\)\)return json\(res,403/);
  assert.match(index,/key==='crowd-live'\|\|key==='crowd-history'/);
  assert.match(index,/b\.analyticsEnabled===true/);
  assert.match(index,/analytics_event_id/);
- assert.match(map,/Contribuir com estatísticas anônimas da festa \(opcional\)/);
- assert.match(map,/analytics-consent/);
- assert.match(map,/Revogar/);
+ assert.doesNotMatch(map,/Contribuir com estatísticas anônimas da festa/);
+ assert.doesNotMatch(map,/analytics-consent/);
+ assert.match(permissions,/Estatísticas anônimas do evento/);
+ assert.match(permissions,/analytics-consent/);
+ assert.match(permissions,/Revogar/);
+ assert.match(permissions,/Autorizar/);
+ assert.match(map,/analyticsEnabled:false/);
 });

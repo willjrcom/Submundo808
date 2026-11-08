@@ -14,7 +14,7 @@ test('a escolha de duração aparece somente após ativar localização',()=>{
  assert.match(frontend,/onClick=\{startSharing\}/);
 });
 test('os três prazos de compartilhamento pertencem ao único evento ativo',()=>{
- assert.match(frontend,/function VenueMap\(\{activeEventId,onChooseEvent\}/);
+ assert.match(frontend,/function VenueMap\(\{activeEventId,onChooseEvent,focusRequest\}/);
  assert.match(frontend,/savePrefs\(true,true,shareMode,activeEventId\)/);
  assert.match(frontend,/setSharingEventId\(p\.eventId\|\|null\)/);
  assert.match(backend,/resolveSharingExpiry\(db,\{mode:b\.mode,eventId:b\.eventId,now\}\)/);
