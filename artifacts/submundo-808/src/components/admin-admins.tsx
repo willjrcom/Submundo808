@@ -6,7 +6,7 @@ type Admin={id:string;name:string;email:string;role:Role;created_at:number;grant
 type Candidate={id:string;name:string;email:string};
 type Log={id:string;actor_name:string|null;target_name:string|null;action:string;old_role:Role|null;new_role:Role|null;created_at:number};
 type Dialog='create'|'edit'|'revoke'|'bootstrap'|null;
-type AdminList={items:Admin[];role:Role;ownerCount:number};
+type AdminList={items:Admin[];role:Role;ownerCount:number;bootstrapEligible:boolean};
 type Created={newAccount:boolean;emailSent:boolean;tempPassword?:string;item:Admin};
 
 const input='w-full rounded-xl border border-white/20 bg-[#241b2c] px-3 py-3 text-sm text-white placeholder:text-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#c4ff40]';
@@ -28,7 +28,7 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
  const [state,setState]=useState<AdminList|null>(null),[loading,setLoading]=useState(true),[loadError,setLoadError]=useState('');
  const [search,setSearch]=useState(''),[candidateQuery,setCandidateQuery]=useState(''),[candidates,setCandidates]=useState<Candidate[]>([]);
  const [dialog,setDialog]=useState<Dialog>(null),[selected,setSelected]=useState<Admin|null>(null);
- const [name,setName]=useState(''),[email,setEmail]=useState(''),[role,setRole]=useState<Role>('admin'),[password,setPassword]=useState('');
+ const [name,setName]=useState(''),[email,setEmail]=useState(''),[role,setRole]=useState<Role>('admin');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [created,setCreated]=useState<Created|null>(null),[copied,setCopied]=useState(false);
  const [showAudit,setShowAudit]=useState(false),[history,setHistory]=useState<Log[]>([]),[historyError,setHistoryError]=useState('');
@@ -69,14 +69,14 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
  },[dialog,busy]);
  function open(next:Dialog,item:Admin|null=null){
   setSelected(item);setName(item?.name||'');setEmail(item?.email||'');setRole(item?.role||'admin');
-  setPassword('');setError('');setNotice('');setCandidateQuery('');setCreated(null);setCopied(false);setDialog(next);
+  setError('');setNotice('');setCandidateQuery('');setCreated(null);setCopied(false);setDialog(next);
  }
  async function save(event:FormEvent){
   event.preventDefault();if(busy||!dialog)return;
   setError('');setBusy(true);
   try{
    if(dialog==='bootstrap'){
-    await adminApi('admins',{action:'bootstrap',password});
+    await adminApi('admins',{action:'bootstrap'});
     setNotice('Propriedade assumida. Agora você pode gerenciar administradores.');
    }else if(dialog==='create'){
     const result=await adminApi<Created>('admins',{action:'create',name,email,role});
@@ -114,8 +114,8 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
   {loading&&<p role="status" className="text-sm text-white/65">Carregando administradores...</p>}
   {state&&!state.ownerCount&&<div className="rounded-2xl border border-amber-300/30 bg-amber-300/[.06] p-4">
    <h3 className="flex items-center gap-2 text-sm font-bold text-amber-200"><Shield size={18}/> Definir o primeiro proprietário</h3>
-   <p className="mt-2 text-xs leading-relaxed text-white/70">Nenhum proprietário foi definido automaticamente. Um administrador existente pode assumir a propriedade confirmando sua senha atual. Contas vinculadas apenas por Google ou Meaple devem definir uma senha antes ou solicitar a configuração segura ao operador do servidor.</p>
-   <button type="button" onClick={()=>open('bootstrap')} className={secondary+' mt-3'}>Assumir propriedade</button>
+   <p className="mt-2 text-xs leading-relaxed text-white/70">Nenhum proprietário foi definido automaticamente. O primeiro administrador cadastrado pode assumir a propriedade usando sua sessão atual, inclusive pelo Google ou Meaple. Nenhuma senha adicional é necessária.</p>
+   {state.bootstrapEligible?<button type="button" onClick={()=>open('bootstrap')} className={secondary+' mt-3'}>Assumir propriedade</button>:<p className="mt-2 text-xs text-amber-100/75">Por segurança, a atribuição inicial é reservada ao primeiro administrador cadastrado.</p>}
   </div>}
   {notice&&<p role="status" className="rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/[.06] p-3 text-sm text-[#c4ff40]">{notice}</p>}
   <label className="relative block">
@@ -148,7 +148,7 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
   {dialog&&<div role="presentation" className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/85 p-3 py-6" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setDialog(null);}}>
    <div role="dialog" aria-modal="true" aria-label={dialog==='create'?'Novo administrador':dialog==='edit'?'Editar administrador':dialog==='revoke'?'Revogar acesso administrativo':'Definir proprietário'} className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-white/20 bg-[#1d1427] shadow-2xl">
     <header className="flex items-start justify-between gap-3 border-b border-white/10 p-4 sm:p-5">
-     <div><h3 className="text-lg font-black">{dialog==='create'?'Novo administrador':dialog==='edit'?'Editar administrador':dialog==='revoke'?'Revogar acesso':'Assumir propriedade'}</h3><p className="mt-1 text-xs text-white/55">{dialog==='create'?'Conceda acesso a um usuário existente ou crie uma nova conta.':dialog==='edit'?'Atualize o nome e a função.':dialog==='revoke'?'A conta pessoal e seus dados serão mantidos.':'Confirme a senha da sua conta administrativa.'}</p></div>
+     <div><h3 className="text-lg font-black">{dialog==='create'?'Novo administrador':dialog==='edit'?'Editar administrador':dialog==='revoke'?'Revogar acesso':'Assumir propriedade'}</h3><p className="mt-1 text-xs text-white/55">{dialog==='create'?'Conceda acesso a um usuário existente ou crie uma nova conta.':dialog==='edit'?'Atualize o nome e a função.':dialog==='revoke'?'A conta pessoal e seus dados serão mantidos.':'Confirme que deseja assumir a propriedade deste painel com a conta autenticada.'}</p></div>
      <button type="button" disabled={busy} onClick={()=>setDialog(null)} aria-label="Fechar modal" className="rounded-lg border border-white/15 p-2 text-white/70"><X size={18}/></button>
     </header>
     {created?<div className="space-y-3 p-5">
@@ -177,7 +177,7 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
       {selected?.role==='owner'&&state?.ownerCount===1&&<p className="text-xs text-amber-200">O último proprietário não pode perder esse papel.</p>}
      </>}
      {dialog==='revoke'&&<p className="text-sm leading-relaxed text-white/75">Deseja revogar o acesso de <strong>{selected?.name}</strong> ({selected?.email})? A pessoa perderá o acesso ao painel imediatamente, mas sua conta continuará funcionando.</p>}
-     {dialog==='bootstrap'&&<label className="block space-y-1.5 text-sm font-semibold"><span>Sua senha atual</span><input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} className={input}/></label>}
+     {dialog==='bootstrap'&&<p className="rounded-xl border border-amber-300/25 p-3 text-sm leading-relaxed text-white/75">Esta ação concede acesso completo para gerenciar administradores. Confirme apenas se esta for sua conta administrativa. A operação ficará registrada no histórico.</p>}
      {error&&<p role="alert" className="rounded-lg border border-red-400/30 p-3 text-sm text-red-300">{error}</p>}
      <footer className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
       <button type="button" disabled={busy} className={secondary} onClick={()=>setDialog(null)}><ArrowLeft size={15} className="mr-1 inline"/>Cancelar</button>
