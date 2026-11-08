@@ -12,7 +12,7 @@ test('permissão salva no servidor não é confundida com GPS autorizado no Andr
  assert.match(source,/navigator\.permissions\.query\(\{name:'geolocation'\}\)/);
  assert.match(source,/if\(status\.state==='granted'\)/);
  assert.match(source,/setGpsPermissionRequired\(true\)/);
- assert.match(source,/const gpsActive=localGpsEnabled\|\|sharing\|\|gpsStarting\|\|tracking/);
+ assert.match(source,/const gpsActive=localGpsEnabled\|\|gpsStarting\|\|tracking/);
  assert.match(source,/const toggleUnifiedGps=\(\)=>\{/);
  assert.match(source,/const toggleLocalPosition=\(\)=>\{/);
 });
