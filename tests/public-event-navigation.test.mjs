@@ -120,11 +120,12 @@ test('evento sem atrações exibe Line-up em breve e não exibe horas inventadas
  assert.match(home,/getDJTimeline\(event\.lineup,event\.starts_at,nowMs\)/);
  assert.match(home,/<PublicEventHome key=\{event\.id\} event=\{event\}/);
 });
-test('mapa sem avisos de desenvolvimento não inventa navegação GPS; cardápio ainda protege preços de exemplo',()=>{
+test('o mapa mantém a proteção de GPS não calibrado e o cardápio não mostra avisos de amostra',()=>{
  assert.doesNotMatch(map,/Mapa demonstrativo — não representa a planta real/);
  assert.match(map,/const mapped=location&&bounds&&!mapIsDemo\?gpsToMap/);
  assert.match(map,/calibração GPS do local/);
- assert.match(menu,/Cardápio demonstrativo: itens, preços e disponibilidade são fictícios/);
+ assert.doesNotMatch(menu,/Cardápio demonstrativo: itens, preços e disponibilidade são fictícios/);
+ assert.match(menu,/displayPublicDescription\(p.description\)/);
 });
 
 test('cards de membros exibem apenas amizade e abrem ações secundárias',()=>{

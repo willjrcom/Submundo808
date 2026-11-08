@@ -26,6 +26,7 @@ jobs:
           node --test \
             tests/admin-company-profile.test.mjs \
             tests/participant-event-home-tabs.test.mjs \
+            tests/participant-public-copy-gps-cta.test.mjs \
             tests/public-event-navigation.test.mjs \
             tests/admin-map-modals-menu-page.test.mjs \
             tests/admin-route.test.mjs \

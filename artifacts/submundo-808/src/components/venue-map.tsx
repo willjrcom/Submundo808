@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
-import {displayLabel} from './display-label';
+import {displayLabel,displayPublicDescription} from './display-label';
 import {MapPin,Navigation,ArrowUp,Info,Settings2,X} from 'lucide-react';
 import {pointIconFor} from './map-point-icons';
 import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,distanceMeters,type GpsFix} from './map-location-utils';
@@ -16,7 +16,6 @@ type Bounds={tl:Geo;tr:Geo;br:Geo;bl:Geo};
 type FriendLocation={id:string;name:string;lat:number;lng:number;accuracy:number;updatedAt:number};
 type ShareMode='event'|'4h'|'1h';
 type EventChoice={id:string;name:string;ends_at:string;map_ids:string[];location_sharing_enabled:number};
-const formatDeadline=(dateValue:number)=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(dateValue));
 const eventEndLabel=(value:string)=>{
  const match=value?.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
  return match?match[3]+'/'+match[2]+' às '+match[4]+':'+match[5]:'horário a definir';
@@ -31,6 +30,7 @@ const EMPTY_MARKERS:Marker[]=[];
 const validColor=(color?:string,fallback='#9747FF')=>color&&/^#[0-9a-fA-F]{6}$/.test(color)?color:fallback;
 // Nomes internos de seed não são títulos de navegação para o público.
 const publicMapName=(name?:string)=>{
+ if(/^DEMO\s*[—–-]\s*Planta ilustrativa/i.test(name||''))return 'Planta do local';
  const cleaned=displayLabel(name||'').replace(/^DEMO\s*[—–-]\s*/i,'').replace(/\s+(ilustrativ[oa]|demonstrativ[oa])$/i,'').trim();
  return cleaned||'Planta do local';
 };
@@ -38,7 +38,7 @@ const publicMapName=(name?:string)=>{
 // ao organizador para revisão antes da publicação de plantas reais.
 const publicPointName=(name:string,isTemplate:boolean)=>{
  const label=displayLabel(name);
- return isTemplate?label.replace(/\s+(ilustrativ[oa]|demonstrativ[oa])$/i,'').trim()||'Ponto de referência':label;
+ return isTemplate?label.replace(/\s*\((?:demo|demonstração|teste)\)\s*$/i,'').replace(/\s+(ilustrativ[oa]|demonstrativ[oa])$/i,'').trim()||'Ponto de referência':label;
 };
 export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{activeEventId:string;onChooseEvent:()=>void;focusRequest?:{eventId:string;pointId:string;requestId:number}|null}){
  const [maps,setMaps]=useState<{id:string;name:string}[]>([]);
@@ -372,7 +372,15 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    // User gesture begins geolocation watch directly; this works without internet.
    localGpsWatch.current=navigator.geolocation.watchPosition(
     position=>{consumeGpsPosition(position);setLocalGpsError('');},
-    error=>{setLocalGpsError(gpsErrorText(error));if(error.code===1){if(localGpsWatch.current!==null)navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;setLocalGpsEnabled(false);setTracking(false);trackingRef.current=false;setLocation(null);locationRef.current=null;}},
+    error=>{
+     setLocalGpsError(gpsErrorText(error));
+     // Quando a primeira leitura falha, liberar o watch para nova tentativa.
+     if(error.code===1||!locationRef.current){
+      if(localGpsWatch.current!==null)navigator.geolocation.clearWatch(localGpsWatch.current);
+      localGpsWatch.current=null;setLocalGpsEnabled(false);
+      setTracking(false);trackingRef.current=false;setLocation(null);locationRef.current=null;
+     }
+    },
     {enableHighAccuracy:true,maximumAge:5000,timeout:18000}
    );
   };
@@ -642,9 +650,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const directLineStart=mapped?{x:Math.max(0,Math.min(100,mapped.x)),y:Math.max(0,Math.min(100,mapped.y))}:null;
  const directionsUrl=closestEntrance?'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(closestEntrance.target.lat+','+closestEntrance.target.lng):null;
  const scale=bounds?mapSize(bounds):null;
- const gpsActive=localGpsEnabled||gpsStarting||tracking;
  const eventForSharing=activeEvent;
- const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
  const showLoading=useMinimumLoading(!!activeEventId&&(!mapsReady||loadedForEventId!==activeEventId||!mapResolved));
  if(showLoading){
@@ -658,16 +664,15 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  </div>;
 
  return <section className="space-y-3">
- <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/[.035] px-3 py-2.5" aria-label="Controles de GPS">
+ {(!tracking||!location)&&<div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/[.035] px-3 py-2.5" aria-label="Ativar minha localização">
   <Navigation size={18} className="shrink-0 text-[#c4ff40]"/>
   <div className="min-w-0 flex-1">
    <p className="text-sm font-bold">Minha localização</p>
    <p className="text-[11px] leading-relaxed text-white/60">{dontShareWithFriends?'GPS apenas para você, inclusive offline.':activeEvent?.location_sharing_enabled!==1?'GPS local. O evento não permite compartilhar com amigos.':'Ao ativar o GPS, sua posição também fica visível aos amigos enquanto houver conexão.'}</p>
-   {sharing&&sharingExpiresAt&&<p className="text-[11px] font-semibold text-[#c4ff40]">Compartilhando até {sharingDeadline}</p>}
   </div>
-  <button type="button" onClick={toggleUnifiedGps} aria-pressed={gpsActive}
-   className={'shrink-0 rounded-lg px-3 py-2 text-xs font-bold '+(gpsActive?'border border-red-400/40 text-red-200':'bg-[#c4ff40] text-black')}>
-   {gpsActive?'Parar GPS':'Ativar GPS'}
+  <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
+   className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black disabled:opacity-60">
+   {gpsStarting||localGpsEnabled?'Ativando...':'Ativar GPS'}
   </button>
   <button type="button" aria-label="Configurar localização" title="Configurar localização"
    onClick={()=>setLocationSetupOpen(true)} className="rounded-lg border border-white/20 p-2.5 text-white/80"><Settings2 size={17}/></button>
@@ -675,7 +680,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   {localGpsError&&<p role="status" className="w-full text-xs text-amber-300">{localGpsError}</p>}
   {geoError&&<p role="status" className="w-full text-xs text-amber-300">{geoError}</p>}
   {friendError&&sharing&&<p className="w-full text-xs text-amber-300">Os amigos não puderam ser atualizados. O GPS local continua funcionando.</p>}
- </div>
+ </div>}
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[65%] truncate rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-2 py-1 text-[11px] font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
@@ -684,7 +689,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-3 sm:p-5"><p className="mb-2 text-xs font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Ambientes da planta">
   {data&&visibleAreas(data.areas).map(a=>{const color=validColor(a.color),name=publicPointName(a.name,!!mapIsDemo);
-   return <path key={a.id} d={areaPath(data.areas,a.id)} fill={color+'33'} stroke={color} strokeWidth={0.45} vectorEffect="non-scaling-stroke" fillRule="evenodd"><title>{a.description||name}</title></path>;
+   return <path key={a.id} d={areaPath(data.areas,a.id)} fill={color+'33'} stroke={color} strokeWidth={0.45} vectorEffect="non-scaling-stroke" fillRule="evenodd"><title>{displayPublicDescription(a.description)||name}</title></path>;
   })}
  </svg>
  {roomLabels.map(label=>{
@@ -695,7 +700,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  })}
  {data?.markers.map(m=>{const Icon=pointIconFor(m.type,m.icon),selected=selectedMarkerId===m.id,color=selected?'#ff4b57':validColor(m.color,'#C4FF40'),size=Math.max(24,Math.min(72,m.size||42));
   return <button key={m.id} type="button" onClick={()=>{setSelectedMarkerId(m.id);setPointCategory('');setPointMenuOpen(true);}}
-    aria-label={publicPointName(m.name,!!mapIsDemo)+(selected?' (selecionado)':'')} aria-pressed={selected} title={m.description||publicPointName(m.name,!!mapIsDemo)}
+    aria-label={publicPointName(m.name,!!mapIsDemo)+(selected?' (selecionado)':'')} aria-pressed={selected} title={displayPublicDescription(m.description)||publicPointName(m.name,!!mapIsDemo)}
     className={'text-center transition-[filter] duration-200 '+(selected?'z-[25] drop-shadow-[0_0_10px_#ff4b57]':'z-10')}
     style={markerIconStyle(m,size)}>
     <span className={'relative flex h-full w-full items-center justify-center border-2 shadow-lg transition-colors duration-200 '+(m.shape==='circle'?'rounded-full':'rounded-lg')+(selected?' bg-[#45151f] ring-[3px] ring-[#ff4b57] ring-offset-2 ring-offset-[#110e17]':' bg-[#15101b]')} style={{borderColor:color,color}}><Icon size={Math.max(15,size*.5)} style={{width:'52%',height:'52%'}}/>{selected&&<span aria-hidden="true" className="pointer-events-none absolute -right-2 -top-2 h-3 w-3 rounded-full border-2 border-[#110e17] bg-[#ff4b57]"/>}</span>
@@ -748,7 +753,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      <input type="checkbox" checked={shareWithGroups} onChange={e=>setShareWithGroups(e.target.checked)} className="mt-1 h-4 w-4 accent-[#c4ff40]"/>
      <span><strong className="block text-sm">Compartilhar também com meus grupos</strong><span className="block text-xs text-white/55">Opcional. Por padrão, apenas amigos podem ver sua localização.</span></span>
     </label>
-    <p className="text-xs text-white/45">Você pode desativar o GPS a qualquer momento na tela do Mapa. Alterar o compartilhamento com amigos: Perfil → Permissões.</p>
+    <p className="text-xs text-white/45">Para interromper o compartilhamento com amigos, use Perfil → Permissões. A localização no aparelho segue a permissão do navegador.</p>
    </div>
    <footer className="flex shrink-0 gap-2 border-t border-white/10 p-4">
     <button type="button" onClick={()=>setLocationSetupOpen(false)} className="flex-1 rounded-xl border border-white/20 px-3 py-3 text-sm">Cancelar</button>
@@ -756,7 +761,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    </footer>
   </section>
  </div>}
-{pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{publicPointName(marker.name,!!mapIsDemo)}</h3><p className="mt-1 text-xs text-white/60">{marker.description||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{p.description&&<p className="mt-1 text-xs text-white/55">{p.description}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
+{pointMenuOpen&&selectedMarkerId&&data?.markers.some(m=>m.id===selectedMarkerId)&&(()=>{const marker=data.markers.find(m=>m.id===selectedMarkerId)!;const cats=marker.categories||[];const products=pointProducts.filter(p=>cats.includes(p.category)&&(!pointCategory||p.category===pointCategory));return <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/80 sm:items-center sm:p-5" onClick={e=>{if(e.currentTarget===e.target)setPointMenuOpen(false);}}><section role="dialog" aria-modal="true" aria-label={'Detalhes de '+marker.name} className="flex max-h-[85dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-[#c4ff40]/25 bg-[#17111e] sm:rounded-3xl"><div className="space-y-3 border-b border-white/10 p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-black">{publicPointName(marker.name,!!mapIsDemo)}</h3><p className="mt-1 text-xs text-white/60">{displayPublicDescription(marker.description)||'Ponto de referência no mapa.'}</p></div><button type="button" aria-label="Fechar cardápio" onClick={()=>setPointMenuOpen(false)} className="rounded-lg border border-white/20 px-3 py-2">✕</button></div>{marker.opens_at&&marker.closes_at&&<p className="text-xs text-[#c4ff40]">Funcionamento: {marker.opens_at} às {marker.closes_at}</p>}{cats.length>0&&<div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setPointCategory('')} className={'rounded-lg border px-3 py-2 text-xs '+(!pointCategory?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>Todos</button>{cats.map(category=><button key={category} type="button" onClick={()=>setPointCategory(category)} className={'rounded-lg border px-3 py-2 text-xs '+(pointCategory===category?'border-[#c4ff40] text-[#c4ff40]':'border-white/20 text-white/60')}>{category}</button>)}</div>}</div><div className="min-h-0 overflow-y-auto p-4">{pointMenuLoading?<p className="p-5 text-sm text-white/60">Carregando produtos...</p>:pointMenuError?<p role="alert" className="p-5 text-sm text-red-300">{pointMenuError}</p>:!products.length?<p className="p-5 text-sm text-white/60">{cats.length?'Nenhum produto dessas categorias está cadastrado para este evento.':'Este ponto não possui produtos vinculados.'}</p>:<div className="space-y-2">{products.map(p=><div key={p.id} className="flex justify-between gap-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><div><p className="font-semibold">{p.name}</p>{displayPublicDescription(p.description)&&<p className="mt-1 text-xs text-white/55">{displayPublicDescription(p.description)}</p>}<p className="mt-1 text-xs text-white/40">{p.category}</p></div><span className="shrink-0 font-bold text-[#c4ff40]">{formatBRL(p.effective_price_cents)}</span></div>)}</div>}</div></section></div>;})()}
  <div className="rounded-xl border border-white/10 bg-white/[.04] px-4 py-3 text-xs">
   <div className="flex items-center gap-2 font-semibold"><MapPin size={15} className="text-[#c4ff40]"/> Sua posição</div>
   <p aria-live="polite" className="mt-1 text-white/65">{!location?(gpsStarting||localGpsEnabled?'Obtendo sua posição pelo GPS...':'Ative a localização para aparecer no mapa.'):!bounds?'Aguardando calibração do mapa.':!mapped?'Não foi possível calcular sua posição; confira a calibração GPS.':mapIsDemo?'A localização nesta planta estará disponível após a calibração GPS do local.':mapped.inside?'Você está no mapa.':positionUncertain?'Você está próximo ao limite do mapa, mas o GPS está impreciso.':closestEntrance?'Você está fora do mapa. Entrada a aproximadamente '+formatMapDistance(closestEntrance.meters)+' em linha reta.':'Você está fora do mapa, '+myOutside?.direction+' · aproximadamente '+formatMapDistance(distanceToVenue||0)+' da borda.'}</p>
