@@ -12,7 +12,8 @@ test('gerenciamento de administradores usa a navegação existente',()=>{
  assert.match(route,/administradores:'Administradores',admins:'Administradores'/);
  assert.match(shell,/\{name:'Administradores',Icon:Users\}/);
  assert.match(shell,/section==='Administradores'&&<AdminAdmins currentUserId=\{user\.id\}\/>/);
- assert.match(shell,/'administradores','admins'/);
+ assert.match(shell,/const knownAdminRoute=isKnownAdminPath\(currentPath\)/);
+ assert.match(route,/administradores:'Administradores',admins:'Administradores'/);
 });
 
 test('CRUD tem modal para criar, editar, revogar e assumir propriedade',()=>{

@@ -93,9 +93,22 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   assert.equal(rejected.status,400);
   const event=await api('/api/admin/events',{method:'POST',cookie:register.cookie,body:{name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00'}});
   assert.equal(event.status,201,JSON.stringify(event.data));
+  const directMenu=await fetch(new URL('/events/'+encodeURIComponent(event.data.id)+'/menu',endpoints));
+  assert.equal(directMenu.status,200,'Deep link do editor de cardápio deve servir o aplicativo, não 404.');
+  assert.match(directMenu.headers.get('content-type')||'',/text\/html/);
+  const initialEvents=await api('/api/admin/events',{cookie:register.cookie});
+  assert.equal(initialEvents.data.items.find(x=>x.id===event.data.id).location_sharing_enabled,1,'Novos eventos devem permitir compartilhamento por padrão.');
+  const invalidToggle=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:event.data.id,enabled:'false'}});
+  assert.equal(invalidToggle.status,400);
+  const notFoundToggle=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:'missing',enabled:false}});
+  assert.equal(notFoundToggle.status,404);
+  const removedDefault=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:event.data.id,enabled:false}});
+  assert.equal(removedDefault.status,200,JSON.stringify(removedDefault.data));
   const blocked=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});
   assert.equal(blocked.status,403,JSON.stringify(blocked.data));
   assert.match(blocked.data.error,/desabilitada/);
+  const allowed=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:event.data.id,enabled:true}});
+  assert.equal(allowed.status,200);
   const enabled=await api('/api/admin/edit-event',{method:'POST',cookie:register.cookie,body:{id:event.data.id,name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00',lineup:[],location_sharing_enabled:true}});
   assert.equal(enabled.status,200,JSON.stringify(enabled.data));
   const approved=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});
@@ -126,6 +139,15 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   assert.equal(actual.data.shareEnabled,true);
   assert.equal(actual.data.analyticsEnabled,true);
   assert.equal(actual.data.dontShareWithFriends,false);
+  const disableWhileActive=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:event.data.id,enabled:false}});
+  assert.equal(disableWhileActive.status,200);
+  const dropped=await api('/api/location/preferences',{cookie:register.cookie});
+  assert.equal(dropped.data.shareEnabled,false,'Desabilitar evento deve encerrar sessões imediatamente.');
+  assert.equal(dropped.data.analyticsEnabled,false,'Estatísticas devem parar imediatamente.');
+  const restoreAfterDisable=await api('/api/admin/set-event-location-sharing',{method:'POST',cookie:register.cookie,body:{id:event.data.id,enabled:true}});
+  assert.equal(restoreAfterDisable.status,200);
+  const afterRestore=await api('/api/location/preferences',{cookie:register.cookie});
+  assert.equal(afterRestore.data.shareEnabled,false,'Reativar não reconecta automaticamente participantes.');
   const stoppedAll=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
    gpsEnabled:false,shareEnabled:false,analyticsEnabled:false,shareWithGroups:false
   }});

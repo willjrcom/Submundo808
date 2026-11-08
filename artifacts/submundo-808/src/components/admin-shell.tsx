@@ -16,7 +16,7 @@ import AdminAdmins from './admin-admins';
 import PageLoading from './page-loading';
 import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
-import {adminRoutePath,parseAdminRoute,type AdminRoute,type AdminSection} from './admin-route';
+import {adminRoutePath,parseAdminRoute,isKnownAdminPath,type AdminRoute,type AdminSection} from './admin-route';
 import { Building2, CalendarDays, Map, LayoutDashboard, ArrowLeft, Plus, Pencil, Users, ShoppingBag, Star, Bell, Menu, X } from 'lucide-react';
 type Item={id:string;name:string;venue_id?:string;city?:string;address?:string;postal_code?:string;street?:string;neighborhood?:string;complement?:string;address_url?:string;services?:string;cover_image?:string;logo_image?:string;description?:string;starts_at?:string;ends_at?:string;doors_at?:string;site_url?:string;tickets_url?:string;map_ids?:string[];lineup?:{nome:string;inicio?:string;fim?:string}[];location_sharing_enabled?:number;is_published?:number};
 type User={id:string;name:string;email:string;isAdmin?:boolean};
@@ -136,8 +136,7 @@ export default function AdminShell(){
     {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}
     {notice&&<p role="status" className="text-xs text-[#c4ff40]">{notice}</p>}
    </form>);
- const pathParts=currentPath.split('/').filter(Boolean);
- const knownAdminRoute=(pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','administradores','admins','intelligence','inteligencia','statistics','estatisticas','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3]);
+ const knownAdminRoute=isKnownAdminPath(currentPath);
  const showLoading=useMinimumLoading(user===undefined||(!!user?.isAdmin&&!listsLoaded));
  if(showLoading)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div className="w-full max-w-md"><PageLoading label="Carregando painel administrativo" description="Validando suas permissões e preparando os dados do painel."/></div></div>;
  if(user?.isAdmin&&loadFailed)return <div className="flex min-h-dvh items-center justify-center bg-[#0b090f] p-5 text-white"><div role="alert" className="w-full max-w-md rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar o painel.</p><p className="mt-2 text-xs text-white/60">{error}</p><button onClick={()=>{setListsLoaded(false);setLoadFailed(false);setError('');void reload().catch(e=>{setError(String(e));setLoadFailed(true);}).finally(()=>setListsLoaded(true));}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div></div>;
