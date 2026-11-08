@@ -71,6 +71,13 @@ test('Push: negação, cancelamento, configuração inativa e falha HTTP têm me
  await assert.rejects(()=>registerPush({notification:null,serviceWorker:null,pushSupported:false}),/indisponíveis/);
 });
 
+test('erros de rede e APIs não suportadas recebem orientação humana',()=>{
+ assert.match(permissionFailure('notifications',{name:'NetworkError'}).message,/internet/);
+ assert.match(permissionFailure('notifications',new TypeError('Failed to fetch')).message,/servidor/);
+ assert.match(permissionFailure('camera',{name:'NotSupportedError'}).message,/navegador/);
+ assert.equal(permissionFailure('camera',{name:'NotSupportedError'}).denied,false);
+});
+
 test('Instalação Android: aceita, cancela, fica pendente ou falha sem mostrar falso sucesso',async()=>{
  const prompt=outcome=>({async prompt(){},userChoice:Promise.resolve({outcome})});
  assert.equal(await requestNativeInstallation(prompt('accepted')),'accepted');
