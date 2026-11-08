@@ -81,3 +81,19 @@ test('selected grouped root exposes piece-specific outer handles and no internal
  assert.match(editor,/setResizeId\(active\.id\);setEditLayout\(true\)/);
  assert.doesNotMatch(editor,/canResize=!isGrouped\(areas,a\.id\)/);
 });
+
+test('exclusão de ambientes mostra os bloqueios e nunca remove pontos vinculados automaticamente',()=>{
+ assert.match(editor,/const deleteGrouped=!!deleteTarget/);
+ assert.match(editor,/const deleteLinkedPoints=deleteTarget\?markers\.filter/);
+ assert.match(editor,/m\.area_id===deleteTarget\.id\|\|m\.from_area_id===deleteTarget\.id\|\|m\.to_area_id===deleteTarget\.id/);
+ assert.match(editor,/const deleteBlocked=deleteGrouped\|\|deleteLinkedPoints\.length>0/);
+ assert.match(editor,/if\(item\.kind==='area'&&deleteBlocked\)return/);
+ assert.match(editor,/Não é possível excluir este ambiente/);
+ assert.match(editor,/Desagrupe o ambiente antes de excluí-lo/);
+ assert.match(editor,/Como resolver:/);
+ assert.match(editor,/Não serão apagados ou desvinculados automaticamente/);
+ assert.match(editor,/deleteLinkedPoints\.map\(m=>/);
+ assert.match(editor,/!deleteBlocked&&<button type="button" onClick=\{confirmDelete\}/);
+ assert.doesNotMatch(editor,/setMarkers\(v=>v\.filter\(m=>!\(m\.type==='passagem'&&/);
+ assert.match(editor,/> Excluir ambiente<\/button>/);
+});
