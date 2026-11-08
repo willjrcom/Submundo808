@@ -46,6 +46,10 @@ async function networkFirst(request,cacheName,cacheKey=request,timeoutMs=3200){
  try{
   const response=await fetch(request,{signal:controller.signal,cache:'no-cache'});
   if(response.ok)await safePut(cache,cacheKey,response);
+  if(response.status===408||response.status===429||response.status>=500){
+   const saved=await cache.match(cacheKey);
+   if(saved)return saved;
+  }
   return response;
  }catch{
   const saved=await cache.match(cacheKey);
@@ -74,6 +78,10 @@ self.addEventListener('fetch',event=>{
    try{
     const response=await fetch(request,{signal:controller.signal,cache:'no-cache'});
     if(url.href===ROOT&&response.ok)await safePut(cache,ROOT,response);
+    if(response.status===408||response.status===429||response.status>=500){
+     const saved=await cache.match(ROOT);
+     if(saved)return saved;
+    }
     return response;
    }catch{
     return (await cache.match(ROOT))||
