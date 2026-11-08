@@ -125,9 +125,18 @@ export async function privateParticipantGet<T=unknown>(path:string):Promise<T>{
   throw Error('Este conteúdo ainda não foi sincronizado no aparelho.');
  }
  try{
-  const response=await fetch(path,{credentials:'same-origin',headers:{Accept:'application/json'}});
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),4500);
+  let response:Response;
+  try{response=await fetch(path,{credentials:'same-origin',headers:{Accept:'application/json'},signal:controller.signal});}
+  finally{clearTimeout(timer);}
   const data=await response.json();
   if(!response.ok){
+   // Weak venue Wi-Fi may return 503/504 instead of disconnecting completely.
+   if(response.status===408||response.status===429||response.status>=500){
+    const cached=getOfflinePrivateResponse<T>(path);
+    if(cached!==null)return cached;
+   }
    if(path==='/api/auth/me'&&(response.status===401||response.status===403))clearOfflineParticipantData();
    const err=Object.assign(new Error(data?.error||'Não foi possível concluir a consulta.'),{status:response.status});
    throw err;
