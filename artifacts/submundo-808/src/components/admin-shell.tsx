@@ -170,7 +170,7 @@ export default function AdminShell(){
   </aside>
   <main className="mx-auto w-full min-w-0 max-w-6xl px-4 py-5 sm:px-6 xl:px-10 xl:py-10">
  {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
- {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
+ {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back} onRenamed={()=>void reload().catch(e=>setError(String(e)))}/>:<>
  {(editing||creating)&&!route.menu&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing?displayLabel(editing.name):creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
  {section==='Produtos'&&<AdminProducts/>}
