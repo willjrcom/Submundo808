@@ -39,6 +39,7 @@ jobs:
             tests/participant-public-copy-gps-cta.test.mjs \
             tests/public-event-agenda.test.mjs \
             tests/public-event-navigation.test.mjs \
+            tests/event-location-default-menu-route.test.mjs \
             tests/admin-map-modals-menu-page.test.mjs \
             tests/admin-route.test.mjs \
             tests/admin-dashboard-routing.test.mjs \
