@@ -5,21 +5,23 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../artifacts/submundo-808/src/components/venue-map.tsx',import.meta.url),'utf8');
 
 test('GPS usa um único observador contínuo, sem solicitações repetidas a cada 20 segundos',()=>{
- assert.equal((source.match(/geolocation\.watchPosition\(/g)||[]).length,1);
+ assert.equal((source.match(/geolocation\.watchPosition\(/g)||[]).length,2);
  assert.doesNotMatch(source,/geolocation\.getCurrentPosition\(/);
 });
 test('permissão salva no servidor não é confundida com GPS autorizado no Android',()=>{
  assert.match(source,/navigator\.permissions\.query\(\{name:'geolocation'\}\)/);
  assert.match(source,/if\(status\.state==='granted'\)/);
  assert.match(source,/setGpsPermissionRequired\(true\)/);
- assert.match(source,/const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired/);
- assert.match(source,/if\(gpsActive\)void stopSharing\(\);else if\(sharing\)startSharing\(\);else setLocationSetupOpen\(true\)/);
+ assert.match(source,/const gpsActive=localGpsEnabled\|\|gpsStarting\|\|tracking/);
+ assert.match(source,/const toggleUnifiedGps=\(\)=>\{/);
+ assert.match(source,/const toggleLocalPosition=\(\)=>\{/);
 });
 test('não exibe dois botões para autorizar a mesma localização',()=>{
- assert.match(source,/gpsActive\?'Desativar localização':sharing\?'Retomar localização':'Ativar localização'/);
+ assert.match(source,/\{gpsActive\?'Parar GPS':'Ativar GPS'\}/);
+ assert.match(source,/onClick=\{toggleUnifiedGps\}/);
  assert.doesNotMatch(source,/Permitir localização neste dispositivo/);
  assert.doesNotMatch(source,/Permitir localização<\/button>/);
- assert.match(source,/sharing&&!gpsActive&&!gpsStarting/);
+ assert.doesNotMatch(source,/Localização com amigos<\/h3>/);
 });
 test('uma permissão em andamento não é cancelada pela consulta tardia ao navegador',()=>{
  assert.match(source,/status\.state==='prompt'&&gpsActivatingRef\.current\)return/);
@@ -40,7 +42,7 @@ test('a primeira solicitação do Android começa imediatamente no clique do usu
  assert.match(source,/const startSharing=\(\)=>\{/);
  assert.match(source,/startInitialGps\(navigator\.geolocation/);
  assert.match(source,/gpsInitialCancel\.current=startInitialGps/);
- assert.match(source,/Cancelar busca de localização/);
+ assert.match(source,/Busca de localização cancelada/);
 });
 
 test('permissão revogada cancela a captura e remove a localização publicada',()=>{

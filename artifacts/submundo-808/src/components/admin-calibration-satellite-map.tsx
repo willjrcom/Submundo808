@@ -179,7 +179,7 @@ export default function AdminCalibrationSatelliteMap({
   if(complete&&showMeasures){
    for(let i=0;i<POINT_ORDER.length;i++){
     const a=raw[POINT_ORDER[i]]!,b=raw[POINT_ORDER[(i+1)%4]]!;
-    const meters=distanceMeters({...a,accuracy:0},{...b,accuracy:0});
+    const meters=distanceMeters(a,b);
     const label=new s.maps.Marker({
      map:s.map,position:midpoint(a,b),clickable:false,
      zIndex:20,

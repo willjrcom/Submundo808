@@ -132,7 +132,8 @@ for(const [column,definition] of [
  ['share_mode',"TEXT NOT NULL DEFAULT 'event'"],
  ['share_expires_at','INTEGER'],
  ['share_event_id','TEXT'],
- ['share_with_groups','INTEGER NOT NULL DEFAULT 0']
+ ['share_with_groups','INTEGER NOT NULL DEFAULT 0'],
+ ['share_friends_disabled','INTEGER NOT NULL DEFAULT 0']
 ]){
  if(!db.prepare('PRAGMA table_info(location_preferences)').all().some(c=>c.name===column))db.exec('ALTER TABLE location_preferences ADD COLUMN '+column+' '+definition);
 }
@@ -327,13 +328,29 @@ http.createServer(async (req,res)=>{
         const [a,bId]=[user.id,id].sort();db.prepare('DELETE FROM friendships WHERE user_a=? AND user_b=?').run(a,bId);
         return json(res,200,{ok:true});
       }
+      // A persistent, independent opt-out. Revocation immediately deletes live coordinates.
+      if(url.pathname==='/api/location/share-friends-preference'&&req.method==='POST'){
+        const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
+        const b=await body(req);
+        if(typeof b.disabled!=='boolean')return json(res,400,{error:'Informe se deseja impedir o compartilhamento com amigos.'});
+        const now=Date.now();
+        db.prepare('INSERT OR IGNORE INTO location_preferences(user_id,gps_enabled,share_enabled,updated_at) VALUES(?,0,0,?)').run(user.id,now);
+        if(b.disabled){
+          db.prepare('UPDATE location_preferences SET share_friends_disabled=1,share_enabled=0,share_with_groups=0,analytics_enabled=0,analytics_event_id=NULL,share_expires_at=NULL,share_event_id=NULL,updated_at=? WHERE user_id=?').run(now,user.id);
+          db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
+        }else{
+          db.prepare('UPDATE location_preferences SET share_friends_disabled=0,updated_at=? WHERE user_id=?').run(now,user.id);
+        }
+        return json(res,200,{dontShareWithFriends:b.disabled});
+      }
       if(url.pathname==='/api/location/preferences'&&req.method==='GET'){
         const user=getUser(req);if(!user)return json(res,401,{error:'Entre na sua conta.'});
         const now=Date.now();expireLocationShares(db,now);
-        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,analytics_enabled,analytics_event_id FROM location_preferences WHERE user_id=?').get(user.id);
+        const row=db.prepare('SELECT gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,analytics_enabled,analytics_event_id,share_friends_disabled FROM location_preferences WHERE user_id=?').get(user.id);
         const shareEnabled=!!row?.share_enabled&&row.share_expires_at>now;
         return json(res,200,{
           gpsEnabled:shareEnabled&&!!row?.gps_enabled,shareEnabled,
+          dontShareWithFriends:row?.share_friends_disabled===1,
           mode:row?.share_mode||'event',eventId:shareEnabled?row?.share_event_id||null:null,shareWithGroups:shareEnabled&&!!row?.share_with_groups,
           analyticsEnabled:shareEnabled&&!!row?.analytics_enabled&&row.analytics_event_id===row.share_event_id,
           expiresAt:shareEnabled?row.share_expires_at:null
@@ -347,6 +364,9 @@ http.createServer(async (req,res)=>{
            (b.analyticsEnabled!==undefined&&typeof b.analyticsEnabled!=='boolean')||
            (b.analyticsEnabled===true&&!b.shareEnabled))return json(res,400,{error:'Preferências inválidas.'});
         const now=Date.now();
+        if(b.shareEnabled&&db.prepare('SELECT share_friends_disabled FROM location_preferences WHERE user_id=?').get(user.id)?.share_friends_disabled===1){
+          return json(res,403,{error:'Você desativou o compartilhamento com amigos nas Permissões do aplicativo.'});
+        }
         let choice=null;
         if(b.shareEnabled){
           if(typeof b.eventId!=='string'||!b.eventId||b.eventId.length>100||
@@ -388,8 +408,8 @@ http.createServer(async (req,res)=>{
         const b=await body(req);const lat=b.lat,lng=b.lng,accuracy=b.accuracy;
         if(typeof lat!=='number'||!Number.isFinite(lat)||Math.abs(lat)>90||typeof lng!=='number'||!Number.isFinite(lng)||Math.abs(lng)>180||typeof accuracy!=='number'||!Number.isFinite(accuracy)||accuracy<0||accuracy>10000)return json(res,400,{error:'Coordenadas inválidas.'});
         const now=Date.now();
-        const pref=db.prepare('SELECT share_enabled,share_expires_at,share_event_id FROM location_preferences WHERE user_id=?').get(user.id);
-        if(!pref?.share_enabled)return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
+        const pref=db.prepare('SELECT share_enabled,share_expires_at,share_event_id,share_friends_disabled FROM location_preferences WHERE user_id=?').get(user.id);
+        if(!pref?.share_enabled||pref.share_friends_disabled)return json(res,403,{error:'Ative o compartilhamento de localização nesta conta antes de enviar o GPS.'});
         if(!pref.share_event_id)return json(res,403,{error:'Escolha um evento e reative o compartilhamento.'});
         if(typeof b.eventId!=='string'||b.eventId!==pref.share_event_id)return json(res,409,{error:'Sua localização está vinculada a outra festa. Ative novamente no evento correto.'});
         if(!db.prepare('SELECT 1 FROM events WHERE id=? AND location_sharing_enabled=1').get(pref.share_event_id)){

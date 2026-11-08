@@ -50,7 +50,10 @@ test('device GPS works offline without enabling live sharing or writing location
  assert.match(map,/localGpsWatch\.current!==null/);
  assert.match(map,/localGpsWatch\.current=null/);
  assert.match(map,/Sem leituras recentes de GPS/);
- assert.match(map,/GPS local, inclusive offline\. Não compartilha sua localização/);
+ assert.match(map,/const toggleUnifiedGps=\(\)=>\{/);
+ assert.match(map,/!dontShareRef\.current&&navigator\.onLine/);
+ assert.match(map,/toggleLocalPosition\(\)/);
+ assert.match(map,/O GPS funciona offline/);
  assert.match(map,/const mapped=location&&bounds&&!mapIsDemo\?gpsToMap\(location,bounds\)/);
  assert.match(map,/if\(!sharingRef\.current\|\|!trackingRef\.current\|\|!position\|\|sendBusy\.current\)return/);
  assert.match(map,/aria-label="Sua localização aproximada"/);

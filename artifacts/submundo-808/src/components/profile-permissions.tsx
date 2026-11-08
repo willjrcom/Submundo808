@@ -29,6 +29,10 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [crowdPrefs,setCrowdPrefs]=useState<CrowdPreferences|null>(null);
  const [crowdLoading,setCrowdLoading]=useState(true),[crowdBusy,setCrowdBusy]=useState(false);
  const [crowdMessage,setCrowdMessage]=useState(''),[crowdError,setCrowdError]=useState('');
+ const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
+ const [friendPrivacyReady,setFriendPrivacyReady]=useState(false);
+ const [friendPrivacyBusy,setFriendPrivacyBusy]=useState(false);
+ const [friendPrivacyMessage,setFriendPrivacyMessage]=useState('');
  const ios=isIosDevice();
  const needsIosInstall=ios&&!installed;
  useEffect(()=>{
@@ -57,13 +61,41 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
     const response=await fetch('/api/location/preferences',{credentials:'same-origin'});
     const payload=await response.json().catch(()=>null);
     if(!response.ok)throw Error(payload?.error||'Não foi possível consultar as estatísticas.');
-    if(alive)setCrowdPrefs({shareEnabled:payload.shareEnabled===true,eventId:payload.eventId||null,analyticsEnabled:payload.analyticsEnabled===true});
+    if(alive){
+     setCrowdPrefs({shareEnabled:payload.shareEnabled===true,eventId:payload.eventId||null,analyticsEnabled:payload.analyticsEnabled===true});
+     setDontShareWithFriends(payload.dontShareWithFriends===true);
+     setFriendPrivacyReady(true);
+    }
    }catch(error){if(alive)setCrowdError(error instanceof Error?error.message:'Não foi possível consultar as preferências.');}
    finally{if(alive)setCrowdLoading(false);}
   };
   void refresh();
   return()=>{alive=false;};
  },[]);
+ async function updateFriendPrivacy(disabled:boolean){
+  if(friendPrivacyBusy||!friendPrivacyReady)return;
+  if(!navigator.onLine){
+   setFriendPrivacyMessage('Conecte-se à internet para alterar essa permissão em todos os dispositivos.');
+   return;
+  }
+  setFriendPrivacyBusy(true);setFriendPrivacyMessage('');
+  try{
+   const response=await fetch('/api/location/share-friends-preference',{
+    method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({disabled})
+   });
+   const payload=await response.json().catch(()=>null);
+   if(!response.ok)throw Error(payload?.error||'Não foi possível alterar a permissão.');
+   setDontShareWithFriends(payload.dontShareWithFriends===true);
+   setCrowdPrefs(previous=>previous&&disabled?{...previous,shareEnabled:false,analyticsEnabled:false}:previous);
+   window.dispatchEvent(new CustomEvent('submundo-friend-sharing-privacy',{detail:{disabled}}));
+   setFriendPrivacyMessage(disabled
+    ?'Compartilhamento com amigos desativado. O GPS continua disponível somente para você.'
+    :'Ao ativar o GPS no Mapa, sua posição será compartilhada com amigos enquanto houver conexão.');
+  }catch(error){
+   setFriendPrivacyMessage(error instanceof Error?error.message:'Falha ao salvar a permissão.');
+  }finally{setFriendPrivacyBusy(false);}
+ }
  async function toggleCrowdConsent(){
   if(crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId)return;
   setCrowdBusy(true);setCrowdMessage('');setCrowdError('');
@@ -101,7 +133,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   setBusy('location');clearNotice();
   try{if(!navigator.geolocation)throw Error('Localização indisponível neste navegador.');
    await new Promise<void>((resolve,reject)=>navigator.geolocation.getCurrentPosition(()=>resolve(),reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
-   update('location','granted');setNotice('location','Localização autorizada. O compartilhamento com amigos permanece desativado até você escolher ativá-lo.');
+   update('location','granted');setNotice('location','Permissão do GPS autorizada. O compartilhamento com amigos só começa quando você tocar em Ativar GPS no Mapa, respeitando a opção Não compartilhar com amigos.');
   }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setNotice('location',denied?'O acesso à localização está bloqueado. Abra as configurações do aplicativo ou do navegador, autorize a localização e volte ao Submundo808.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
  }
  async function askNotification(){
@@ -133,7 +165,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    stream.getTracks().forEach(t=>t.stop());update('camera','granted');setNotice('camera','Câmera autorizada para ler QR Codes de amigos.');
   }catch(e){setNotice('camera','Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
  }
- const rows=[{key:'location',title:'Localização',description:'Sua posição no mapa. Compartilhar com amigos é uma escolha separada.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
+ const rows=[{key:'location',title:'Localização',description:'Permite ver sua posição na planta. O compartilhamento só começa após tocar em Ativar GPS no mapa.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
  const label:Record<State,string>={granted:'Permitida',denied:'Bloqueada',prompt:'Não solicitada',unsupported:'Indisponível'};
  function explainBlockedPermission(key:string){
   const title=key==='location'?'localização':key==='camera'?'câmera':'notificações';
@@ -183,6 +215,19 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    </div>;
   })}
   
+  <section aria-label="Compartilhamento de GPS com amigos" className="space-y-2 rounded-xl border border-white/10 bg-white/[.035] p-3">
+   <label className="flex cursor-pointer items-start gap-3">
+    <input type="checkbox" disabled={!friendPrivacyReady||friendPrivacyBusy} checked={dontShareWithFriends}
+     onChange={e=>void updateFriendPrivacy(e.target.checked)}
+     className="mt-1 h-5 w-5 shrink-0 accent-[#c4ff40] disabled:opacity-45"/>
+    <span className="min-w-0">
+     <strong className="block text-sm">Não compartilhar com amigos</strong>
+     <span className="mt-1 block text-xs leading-relaxed text-white/60">Desmarcado por padrão. Ao tocar em Ativar GPS na aba Mapa, sua localização também será compartilhada com seus amigos até o fim da festa, se houver internet e o evento permitir. Marque para usar o GPS somente na sua planta. A permissão do Android, sozinha, não inicia o compartilhamento.</span>
+    </span>
+   </label>
+   {!friendPrivacyReady&&<p className="text-xs text-amber-200">Conecte-se e entre na conta para configurar o compartilhamento.</p>}
+   {friendPrivacyMessage&&<p role="status" className="text-xs text-white/70">{friendPrivacyMessage}</p>}
+  </section>
   <section aria-label="Permissão para estatísticas anônimas" className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
    <MapPin size={22} className="shrink-0 text-[#c4ff40]"/>
    <div className="min-w-0 flex-1">

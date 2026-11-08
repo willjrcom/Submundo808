@@ -14,6 +14,15 @@ Quando faltar internet, cada tela tenta abrir os **últimos dados sincronizados*
 
 **Limites reais do modo offline:** a navegação, leitura e GPS local funcionam com dados baixados. Entrar em grupos, enviar/receber avisos em tempo real, gerenciar integrantes, solicitar/remover amigos, atualizar o perfil e validar ingressos exigem conexão. Ingressos mostrados offline podem ter sido usados ou revogados; a portaria continua precisando validar a situação atual. Após voltar a conexão, o aplicativo sincroniza novamente as informações. Dispositivos compartilhados devem usar **Sair da conta** para eliminar os dados salvos; antes do primeiro acesso autenticado não existe uma cópia privada para mostrar.
 
+## GPS único, privacidade de amigos e conexão instável
+A aba **Mapa** mostra **um único botão Ativar GPS / Parar GPS no início da tela**. Ele posiciona o próprio aparelho na planta, mesmo sem internet. Se o usuário estiver autenticado, o organizador tiver habilitado o compartilhamento e houver conexão, **ativar o GPS também compartilha a posição com amigos por padrão**, com prazo até o fim da festa. Esse efeito é informado no próprio controle antes do toque; somente conceder a permissão do Android não envia localizações.
+
+Em **Perfil → Permissões**, a opção **Não compartilhar com amigos** começa desmarcada. Ao marcá-la, a API salva a preferência na conta, **desativa imediatamente o compartilhamento ativo no servidor e elimina a última posição enviada**, sem desligar o GPS local. A API impede novas ativações e envios enquanto essa preferência estiver marcada. Desmarcar volta a permitir o compartilhamento na próxima ativação do GPS; se o GPS já estiver ligado, o aplicativo tenta sincronizar com o servidor.
+
+Um ícone de configurações junto ao botão abre o **modal de localização**, que concentra prazo de compartilhamento (fim da festa, 4h ou 1h) e a opção opcional de compartilhar com grupos. Não há uma segunda caixa de ativação na tela do mapa.
+
+Para redes instáveis, as requisições de localização expiram após **10 segundos** sem resposta e preservam a posição do GPS local. Os dados públicos da festa já usam cópia offline com fallback em cerca de 3,2 segundos e os dados privados sincronizados em cerca de 4,5 segundos. Portanto, uma conexão lenta não bloqueia a consulta a telas e plantas previamente baixadas. Se o GPS for desligado sem conexão, o aplicativo interrompe o monitoramento imediatamente e tenta confirmar a desativação remota assim que a internet voltar.
+
 ## GPS do próprio participante sem internet
 Na aba Mapa, o botão **Mostrar minha posição** ativa o GPS diretamente pelo navegador, sem login e sem compartilhar localização. A latitude e longitude recebidas são convertidas localmente para a planta georreferenciada. A localização continua mudando se o aparelho fornecer GPS durante a falta de internet. Leituras antigas são ocultadas e a precisão pode variar muito em ambientes fechados. O usuário pode parar o GPS local pelo mesmo botão.
 
