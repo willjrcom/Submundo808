@@ -679,20 +679,20 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  </div>;
 
  return <section className="space-y-3">
- {(!tracking||!location)&&<div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/[.035] px-3 py-2.5" aria-label="Ativar minha localização">
-  <Navigation size={18} className="shrink-0 text-[#c4ff40]"/>
-  <div className="min-w-0 flex-1">
-   <p className="text-sm font-bold">Minha localização</p>
-   <p className="text-[11px] leading-relaxed text-white/60">{activeEvent?.location_sharing_enabled!==1?'GPS só neste aparelho: o evento não permite compartilhar.':'Ao ativar, sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas até o fim da festa. Para encerrar, acesse Perfil → Permissões.'}</p>
+ {(!tracking||!location)&&<div className="rounded-xl border border-[#c4ff40]/20 bg-[#c4ff40]/[.035] px-3 py-2" aria-label="Ativar minha localização">
+  <div className="flex flex-wrap items-center gap-2">
+   <Navigation size={16} className="shrink-0 text-[#c4ff40]"/>
+   <p className="min-w-0 flex-1 text-xs font-bold">Minha localização</p>
+   <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
+    className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-[11px] font-bold text-black disabled:opacity-60">
+    {gpsStarting||localGpsEnabled?'Ativando...':activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar e compartilhar'}
+   </button>
   </div>
-  <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
-   className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black disabled:opacity-60">
-   {gpsStarting||localGpsEnabled?'Ativando...':activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar GPS e compartilhar'}
-  </button>
-  {gpsStarting&&<p className="w-full text-xs text-white/60">Obtendo a posição do aparelho...</p>}
-  {localGpsError&&<p role="status" className="w-full text-xs text-amber-300">{localGpsError}</p>}
-  {geoError&&<p role="status" className="w-full text-xs text-amber-300">{geoError}</p>}
-  {friendError&&sharing&&<p className="w-full text-xs text-amber-300">Os amigos não puderam ser atualizados. O GPS local continua funcionando.</p>}
+  <p className="mt-1.5 text-[11px] leading-snug text-white/60">{activeEvent?.location_sharing_enabled!==1?'Sua posição fica só neste aparelho; o evento não permite compartilhar.':authRequired?'Entre na sua conta para compartilhar com amigos. O GPS local continua disponível.':'Compartilhe com amigos e contribua para estatísticas agregadas até o fim da festa. Desative em Perfil → Permissões.'}</p>
+  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Obtendo a posição do aparelho...</p>}
+  {localGpsError&&<p role="status" className="mt-2 text-xs text-amber-300">{localGpsError}</p>}
+  {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
+  {friendError&&sharing&&<p className="mt-2 text-xs text-amber-300">Os amigos não puderam ser atualizados. O GPS local continua funcionando.</p>}
  </div>}
  <div className="flex flex-wrap items-center justify-between gap-2">
   <h2 className="text-xl font-black uppercase">Mapa do evento</h2>
