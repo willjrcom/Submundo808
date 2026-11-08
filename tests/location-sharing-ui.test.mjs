@@ -5,13 +5,19 @@ import {readFileSync} from 'node:fs';
 const frontend=readFileSync(new URL('../artifacts/submundo-808/src/components/venue-map.tsx',import.meta.url),'utf8');
 const backend=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
 
-test('a escolha de duração aparece somente após ativar localização',()=>{
- assert.match(frontend,/useState<ShareMode>\('event'\)/);
- assert.match(frontend,/!locationSetupOpen&&<button/);
- assert.match(frontend,/else setLocationSetupOpen\(true\)/);
- assert.match(frontend,/locationSetupOpen&&!sharing/);
- for(const label of ['Até o fim da festa','Por 4 horas','Por 1 hora','Confirmar e ativar'])assert.ok(frontend.includes(label));
- assert.match(frontend,/onClick=\{startSharing\}/);
+test('o GPS aparece como botão único no topo e as configurações ficam num modal',()=>{
+ const root=frontend.indexOf('return <section className="space-y-3">');
+ const gps=frontend.indexOf('aria-label="Controles de GPS"',root);
+ const map=frontend.indexOf('Mapa do evento</h2>',root);
+ assert.ok(gps>root&&map>gps,'o botão deve ficar acima da planta');
+ assert.match(frontend,/onClick=\{toggleUnifiedGps\}/);
+ assert.match(frontend,/\{gpsActive\?'Parar GPS':'Ativar GPS'\}/);
+ assert.match(frontend,/aria-label="Configurar localização"/);
+ assert.match(frontend,/role="dialog" aria-modal="true" aria-label="Configurações de localização"/);
+ assert.match(frontend,/onClick=\{\(\)=>void saveLocationSettings\(\)\}/);
+ assert.doesNotMatch(frontend,/Localização com amigos<\/h3>/);
+ assert.doesNotMatch(frontend,/Minha posição na planta/);
+ for(const label of ['Até o fim da festa','Por 4 horas','Por 1 hora','Salvar configurações'])assert.ok(frontend.includes(label));
 });
 test('os três prazos de compartilhamento pertencem ao único evento ativo',()=>{
  assert.match(frontend,/function VenueMap\(\{activeEventId,onChooseEvent,focusRequest\}/);
@@ -49,6 +55,6 @@ test('admin controla permissão por evento; API e mapa respeitam o bloqueio',()=
  assert.match(admin,/location_sharing_enabled:locationSharingEnabled/);
  assert.match(backend,/location_sharing_enabled=1/);
  assert.match(backend,/locationSharingEnabled:false/);
- assert.match(frontend,/Localização de amigos indisponível neste evento/);
+ assert.match(frontend,/O evento não permite compartilhar com amigos/);
  assert.match(frontend,/location_sharing_enabled!==1/);
 });
