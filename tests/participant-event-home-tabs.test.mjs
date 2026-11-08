@@ -9,7 +9,7 @@ const app=read('artifacts/submundo-808/src/App.tsx');
 const map=read('artifacts/submundo-808/src/components/venue-map.tsx');
 const menu=read('artifacts/submundo-808/src/components/event-menu.tsx');
 
-test('event list and selection remain unchanged; only the selected event home is replaced',()=>{
+test('event selection stays intact while the event agenda can group previous parties',()=>{
  assert.match(home,/if\(!event\)return/);
  assert.match(home,/onSelectEvent\(id\)/);
  assert.match(home,/eventProgramPath\(id\)/);
