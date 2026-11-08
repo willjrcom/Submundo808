@@ -37,24 +37,19 @@ para PostgreSQL. O PostgreSQL **não recebe dados do SQLite**.
    cadastro de e-mail ainda não é verificado e não concede admin por si só.
 
    Na primeira abertura de **Administradores** (`/admins`), a conta
-   administradora existente deve escolher **Assumir propriedade** e confirmar
-   a senha de login. Esta etapa **não ocorre automaticamente**; protege os
-   dados atuais em atualizações. Depois disso, o proprietário poderá promover
+   administradora mais antiga deve escolher **Assumir propriedade** e confirmar
+   a ação na sessão autenticada. **Nenhuma senha adicional é exigida**, inclusive
+   para quem entrou por Google ou Meaple. Esta etapa **não ocorre automaticamente**;
+   protege os dados atuais em atualizações. Depois disso, o proprietário poderá promover
    contas cadastradas ou criar novas, atribuir `owner`/`admin`, editar nomes,
    revogar acessos administrativos e consultar auditoria.
 
-   Se a conta usa somente OAuth e ainda não tem senha, defina uma pelo
-   fluxo de recuperação, quando o e-mail estiver configurado. Alternativamente,
-   um operador com acesso ao banco pode fazer a atribuição **explicitamente**,
-   após confirmar a identidade do usuário:
-   ```sql
-   UPDATE admin_users SET role = 'owner'
-   WHERE user_id = (SELECT id FROM users WHERE email = 'administrador@exemplo.com')
-     AND NOT EXISTS (SELECT 1 FROM admin_users WHERE role = 'owner');
-   ```
-   Execute esse procedimento apenas com credenciais de operação confiáveis e
-   confirme que a conta indicada já faz parte de `admin_users`.
-   Nunca habilite `ENABLE_DEMO_ADMIN` para distribuir acesso real.
+   A ação é restrita ao administrador mais antigo em `admin_users`, para que
+   uma conta administrativa secundária não possa assumir a propriedade.
+   Se essa conta não estiver acessível, um operador autorizado pode recuperar o
+   acesso por um procedimento administrativo auditado, sem liberar criação
+   pública de administradores.
+
    O cadastro de administrador novo exibe uma senha provisória uma única vez;
    quando Resend estiver configurado, também envia um link de definição de
    senha por e-mail, válido por 30 minutos.
