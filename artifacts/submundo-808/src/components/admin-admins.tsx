@@ -1,5 +1,5 @@
 import {useEffect,useState,type FormEvent} from 'react';
-import {ArrowLeft,Check,Copy,History,Plus,Search,Shield,ShieldCheck,Trash2,UserRound,X} from 'lucide-react';
+import {Check,Copy,History,Plus,Search,Shield,ShieldCheck,Trash2,UserRound,X} from 'lucide-react';
 
 type Role='owner'|'admin';
 type Admin={id:string;name:string;email:string;role:Role;created_at:number;granted_by?:string|null};
@@ -130,7 +130,7 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
      <p className="break-all text-xs text-white/55">{item.email}</p>
      <span className={'mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold '+(item.role==='owner'?'border-[#c4ff40]/35 text-[#c4ff40]':'border-white/20 text-white/65')}>{item.role==='owner'?<ShieldCheck size={12}/>:<Shield size={12}/>} {roleLabel(item.role)}</span>
     </div>
-    {isOwner&&<div className="flex gap-2"><button type="button" onClick={()=>open('edit',item)} className={secondary} aria-label={'Editar '+item.name}>Editar</button><button type="button" onClick={()=>open('revoke',item)} disabled={item.role==='owner'&&state.ownerCount<=1} title={item.role==='owner'&&state.ownerCount<=1?'Não é possível remover o último proprietário':'Revogar acesso'} className="rounded-xl border border-red-400/30 p-3 text-red-300 disabled:cursor-not-allowed disabled:opacity-30" aria-label={'Revogar acesso de '+item.name}><Trash2 size={17}/></button></div>}
+    {isOwner&&<button type="button" onClick={()=>open('edit',item)} className={secondary} aria-label={'Editar '+item.name}>Editar</button>}
    </article>):<p className="p-5 text-sm text-white/60">Nenhum administrador encontrado.</p>}
   </div>}
   {state&&!isOwner&&state.ownerCount>0&&<p className="text-xs text-white/50">Somente proprietários podem adicionar, editar ou revogar administradores.</p>}
@@ -169,19 +169,21 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
       <label className="block space-y-1.5 text-sm font-semibold"><span>Nome (para contas novas)</span><input value={name} onChange={e=>setName(e.target.value)} maxLength={60} placeholder="Nome completo" className={input}/></label>
       <p className="text-xs text-white/50">Se o e-mail já estiver cadastrado, sua conta atual será promovida, sem alterar a senha. Para um e-mail novo, será criada uma conta com senha provisória.</p>
       <label className="block space-y-1.5 text-sm font-semibold"><span>Nível de acesso</span>{roleOptions}</label>
+      <p className="text-xs leading-relaxed text-white/55">Administrador: gerencia as operações do painel. Proprietário: possui os mesmos acessos e também gerencia outros administradores.</p>
      </>}
      {dialog==='edit'&&<>
       <p className="break-all text-sm text-white/60">{selected?.email}</p>
       <label className="block space-y-1.5 text-sm font-semibold"><span>Nome</span><input value={name} onChange={e=>setName(e.target.value)} minLength={2} maxLength={60} required className={input}/></label>
       <label className="block space-y-1.5 text-sm font-semibold"><span>Nível de acesso</span>{roleOptions}</label>
+      <p className="text-xs leading-relaxed text-white/55">Administrador: gerencia as operações do painel. Proprietário: também pode criar, editar e revogar acessos administrativos.</p>
       {selected?.role==='owner'&&state?.ownerCount===1&&<p className="text-xs text-amber-200">O último proprietário não pode perder esse papel.</p>}
      </>}
      {dialog==='revoke'&&<p className="text-sm leading-relaxed text-white/75">Deseja revogar o acesso de <strong>{selected?.name}</strong> ({selected?.email})? A pessoa perderá o acesso ao painel imediatamente, mas sua conta continuará funcionando.</p>}
      {dialog==='bootstrap'&&<p className="rounded-xl border border-amber-300/25 p-3 text-sm leading-relaxed text-white/75">Esta ação concede acesso completo para gerenciar administradores. Confirme apenas se esta for sua conta administrativa. A operação ficará registrada no histórico.</p>}
      {error&&<p role="alert" className="rounded-lg border border-red-400/30 p-3 text-sm text-red-300">{error}</p>}
-     <footer className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
-      <button type="button" disabled={busy} className={secondary} onClick={()=>setDialog(null)}><ArrowLeft size={15} className="mr-1 inline"/>Cancelar</button>
-      <button type="submit" disabled={busy||(dialog==='revoke'&&selected?.role==='owner'&&state?.ownerCount===1)} className={dialog==='revoke'?'rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40':primary}>{busy?'Salvando...':dialog==='create'?'Criar administrador':dialog==='edit'?'Salvar alterações':dialog==='revoke'?'Revogar acesso':'Confirmar propriedade'}</button>
+     <footer className={'flex flex-wrap items-center gap-3 border-t border-white/10 pt-4 '+(dialog==='edit'?'justify-between':'justify-end')}>
+      {dialog==='edit'&&selected&&<button type="button" disabled={busy||(selected.role==='owner'&&state?.ownerCount===1)} title={selected.role==='owner'&&state?.ownerCount===1?'Não é possível remover o último proprietário':'Revogar apenas o acesso administrativo, sem excluir a conta pessoal'} onClick={()=>open('revoke',selected)} className="inline-flex items-center gap-2 rounded-xl border border-red-400/40 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={16}/> Excluir acesso</button>}
+      <button type="submit" disabled={busy||(dialog==='revoke'&&selected?.role==='owner'&&state?.ownerCount===1)} className={dialog==='revoke'?'rounded-xl bg-red-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40':primary}>{busy?'Salvando...':dialog==='create'?'Criar administrador':dialog==='edit'?'Salvar alterações':dialog==='revoke'?'Confirmar exclusão':'Confirmar propriedade'}</button>
      </footer>
     </form>}
    </div>
