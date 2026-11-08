@@ -44,7 +44,9 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [user,setUser]=useState<User|null>(null);
   const [mode,setMode]=useState<Mode>('login');
   const [emailLoginOpen,setEmailLoginOpen]=useState(false);
-  const [providers,setProviders]=useState({google:false,meaple:false});
+  const [providers,setProviders]=useState({google:false,meaple:false,demoAdmin:false});
+  const [adminCredentials,setAdminCredentials]=useState<{email:string;password:string}|null>(null);
+  const [adminCredentialsCopied,setAdminCredentialsCopied]=useState(false);
   const [connections,setConnections]=useState<string[]>([]);
   useEffect(()=>{void fetch('/api/auth/providers').then(r=>r.json()).then(setProviders).catch(()=>{});},[]);
   useEffect(()=>{if(user)void privateParticipantGet<{providers:string[]}>('/api/auth/connections').then(j=>setConnections(j.providers||[])).catch(()=>{});},[user]);
@@ -78,6 +80,21 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
     }catch(e){setError(e instanceof Error?e.message:'Ocorreu um erro.');}finally{setBusy(false);}
   }
+  async function createAdminTest(){
+    if(busy||!providers.demoAdmin)return;
+    setBusy(true);setError('');setSuccess('');
+    try{
+      const created=await request('demo-admin',{});
+      const me=await request('me');
+      if(!me.user?.isAdmin)throw Error('O administrador foi criado, mas não foi possível confirmar a sessão. Tente entrar com as credenciais geradas.');
+      setAdminCredentials({email:created.user.email,password:created.password});
+      setAdminCredentialsCopied(false);
+      setUser(me.user);onUser?.(me.user);
+      void warmParticipantPrivateOffline();
+      window.history.replaceState({},'',getPendingGroupInvite()?'/groups':'/profile');
+    }catch(error){setError(error instanceof Error?error.message:'Não foi possível criar o administrador de teste.');}
+    finally{setBusy(false);}
+  }
   const showLoading=useMinimumLoading(loading);
   if(showLoading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu perfil."/>;
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
@@ -108,6 +125,13 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       </form></section></div>,document.body)}
     {permissionOpen&&createPortal(<div role="presentation" className="fixed inset-0 z-[105] flex items-center justify-center bg-black/85 p-3"><section role="dialog" aria-modal="true" aria-label="Permissões" className="max-h-[90dvh] w-full max-w-lg space-y-4 overflow-y-auto rounded-2xl border border-[#c4ff40]/30 bg-[#1a1421] p-5"><div className="flex items-center justify-between"><h3 className="text-lg font-black">Permissões do aplicativo</h3><button aria-label="Fechar permissões" onClick={()=>setPermissionOpen(false)}><X size={20}/></button></div><ProfilePermissions onClose={()=>setPermissionOpen(false)}/></section></div>,document.body)}
     {success&&<p role="status" className="mb-4 text-xs text-[#c4ff40]">{success}</p>}
+    {adminCredentials&&<section aria-label="Credenciais do administrador criado" className="mb-4 space-y-2 rounded-xl border border-[#c4ff40]/35 bg-[#c4ff40]/[.06] p-4 text-sm">
+     <p className="font-bold text-[#c4ff40]">Administrador criado — guarde estas credenciais</p>
+     <p className="break-all text-white/80">E-mail: <strong>{adminCredentials.email}</strong></p>
+     <p className="break-all text-white/80">Senha: <strong>{adminCredentials.password}</strong></p>
+     <p className="text-xs text-white/55">A senha só será exibida nesta sessão. Copie antes de sair ou atualizar a página.</p>
+     <button type="button" onClick={async()=>{try{await navigator.clipboard.writeText('E-mail: '+adminCredentials.email+'\nSenha: '+adminCredentials.password);setAdminCredentialsCopied(true);}catch{setError('Não foi possível copiar as credenciais.');}}} className="inline-flex items-center gap-2 rounded-lg border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Copy size={14}/>{adminCredentialsCopied?'Copiado!':'Copiar credenciais'}</button>
+    </section>}
     <section className="mb-4 space-y-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><h3 className="text-sm font-bold">Contas conectadas</h3><p className="text-xs text-white/55">Vincule o Google ou a Meaple à sua conta Submundo. Seus dados de login permanecem com cada provedor.</p>{providers.google&&<ProviderCard kind="google" connected={connections.includes('google')}/>}{providers.meaple&&<ProviderCard kind="meaple" connected={connections.includes('meaple')}/>}</section>
     <MeapleTickets connected={connections.includes('meaple')}/>
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
@@ -126,8 +150,11 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       {providers.google&&<a href="/api/auth/google/start" className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-white/20 bg-white px-4 py-3 text-sm font-bold text-[#202124] transition hover:bg-[#f1f3f4]"><span aria-hidden="true" className="text-xl font-black" style={{background:'conic-gradient(#4285f4 0deg 100deg,#34a853 100deg 175deg,#fbbc05 175deg 230deg,#ea4335 230deg 300deg,#4285f4 300deg)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>G</span>Continuar com Google</a>}
       {providers.meaple&&<a href="/api/auth/meaple/start" className="flex min-h-12 items-center justify-center gap-3 rounded-xl border border-violet-400/50 bg-violet-500/15 px-4 py-3 text-sm font-bold text-violet-100 transition hover:bg-violet-500/25"><Ticket size={19} className="text-violet-300"/>Continuar com Meaple</a>}
       <button type="button" onClick={()=>change('register')} className="block w-full pt-3 text-center text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button>
+      {providers.demoAdmin&&<button type="button" disabled={busy} onClick={()=>void createAdminTest()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-2.5 text-xs font-semibold text-white/70 disabled:opacity-50"><ShieldCheck size={16}/>{busy?'Criando administrador...':'Criar usuário admin'}</button>}
      </div>:
     <form onSubmit={submit} className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
+      {mode==='login'&&<button type="button" onClick={()=>{setEmailLoginOpen(false);setError('');setPassword('');}} className="inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-bold text-[#c4ff40]"><ArrowLeft size={18}/> Voltar para outras formas de entrar</button>}
+      {mode!=='login'&&<button type="button" onClick={()=>change('login')} className="inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-[#c4ff40]"><ArrowLeft size={18}/> Voltar para login</button>}
       {mode==='register'&&<><p className="text-sm font-bold text-[#c4ff40]">Seu perfil (opcional)</p><label className="block text-sm font-bold">Nome ou apelido<input minLength={2} maxLength={60} autoComplete="name" value={name} onChange={e=>setName(e.target.value)} className={field+' mt-2'} placeholder="Como quer ser chamado?"/></label><label className="block text-sm font-bold">Celular / WhatsApp<input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength={15} value={phone} onChange={e=>setPhone(formatMobile(e.target.value))} className={field+' mt-2'} placeholder="(15) 99999-9999"/></label><p className="text-xs text-white/50">Nenhum desses dados é obrigatório. O celular não será exibido aos amigos.</p></>}
       {['login','forgot','register'].includes(mode)&&<label className="block text-sm font-bold">E-mail<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} className={field+' mt-2'} placeholder="voce@email.com"/></label>}
       {mode==='password'&&<label className="block text-sm font-bold">Senha atual<input required type="password" autoComplete="current-password" value={current} onChange={e=>setCurrent(e.target.value)} className={field+' mt-2'}/></label>}
@@ -138,10 +165,8 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
       <button disabled={busy} className={btn}>{busy?'Aguarde...':mode==='register'?'Criar conta':({login:'Entrar',forgot:'Enviar link de recuperação',password:'Salvar nova senha',reset:'Redefinir senha'})[mode]}</button>
       {mode==='login'&&<div className="flex flex-col items-center gap-3 pt-2">
        <button type="button" onClick={()=>change('forgot')} className="text-xs text-white/65 underline">Esqueci minha senha</button>
-       <button type="button" onClick={()=>{setEmailLoginOpen(false);setError('');setPassword('');}} className="inline-flex items-center gap-2 text-sm font-bold text-[#c4ff40]"><ArrowLeft size={15}/> Outras formas de entrar</button>
        <button type="button" onClick={()=>change('register')} className="text-sm font-bold text-[#c4ff40]">Não tem conta? Cadastre-se</button>
       </div>}
-      {mode!=='login'&&<button type="button" onClick={()=>{if(user){change('login');}else{change('login');}}} className="flex w-full items-center justify-center gap-2 pt-2 text-xs text-white/60"><ArrowLeft size={14}/> {user?'Voltar':'Voltar para login'}</button>}
     </form>}
     {mode==='forgot'&&<p className="mt-4 text-xs leading-relaxed text-white/50">O envio de e-mails depende da configuração do serviço de recuperação pelo administrador.</p>}
     <p className="mt-5 text-center text-xs leading-relaxed text-white/40"><LockKeyhole size={13} className="mr-1 inline"/> Sua senha não fica salva no navegador. O acesso usa sessão protegida.</p>
