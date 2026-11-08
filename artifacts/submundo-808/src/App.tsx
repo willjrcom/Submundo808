@@ -154,7 +154,7 @@ function ParticipantApp() {
   useEffect(() => { localStorage.setItem('submundo-friends', JSON.stringify(friends)); }, [friends]);
   useEffect(() => { localStorage.setItem('submundo-name', name); }, [name]);
   const message = (text: string) => { setNotice(text); };
-  const addFriend = () => { const value = friendName.trim(); if (!value) return; if (friends.some(f => f.name.toLowerCase() === value.toLowerCase())) { message('Esse nome já está na sua lista.'); return; } setFriends(v => [...v, { id: Date.now(), name: value, status: 'pendente', share: false }]); setFriendName(''); message('Convite demonstrativo criado neste aparelho.'); };
+  const addFriend = () => { const value = friendName.trim(); if (!value) return; if (friends.some(f => f.name.toLowerCase() === value.toLowerCase())) { message('Esse nome já está na sua lista.'); return; } setFriends(v => [...v, { id: Date.now(), name: value, status: 'pendente', share: false }]); setFriendName(''); message('Solicitação registrada neste aparelho.'); };
   const changeFriend = (id: number, patch: Partial<Friend>) => setFriends(v => v.map(f => f.id === id ? { ...f, ...patch } : f));
   const parts=routePath.split('/').filter(Boolean);
   const allowed=parts.length===0||(parts.length===1&&['map','menu','friends','groups','profile','login','register','recovery','reset-password','change-password','mapa','cardapio','amigos','perfil','cadastrar'].includes(parts[0]))||(parts.length===2&&['schedule','programacao'].includes(parts[0])&&!!parts[1]);
