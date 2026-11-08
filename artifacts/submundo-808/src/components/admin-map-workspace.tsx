@@ -522,15 +522,6 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    ?'Calibração salva no servidor. As outras alterações da planta continuam pendentes em Salvar mapa.'
    :'Calibração salva com sucesso. Não é necessário clicar em Salvar mapa novamente.');
  }
- function applyOverviewCoordinates(result:Extract<ManualCalibrationResult,{ok:true}>){
-  if(!calibrationArea)return;
-  // Same validation and 5 m margin expansion as manual calibration.
-  // Keep undo/redo and only persist when the user chooses Salvar mapa.
-  checkpoint();
-  setAreas(old=>old.map(a=>({...a,gps:a.id===calibrationArea.id?result.gps:{}})));
-  setError('');
-  setNotice('Coordenadas atualizadas no rascunho. Clique em Salvar mapa para publicar a calibração.');
- }
  function requestCalibrationSave(){
   if(!ready){setError('Registre os quatro cantos antes de salvar.');return;}
   if(!geometryValid){setError('Os cantos parecem invertidos ou cruzados. Confira os quatro pontos.');return;}
@@ -921,8 +912,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    mapName={mapName} gps={corners} areas={areas}
    hasUnsavedChanges={dirty}
    onClose={()=>setCalibrationOverviewOpen(false)}
-   onRecalibrate={recalibrateMap}
-   onApplyCoordinates={applyOverviewCoordinates}/>}
+   onRecalibrate={recalibrateMap}/>}
   {manualCalibrationOpen&&<AdminManualCalibration mapName={mapName}
     values={manualValues}
     onChange={(key,field,value)=>setManualValues(previous=>({...previous,[key]:{...previous[key],[field]:value}}))}
