@@ -2,7 +2,7 @@ import MeapleTickets from './meaple-tickets';
 import ProfilePermissions, {hasPendingAppPermissions} from './profile-permissions';
 import {optimizeAvatar} from './optimized-avatar';
 import {clearCachedGroupInvites} from './group-invite-cache';
-import {privateParticipantGet,clearOfflineParticipantData,warmParticipantPrivateOffline,getOfflineProfile} from './offline-private-data';
+import {privateParticipantGet,clearOfflineParticipantData,warmParticipantPrivateOffline} from './offline-private-data';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
 import {createPortal} from 'react-dom';
@@ -84,6 +84,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   if(showLoading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu perfil."/>;
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   if(user && mode!=='password' && mode!=='reset')return <div>
+    {!navigator.onLine&&<p role="status" className="mb-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs text-[#c4ff40]">Perfil salvo neste aparelho. Você pode consultar suas informações sem conexão; alterações de conta exigem internet.</p>}
     <section className="mb-5 overflow-hidden rounded-3xl border border-[#c4ff40]/25 bg-[#17101e]">
       <div className="relative h-24 bg-[radial-gradient(circle_at_70%_20%,#652b77,transparent_60%),linear-gradient(100deg,#2b1335,#15111d)]">
        <button type="button" disabled={!navigator.onLine} onClick={()=>{setProfileName(user.name);setProfilePhone(formatMobile(user.phone||''));setProfileInstagram(user.instagram||'');setProfileAvatar(user.avatar||'');setProfileEditing(true);}} aria-expanded={profileEditing} className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-[#17101e]/85 px-3 py-2 text-xs font-semibold text-[#c4ff40] shadow-lg backdrop-blur transition hover:border-[#c4ff40]/70" title="Editar meu perfil"><Pencil size={14}/>Editar perfil</button>
