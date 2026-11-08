@@ -29,7 +29,11 @@ test('CRUD tem modal para criar, editar, revogar e assumir propriedade',()=>{
  assert.match(component,/role==='owner'/);
  assert.match(component,/onClick=\{\(\)=>open\('create'\)\}/);
  assert.match(component,/const isOwner=state\?\.role==='owner'/);
- assert.match(component,/disabled=\{item\.role==='owner'&&state\.ownerCount<=1\}/);
+ assert.doesNotMatch(component,/onClick=\{\(\)=>open\('revoke',item\)\}/);
+ assert.match(component,/disabled=\{busy\|\|\(selected\.role==='owner'&&state\?\.ownerCount===1\)\}/);
+ assert.match(component,/onClick=\{\(\)=>open\('revoke',selected\)\}/);
+ assert.match(component,/Confirmar exclusão/);
+ assert.match(component,/Não é possível remover o último proprietário/);
 });
 
 test('interface preserva conta de usuário e não divulga credenciais em histórico',()=>{
@@ -44,4 +48,31 @@ test('interface preserva conta de usuário e não divulga credenciais em histór
  assert.match(backend,/ensureAdminAccessSchema\(db\)/);
  assert.match(backend,/adminRole:adminRole\(db,user\.id\)/);
  assert.match(backend,/handleAdminAccess/);
+});
+
+test('listagem tem apenas Editar; excluir fica dentro de Editar administrador e exige confirmação',()=>{
+ const listStart=component.indexOf('{filtered.length?filtered.map(item=>');
+ const listEnd=component.indexOf('{state&&!isOwner&&state.ownerCount>0',listStart);
+ assert.ok(listStart>0&&listEnd>listStart);
+ const list=component.slice(listStart,listEnd);
+ assert.match(list,/onClick=\{\(\)=>open\('edit',item\)\}/);
+ assert.doesNotMatch(list,/open\('revoke',item\)/);
+ assert.doesNotMatch(list,/<Trash2/);
+ const editStart=component.indexOf("{dialog==='edit'&&<>");
+ const editFooter=component.indexOf("<footer className=",editStart);
+ assert.ok(editStart>0&&editFooter>editStart);
+ const footer=component.slice(editFooter,component.indexOf('</footer>',editFooter));
+ assert.match(footer,/dialog==='edit'&&selected&&<button/);
+ assert.match(footer,/onClick=\{\(\)=>open\('revoke',selected\)\}/);
+ assert.match(footer,/Excluir acesso/);
+ assert.match(footer,/dialog==='revoke'\?'Confirmar exclusão'/);
+ assert.doesNotMatch(footer,/Cancelar|ArrowLeft/);
+ assert.match(component,/aria-label="Fechar modal"/);
+ assert.match(component,/A conta pessoal e seus dados serão mantidos/);
+});
+
+test('UI esclarece que o proprietário herda o acesso operacional e gerencia outros administradores',()=>{
+ assert.match(component,/Administrador: gerencia as operações do painel/);
+ assert.match(component,/Proprietário: também pode criar, editar e revogar acessos administrativos/);
+ assert.match(component,/selected\.role==='owner'&&state\?\.ownerCount===1/);
 });
