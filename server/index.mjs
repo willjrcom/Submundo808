@@ -112,6 +112,7 @@ db.prepare("UPDATE event_general_settings SET entry_rules=?,accepted_documents=?
 db.exec("CREATE TABLE IF NOT EXISTS app_branding(id INTEGER PRIMARY KEY CHECK(id=1),logo_data TEXT NOT NULL DEFAULT '')");
 db.prepare('INSERT OR IGNORE INTO app_branding(id) VALUES(1)').run();
 if(!db.prepare('PRAGMA table_info(app_branding)').all().some(c=>c.name==='accent_color'))db.exec("ALTER TABLE app_branding ADD COLUMN accent_color TEXT NOT NULL DEFAULT '#c4ff40'");
+if(!db.prepare('PRAGMA table_info(app_branding)').all().some(c=>c.name==='cover_data'))db.exec("ALTER TABLE app_branding ADD COLUMN cover_data TEXT NOT NULL DEFAULT ''");
 db.exec("CREATE TABLE IF NOT EXISTS map_markers(map_id TEXT PRIMARY KEY,markers_json TEXT NOT NULL DEFAULT '[]')");
 db.exec('CREATE TABLE IF NOT EXISTS user_activity(user_id TEXT PRIMARY KEY,last_seen INTEGER NOT NULL)');
 if(!db.prepare('PRAGMA table_info(events)').all().some(c=>c.name==='is_published')) db.exec('ALTER TABLE events ADD COLUMN is_published INTEGER NOT NULL DEFAULT 1');
@@ -651,6 +652,30 @@ http.createServer(async (req,res)=>{
           db.exec('BEGIN');try{db.prepare('DELETE FROM event_products WHERE event_id=?').run(id);for(const p of items)db.prepare('INSERT INTO event_products VALUES(?,?,?)').run(id,p.product_id,p.price_cents);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}return json(res,200,{ok:true});
         }
         if(req.method==='GET'&&key==='branding')return json(res,200,{logo:db.prepare('SELECT logo_data FROM app_branding WHERE id=1').get()?.logo_data||'',color:db.prepare('SELECT accent_color FROM app_branding WHERE id=1').get()?.accent_color||'#c4ff40'});
+        if(req.method==='GET'&&key==='company-profile'){
+          const branding=db.prepare('SELECT logo_data,cover_data,accent_color FROM app_branding WHERE id=1').get();
+          const settings=db.prepare('SELECT minimum_age,entry_rules,accepted_documents,cancellation_policy,contact_name,contact_phone FROM event_general_settings WHERE id=1').get();
+          return json(res,200,{profile:{logo:branding?.logo_data||'',cover:branding?.cover_data||'',color:branding?.accent_color||'#c4ff40',settings}});
+        }
+        if(req.method==='POST'&&key==='company-profile'){
+          const b=await body(req),settings=b.settings,color=typeof b.color==='string'?b.color.trim().toLowerCase():'',logo=b.logo,cover=b.cover;
+          const validImage=(value,maxLength)=>typeof value==='string'&&value.length<=maxLength&&(!value||/^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(value));
+          if(!validImage(logo,120000)||!validImage(cover,110000))return json(res,400,{error:'Envie imagens PNG, JPG ou WebP dentro do limite permitido.'});
+          if(!/^#[0-9a-f]{6}$/.test(color))return json(res,400,{error:'Escolha uma cor hexadecimal válida.'});
+          if(!settings||typeof settings!=='object'||!Number.isInteger(settings.minimum_age)||settings.minimum_age<0||settings.minimum_age>100||
+           ['entry_rules','accepted_documents','cancellation_policy'].some(key=>typeof settings[key]!=='string'||settings[key].length>5000))
+           return json(res,400,{error:'Verifique a classificação etária e as regras gerais.'});
+          const contactName=String(settings.contact_name||'').trim(),contactPhone=String(settings.contact_phone||'').replace(/\D/g,'');
+          if(contactName.length>100||(contactPhone&&contactPhone.length!==11))return json(res,400,{error:'Informe um celular com DDD e 11 dígitos, ou deixe em branco.'});
+          db.exec('BEGIN');
+          try{
+            db.prepare('UPDATE app_branding SET logo_data=?,cover_data=?,accent_color=? WHERE id=1').run(logo,cover,color);
+            db.prepare('UPDATE event_general_settings SET minimum_age=?,entry_rules=?,accepted_documents=?,cancellation_policy=?,contact_name=?,contact_phone=? WHERE id=1')
+             .run(settings.minimum_age,settings.entry_rules,settings.accepted_documents,settings.cancellation_policy,contactName,contactPhone);
+            db.exec('COMMIT');
+          }catch(error){db.exec('ROLLBACK');throw error;}
+          return json(res,200,{profile:{logo,cover,color,settings:{minimum_age:settings.minimum_age,entry_rules:settings.entry_rules,accepted_documents:settings.accepted_documents,cancellation_policy:settings.cancellation_policy,contact_name:contactName,contact_phone:contactPhone}}});
+        }
         if(req.method==='POST'&&key==='accent-color'){
           const b=await body(req),color=String(b.color||'').trim().toLowerCase();
           if(!/^#[0-9a-f]{6}$/.test(color))return json(res,400,{error:'Escolha uma cor hexadecimal válida.'});
