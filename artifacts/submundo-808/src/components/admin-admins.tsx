@@ -4,7 +4,7 @@ import {Check,Copy,History,Plus,Search,Shield,ShieldCheck,Trash2,UserRound,X} fr
 type Role='owner'|'admin';
 type Admin={id:string;name:string;email:string;role:Role;created_at:number;granted_by?:string|null};
 type Candidate={id:string;name:string;email:string};
-type Log={id:string;actor_name:string|null;target_name:string|null;action:string;old_role:Role|null;new_role:Role|null;created_at:number};
+type Log={id:string;actor_name:string|null;target_name:string|null;target_user_id:string;action:string;old_role:Role|null;new_role:Role|null;created_at:number};
 type Dialog='create'|'edit'|'revoke'|'bootstrap'|null;
 type AdminList={items:Admin[];role:Role;ownerCount:number;bootstrapEligible:boolean};
 type Created={newAccount:boolean;emailSent:boolean;tempPassword?:string;item:Admin};
