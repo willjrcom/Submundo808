@@ -88,6 +88,7 @@ test('exclusão de ambientes mostra os bloqueios e nunca remove pontos vinculado
  assert.match(editor,/m\.area_id===deleteTarget\.id\|\|m\.from_area_id===deleteTarget\.id\|\|m\.to_area_id===deleteTarget\.id/);
  assert.match(editor,/const deleteBlocked=deleteGrouped\|\|deleteLinkedPoints\.length>0/);
  assert.match(editor,/if\(item\.kind==='area'&&deleteBlocked\)return/);
+ assert.match(editor,/X,AlertTriangle/);
  assert.match(editor,/Não é possível excluir este ambiente/);
  assert.match(editor,/Desagrupe o ambiente antes de excluí-lo/);
  assert.match(editor,/Como resolver:/);
