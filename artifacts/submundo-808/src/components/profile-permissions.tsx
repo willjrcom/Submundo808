@@ -31,6 +31,8 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [locationActive,setLocationActive]=useState(false);
  const [locationBusy,setLocationBusy]=useState(false),[locationLoading,setLocationLoading]=useState(true);
  const [locationMessage,setLocationMessage]=useState(''),[locationError,setLocationError]=useState('');
+ const [stopPending,setStopPending]=useState(()=>{try{return localStorage.getItem('submundo-gps-stop-pending')==='1';}catch{return false;}});
+ const locationSyncRef=useRef(false);
  const ios=isIosDevice();
  const needsIosInstall=ios&&!installed;
  const embeddedIos=isIosEmbeddedBrowser();
@@ -70,17 +72,10 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    .finally(()=>{if(alive)setLocationLoading(false);});
   return()=>{alive=false;};
  },[]);
- async function stopLocationSession(){
-  if(locationBusy)return;
-  setLocationBusy(true);setLocationError('');setLocationMessage('');
-  // Bloqueie novas transmissões mesmo antes de receber resposta do servidor.
-  try{localStorage.setItem('submundo-gps-stop-pending','1');}catch{}
-  window.dispatchEvent(new Event('submundo-location-stop'));
-  setLocationActive(false);
-  if(!navigator.onLine){
-   setLocationMessage('Localização interrompida neste aparelho. A desativação será sincronizada quando houver internet.');
-   setLocationBusy(false);return;
-  }
+ async function syncPendingStop(){
+  if(locationSyncRef.current||!navigator.onLine)return;
+  locationSyncRef.current=true;
+  setLocationBusy(true);setLocationError('');
   try{
    const response=await fetch('/api/location/preferences',{
     method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
@@ -91,9 +86,34 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    const stopped=await fetch('/api/location/stop',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
    if(!stopped.ok)throw Error('Não foi possível confirmar a remoção da última localização.');
    try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
+   setStopPending(false);
    setLocationMessage('Localização e compartilhamento encerrados.');
-  }catch(error){setLocationError(error instanceof Error?error.message:'Não foi possível sincronizar a desativação.');}
-  finally{setLocationBusy(false);}
+  }catch(error){
+   setStopPending(true);
+   setLocationError((error instanceof Error?error.message:'Não foi possível sincronizar a desativação.')+' Toque em Tentar sincronizar quando houver internet.');
+  }finally{locationSyncRef.current=false;setLocationBusy(false);}
+ }
+ useEffect(()=>{
+  const onOnline=()=>{
+   try{if(localStorage.getItem('submundo-gps-stop-pending')==='1')void syncPendingStop();}
+   catch{}
+  };
+  window.addEventListener('online',onOnline);
+  if(navigator.onLine)onOnline();
+  return()=>window.removeEventListener('online',onOnline);
+ },[]);
+ async function stopLocationSession(){
+  if(locationBusy||locationSyncRef.current)return;
+  setLocationBusy(true);setLocationError('');setLocationMessage('');
+  try{localStorage.setItem('submundo-gps-stop-pending','1');}catch{}
+  window.dispatchEvent(new Event('submundo-location-stop'));
+  setLocationActive(false);setStopPending(true);
+  if(!navigator.onLine){
+   setLocationMessage('GPS interrompido neste aparelho. A desativação no servidor será sincronizada quando a internet voltar.');
+   setLocationBusy(false);return;
+  }
+  setLocationBusy(false);
+  await syncPendingStop();
  }
  async function installApp(){
   clearNotice();
@@ -259,6 +279,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   </section>}
   {locationMessage&&<p role="status" className="rounded-lg border border-white/15 p-3 text-xs text-white/70">{locationMessage}</p>}
   {locationError&&<p role="alert" className="rounded-lg border border-rose-400/40 p-3 text-xs text-rose-200">{locationError}</p>}
+  {stopPending&&navigator.onLine&&<button type="button" disabled={locationBusy} onClick={()=>void syncPendingStop()} className="rounded-lg border border-amber-400/35 px-3 py-2 text-xs font-semibold text-amber-100 disabled:opacity-50">{locationBusy?'Sincronizando...':'Tentar sincronizar'}</button>}
   <p className="text-xs text-white/45">Se uma permissão foi bloqueada, ajuste-a nas configurações do navegador ou do dispositivo. O aplicativo não pode autorizar permissões automaticamente.</p>
   {onClose&&<button type="button" onClick={onClose} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">Concluir</button>}
   {tutorialOpen&&createPortal(<div role="presentation" onClick={e=>{if(e.target===e.currentTarget)setTutorialOpen(false);}} className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/90 px-3 pt-[max(16px,env(safe-area-inset-top))] pb-[max(16px,env(safe-area-inset-bottom))]">
