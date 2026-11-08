@@ -65,10 +65,21 @@ self.addEventListener('fetch',event=>{
   return;
  }
  if(request.mode==='navigate'){
-  // Always use the SPA root as cache key, never a query containing invite tokens.
-  event.respondWith(networkFirst(request,SHELL,ROOT,3200)
-   .catch(async()=>(await caches.open(SHELL)).match(ROOT))
-   .then(response=>response||new Response('Instale o aplicativo com internet para usar offline.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}})));
+  // Deep links can contain invite or password-reset tokens. Never cache their
+  // HTML as the SPA root: only cache an actual navigation to the bare root.
+  event.respondWith((async()=>{
+   const cache=await caches.open(SHELL);
+   const controller=new AbortController();
+   const timer=setTimeout(()=>controller.abort(),3200);
+   try{
+    const response=await fetch(request,{signal:controller.signal,cache:'no-cache'});
+    if(url.href===ROOT&&response.ok)await safePut(cache,ROOT,response);
+    return response;
+   }catch{
+    return (await cache.match(ROOT))||
+     new Response('Instale o aplicativo com internet para usar offline.',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
+   }finally{clearTimeout(timer);}
+  })());
   return;
  }
  if(isShellAsset(url)){
