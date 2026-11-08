@@ -434,21 +434,27 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    }
   },[activeEventId]);
   const stopSharing=async()=>{
+   // Immediately stop the device's GPS, regardless of network availability.
    cancelGpsStartup();
+   if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
+   setLocalGpsEnabled(false);setLocalGpsError('');
+   if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);
+   setLocationSetupOpen(false);setGpsPermissionRequired(false);lastSend.current=0;
+   setSharingExpiresAt(null);setSharingEventId(null);
+   trackingRef.current=false;setTracking(false);
+   setLocation(null);locationRef.current=null;setGeoError('');
+   // Persist an outstanding stop so a flaky/offline phone won't silently resume
+   // previously shared location after network recovery.
+   try{localStorage.setItem('submundo-gps-stop-pending','1');}catch{}
+   if(!navigator.onLine){setGeoError('GPS parado. A desativação no servidor será sincronizada quando houver internet.');return;}
    try{
     await savePrefs(false,false);
-    
-    shareEpoch.current++;sharingRef.current=false;setSharing(false);
-    setLocationSetupOpen(false);
-    setGpsPermissionRequired(false);lastSend.current=0;
-    setSharingExpiresAt(null);setSharingEventId(null);
-    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
-    trackingRef.current=false;setTracking(false);
-    setLocation(null);locationRef.current=null;setGeoError('');
     await requestLocation('stop',{});
-    setGeoError('Compartilhamento encerrado e posição removida do servidor.');
+    try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
+    setFriendError('');
    }catch(error){
-    setGeoError('Não foi possível confirmar a desativação no servidor. Verifique a conexão e toque novamente em Desativar compartilhamento.');
+    setGeoError('GPS parado. Não foi possível confirmar a desativação no servidor; tentaremos ao reconectar.');
     setFriendError(error instanceof Error?error.message:'Falha ao interromper o compartilhamento.');
    }
   };
@@ -474,26 +480,24 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    const onGpsSuccess=(position:GeolocationPosition)=>{
     if(cancelled())return;
     gpsInitialCancel.current=null;
+    // GPS starts rendering locally before waiting for the network. If sharing
+    // cannot start, it remains available offline with the same single control.
+    gpsActivatingRef.current=false;
+    rawGpsTimestamp.current=0;
+    consumeGpsPosition(position);
+    startGps();
+    if(dontShareRef.current||!navigator.onLine)return;
     void (async()=>{
      try{
-      // Só registra o compartilhamento no servidor depois que temos GPS real.
-      if(!sharingRef.current){
-       await savePrefs(true,true,shareMode,activeEventId);
-       if(cancelled())return;
-       shareEpoch.current++;
-       sharingRef.current=true;setSharing(true);
-      }
-      if(cancelled())return;
+      await savePrefs(true,true,shareMode,activeEventId);
+      if(cancelled()||dontShareRef.current)return;
+      shareEpoch.current++;
+      sharingRef.current=true;setSharing(true);
       lastSend.current=0;
-      rawGpsTimestamp.current=0;
-      gpsActivatingRef.current=false;
-      consumeGpsPosition(position);
-      startGps();
+      sendLatestLocation();
      }catch(error){
       if(cancelled())return;
-      gpsActivatingRef.current=false;
-      setGpsStarting(false);
-      setGeoError(error instanceof Error?error.message:'Não foi possível ativar a localização.');
+      setFriendError('O GPS está ativo no aparelho, mas o compartilhamento não foi sincronizado. Continuaremos usando a planta offline.');
      }
     })();
    };
@@ -509,6 +513,69 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     }
    });
   };
+
+  const enableSharingWithActiveGps=async()=>{
+   if(dontShareRef.current||sharingRef.current||!navigator.onLine||!activeEventId||
+      activeEvent?.location_sharing_enabled!==1||authRequired||
+      (localGpsWatch.current===null&&watch.current===null))return;
+   try{
+    await savePrefs(true,true,shareMode,activeEventId);
+    if(dontShareRef.current||!navigator.onLine)return;
+    shareEpoch.current++;sharingRef.current=true;setSharing(true);
+    lastSend.current=0;sendLatestLocation();setFriendError('');
+   }catch{
+    setFriendError('GPS local ativo. Sem conexão para compartilhar com amigos; tentaremos quando a rede voltar.');
+   }
+  };
+  const toggleUnifiedGps=()=>{
+   if(localGpsWatch.current!==null||watch.current!==null||gpsStarting||sharingRef.current){
+    void stopSharing();
+    return;
+   }
+   // Trigger device permission synchronously on the user's first tap.
+   // Even when sharing is enabled by default, an opt-out or bad network
+   // must never prevent the user's own live position from working.
+   try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
+   if(!dontShareRef.current&&navigator.onLine&&activeEvent?.location_sharing_enabled===1&&!authRequired){
+    startSharing();
+   }else{
+    toggleLocalPosition();
+   }
+  };
+  const saveLocationSettings=async()=>{
+   if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
+    try{await savePrefs(true,true,shareMode,activeEventId);}
+    catch{return;}
+   }
+   setLocationSetupOpen(false);
+  };
+  useEffect(()=>{
+   const onPrivacyChange=(event:Event)=>{
+    const disabled=(event as CustomEvent<{disabled:boolean}>).detail?.disabled===true;
+    dontShareRef.current=disabled;setDontShareWithFriends(disabled);
+    if(disabled){
+     // The server already revoked live locations. Keep the device GPS running.
+     shareEpoch.current++;sharingRef.current=false;setSharing(false);
+     setSharingExpiresAt(null);setSharingEventId(null);setFriendError('');
+    }else if(localGpsWatch.current!==null||watch.current!==null){
+     void enableSharingWithActiveGps();
+    }
+   };
+   const onOnline=()=>{
+    if(localStorage.getItem('submundo-gps-stop-pending')==='1'){
+     void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false})
+      .then(()=>requestLocation('stop',{}))
+      .then(()=>{localStorage.removeItem('submundo-gps-stop-pending');})
+      .catch(()=>{});
+    }else if(localGpsWatch.current!==null||watch.current!==null){
+     void enableSharingWithActiveGps();
+    }
+   };
+   window.addEventListener('submundo-friend-sharing-privacy',onPrivacyChange);
+   window.addEventListener('online',onOnline);
+   if(navigator.onLine)onOnline();
+   return()=>{window.removeEventListener('submundo-friend-sharing-privacy',onPrivacyChange);window.removeEventListener('online',onOnline);};
+  },[activeEventId,shareMode,shareWithGroups,authRequired]);
 
  // Não projetar pessoas em plantas cujas referências geográficas não foram
  // validadas: a grade de seed não corresponde ao espaço físico do evento.
