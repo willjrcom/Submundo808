@@ -70,6 +70,12 @@ function ParticipantApp() {
     return()=>{window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
   },[]);
   const [routePath,setRoutePath]=useState(window.location.pathname);
+  const [isOffline,setIsOffline]=useState(()=>!navigator.onLine);
+  useEffect(()=>{
+    const refresh=()=>setIsOffline(!navigator.onLine);
+    window.addEventListener('online',refresh);window.addEventListener('offline',refresh);
+    return()=>{window.removeEventListener('online',refresh);window.removeEventListener('offline',refresh);};
+  },[]);
   const [inboxOpen,setInboxOpen]=useState(false);
   // O destino fica em estado React até o mapa e seus pontos estarem carregados.
   const [focusRequest,setFocusRequest]=useState<{eventId:string;pointId:string;requestId:number}|null>(()=>{
@@ -158,6 +164,7 @@ function ParticipantApp() {
         <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="relative rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/>{unreadCount>0&&<span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#c4ff40] px-1 text-center text-[10px] font-bold text-black">{unreadCount>99?"99+":unreadCount}</span>}</button>
       </header>
       <main className="px-5 pt-7">
+       {isOffline&&<p role="status" className="mb-3 rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs text-[#c4ff40]">Modo offline · exibindo a última versão baixada do evento. O GPS do aparelho pode continuar funcionando.</p>}
        {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
         {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} focusRequest={focusRequest} onChooseEvent={()=>navigate('inicio')}/></div>}
         {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={chooseAnotherEvent}/>}
