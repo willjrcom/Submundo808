@@ -142,6 +142,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
   const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
   const dontShareRef=useRef(false);
+  const privacyRevision=useRef(0);
   const prefsQueue=useRef<Promise<void>>(Promise.resolve());
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
@@ -237,13 +238,16 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      if(alive)setGpsPermissionRequired(true);
     }
    };
+   const requestedPrivacyRevision=privacyRevision.current;
    void requestLocation('preferences').then(p=>{
     if(!alive)return;
     setPrefsReady(true);
     setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
     setShareWithGroups(p.shareWithGroups===true);
-    dontShareRef.current=p.dontShareWithFriends===true;
-    setDontShareWithFriends(dontShareRef.current);
+    if(privacyRevision.current===requestedPrivacyRevision){
+     dontShareRef.current=p.dontShareWithFriends===true;
+     setDontShareWithFriends(dontShareRef.current);
+    }
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
     if(p.shareEnabled&&!dontShareRef.current&&localStorage.getItem('submundo-gps-stop-pending')!=='1'){
@@ -575,6 +579,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   useEffect(()=>{
    const onPrivacyChange=(event:Event)=>{
     const disabled=(event as CustomEvent<{disabled:boolean}>).detail?.disabled===true;
+    privacyRevision.current++;
     dontShareRef.current=disabled;setDontShareWithFriends(disabled);
     if(disabled){
      // The server already revoked live locations. Keep the device GPS running.
