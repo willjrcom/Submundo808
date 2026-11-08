@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
 import {displayLabel} from './display-label';
-import {MapPin,Navigation,ArrowUp,Info} from 'lucide-react';
+import {MapPin,Navigation,ArrowUp,Info,Settings2,X} from 'lucide-react';
 import {pointIconFor} from './map-point-icons';
 import {gpsToMap,stableGps,offMapInfo,mapSize,formatMapDistance,distanceMeters,type GpsFix} from './map-location-utils';
 import {mapPercentToGps} from './map-calibration-geometry';
@@ -140,6 +140,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [localGpsError,setLocalGpsError]=useState('');
   const localGpsWatch=useRef<number|null>(null);
   const [locationSetupOpen,setLocationSetupOpen]=useState(false);
+  const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
+  const dontShareRef=useRef(false);
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
   const [sharingExpiresAt,setSharingExpiresAt]=useState<number|null>(null);
@@ -154,7 +156,24 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const shareEpoch=useRef(0);
   const [authRequired,setAuthRequired]=useState(false);
   const [friendError,setFriendError]=useState('');
-  const requestLocation=async(route:string,body?:object)=>{const response=await fetch('/api/location/'+route,{method:body?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});if(response.status===401){setAuthRequired(true);throw Error('Entre na sua conta para compartilhar ou ver seus amigos.');}const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||'Falha na localização.'),{status:response.status});return data;};
+  const requestLocation=async(route:string,body?:object)=>{
+   const controller=new AbortController();
+   const timeout=window.setTimeout(()=>controller.abort(),10000);
+   try{
+    const response=await fetch('/api/location/'+route,{
+     method:body?'POST':'GET',credentials:'same-origin',
+     headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,
+     signal:controller.signal
+    });
+    if(response.status===401){setAuthRequired(true);throw Object.assign(new Error('Entre na sua conta para compartilhar ou ver seus amigos.'),{status:401});}
+    const data=await response.json();
+    if(!response.ok)throw Object.assign(new Error(data.error||'Falha na localização.'),{status:response.status});
+    return data;
+   }catch(error){
+    if((error as Error).name==='AbortError')throw Error('Conexão muito lenta. O GPS e a planta continuam funcionando offline.');
+    throw error;
+   }finally{window.clearTimeout(timeout);}
+  };
   const watch=useRef<number|null>(null);
   const trackingRef=useRef(false);
   const savePrefs=async(gpsEnabled:boolean,shareEnabled:boolean,mode:ShareMode='event',eventId:string|null=null)=>{
@@ -216,9 +235,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     setPrefsReady(true);
     setShareMode(p.mode==='4h'||p.mode==='1h'?p.mode:'event');
     setShareWithGroups(p.shareWithGroups===true);
+    dontShareRef.current=p.dontShareWithFriends===true;
+    setDontShareWithFriends(dontShareRef.current);
     setSharingExpiresAt(p.expiresAt||null);
     setSharingEventId(p.eventId||null);
-    if(p.shareEnabled){
+    if(p.shareEnabled&&!dontShareRef.current){
      if(!activeEventRef.current||p.eventId!==activeEventRef.current){
       // Do not resume GPS from a different festival or a legacy unscoped session.
       void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
@@ -523,7 +544,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const eventForSharing=activeEvent;
  const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
- const showLoading=useMinimumLoading(!!activeEventId&&(!mapsReady||loadedForEventId!==activeEventId||!mapResolved||!prefsReady||!friendsReady));
+ const showLoading=useMinimumLoading(!!activeEventId&&(!mapsReady||loadedForEventId!==activeEventId||!mapResolved));
  if(showLoading){
   return <PageLoading label="Carregando mapa" description="Preparando o mapa e as localizações."/>;
  }
