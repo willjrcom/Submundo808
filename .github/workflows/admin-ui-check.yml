@@ -35,4 +35,8 @@ jobs:
             tests/entity-crud-ui.test.mjs \
             tests/event-save-validation.test.mjs
       - name: Build frontend
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
         run: pnpm --filter @workspace/submundo-808 build
