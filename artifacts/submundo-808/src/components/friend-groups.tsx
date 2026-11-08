@@ -4,6 +4,7 @@ import SocialAvatar from './social-avatar';
 import GroupAvatar from './group-avatar';
 import {optimizeAvatar} from './optimized-avatar';
 import GroupQrScanner from './group-qr-scanner';
+import {captureGroupInviteFromUrl,getPendingGroupInvite,clearPendingGroupInvite,savePendingGroupInvite} from './pending-group-invite';
 
 type Person={id:string;name:string;avatar?:string};
 type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string;photo?:string};
@@ -23,9 +24,9 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const [pendingMemberOperation,setPendingMemberOperation]=useState<'remove'|'admin'|'member'|null>(null);
  useEffect(()=>{onDetailChange?.(selected!==null);},[selected,onDetailChange]);
  const [mode,setMode]=useState<'list'|'create'|'join'>('list'),[name,setName]=useState(''),[description,setDescription]=useState(''),[color,setColor]=useState(colors[0]),[photo,setPhoto]=useState('');
- const [inviteLink,setInviteLink]=useState(''),[inviteModalOpen,setInviteModalOpen]=useState(false),[inviteError,setInviteError]=useState(''),[joinLink,setJoinLink]=useState(new URLSearchParams(window.location.search).get('group_invite')||'');
+ const [inviteLink,setInviteLink]=useState(''),[inviteModalOpen,setInviteModalOpen]=useState(false),[inviteError,setInviteError]=useState(''),[joinLink,setJoinLink]=useState(()=>captureGroupInviteFromUrl());
  const [preview,setPreview]=useState<(Group&{joined:boolean})|null>(null),[qrOpen,setQrOpen]=useState(false);
- const [linkedInvite,setLinkedInvite]=useState(()=>Boolean(new URLSearchParams(window.location.search).get('group_invite')));
+ const [linkedInvite,setLinkedInvite]=useState(()=>Boolean(getPendingGroupInvite()));
  const [previewLoading,setPreviewLoading]=useState(false),[participantsOpen,setParticipantsOpen]=useState(false),[participantNames,setParticipantNames]=useState<{name:string}[]>([]),[participantsLoading,setParticipantsLoading]=useState(false);
  const [dialog,setDialog]=useState<'leave'|'delete'|null>(null),[successorId,setSuccessorId]=useState(''),[confirmation,setConfirmation]=useState('');
  const [alertOpen,setAlertOpen]=useState(false),[alertTab,setAlertTab]=useState<'send'|'history'>('send'),[alertChoice,setAlertChoice]=useState(''),[alerts,setAlerts]=useState<{id:string;code:string;message:string;createdAt:number;senderName:string;avatar?:string}[]>([]);
@@ -35,7 +36,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState('');
  const load=async()=>{const j=await groupApi('');setGroups(j.groups||[]);};
  const showError=(e:unknown)=>setError(e instanceof Error?e.message:'Falha na operação.');
- useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(new URLSearchParams(window.location.search).has('group_invite')){setLinkedInvite(true);setMode('join');}return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
+ useEffect(()=>{void load().catch(showError);const refresh=()=>void load().catch(showError);window.addEventListener('submundo-social-updated',refresh);if(getPendingGroupInvite()){setLinkedInvite(true);setMode('join');setJoinLink(getPendingGroupInvite());}return()=>window.removeEventListener('submundo-social-updated',refresh);},[]);
  useEffect(()=>{if(mode!=='create'&&!friendPickerOpen)return;let active=true;const timer=window.setTimeout(()=>{setLoadingFriends(true);groupApi('/friends?q='+encodeURIComponent(friendQuery.trim())).then(j=>{if(active)setFriendChoices(j.friends||[]);}).catch(showError).finally(()=>{if(active)setLoadingFriends(false);});},240);return()=>{active=false;window.clearTimeout(timer);};},[mode,friendPickerOpen,friendQuery]);
  const open=async(id:string)=>{setMemberActionsId(null);setPendingMemberOperation(null);setBusy(true);setError('');try{const j=await groupApi('/detail?id='+encodeURIComponent(id));setSelected(j.group);setMode('list');setInviteLink('');setInviteModalOpen(false);setInviteError('');setQrOpen(false);}catch(e){showError(e);}finally{setBusy(false);}};
  async function create(e:React.FormEvent){
@@ -72,7 +73,10 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   setBusy(true);setError('');
   try{
    const j=await groupApi('/join',{token:inviteToken(joinLink)});
-   setJoinLink('');setPreview(null);window.history.replaceState({},'',window.location.pathname);await load();await open(j.id);
+   clearPendingGroupInvite();setLinkedInvite(false);setJoinLink('');setPreview(null);
+   const url=new URL(window.location.href);url.searchParams.delete('group_invite');
+   window.history.replaceState({},'',url.pathname+url.search+url.hash);
+   await load();await open(j.id);
   }catch(e){showError(e);}finally{setBusy(false);}
  }
  function toggleFriend(id:string){setPickedFriends(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);}
@@ -296,7 +300,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
     <GroupAvatar name={g.name} color={g.color} icon={g.icon} photo={g.photo} size="sm"/>
     <span className="min-w-0 flex-1"><span className="block truncate font-bold">{g.name}</span><span className="text-xs text-white/55">{g.memberCount} integrantes</span><span className="mt-1 flex -space-x-1">{g.avatars.map(p=><SocialAvatar key={p.id} name={p.name} avatar={p.avatar} size="sm" className="ring-2 ring-[#0e0b14]"/>)}</span></span><span aria-hidden="true">›</span>
    </button>)}</>:
-   <div className="space-y-4"><button onClick={()=>{setMode('list');setError('');setPreview(null);}} className="inline-flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={17}/> Grupos</button>
+   <div className="space-y-4"><button onClick={()=>{if(linkedInvite)clearPendingGroupInvite();setLinkedInvite(false);setMode('list');setError('');setPreview(null);}} className="inline-flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={17}/> Grupos</button>
     {mode==='create'?<form onSubmit={e=>void create(e)} className="space-y-4 rounded-2xl border border-white/10 bg-white/[.04] p-5">
      <h3 className="text-lg font-bold">Criar grupo</h3><label className="block text-xs text-white/65">Nome do grupo<input required minLength={2} maxLength={60} value={name} onChange={e=>setName(e.target.value)} placeholder="Galera do Rolê" className="mt-2 w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/></label>
      <label className="block text-xs text-white/65">Descrição (opcional)<textarea maxLength={250} value={description} onChange={e=>setDescription(e.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/></label>
@@ -311,7 +315,7 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
       {!preview&&<GroupQrScanner onDetected={token=>{setError('');setJoinLink(token);setPreview(null);setParticipantsOpen(false);}} onError={setError}/>}
       <div className="flex items-center gap-3 text-xs text-white/40"><span className="h-px flex-1 bg-white/15"/><span>OU COLE O LINK</span><span className="h-px flex-1 bg-white/15"/></div>
       <p className="text-xs text-white/55">Use o QR Code ou cole um link ou código de convite recebido.</p>
-      <input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);setPreview(null);setParticipantsOpen(false);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/>
+      <input aria-label="Convite de grupo" value={joinLink} onChange={e=>{setJoinLink(e.target.value);if(linkedInvite)savePendingGroupInvite(e.target.value);setPreview(null);setParticipantsOpen(false);}} placeholder="Link do grupo" className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3 text-base text-white"/>
      </div>}
      {previewLoading&&<p role="status" className="text-sm text-white/65">Carregando convite...</p>}
      {preview&&<div className="space-y-3 rounded-xl border border-white/15 p-4">

@@ -10,6 +10,8 @@ import Friends from './components/friends';
 import NotificationCenter from './components/notification-center';
 import {attachVisualViewportNavigation} from './components/visual-viewport-nav';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
+import {captureGroupInviteFromUrl,getPendingGroupInvite} from './components/pending-group-invite';
+import {warmParticipantOffline} from './components/participant-offline';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
@@ -43,7 +45,10 @@ function Tag({ children }: { children: React.ReactNode }) { return <span classNa
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
 function tabFromUrl():Tab {
   const params=new URLSearchParams(window.location.search);
-  if(params.has('invite')||params.has('group_invite'))return 'amigos';
+  if(params.has('group_invite')){captureGroupInviteFromUrl(window.location.search);return 'amigos';}
+  if(params.has('invite'))return 'amigos';
+  // OAuth and email sign-in return to /profile, but pending invites must win.
+  if(getPendingGroupInvite()&&['/','/profile','/login','/register','/groups','/friends'].includes(window.location.pathname))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
   if(segment==='programacao'||segment==='schedule')return 'inicio';
   const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',groups:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
@@ -55,7 +60,22 @@ export default function App() {
 }
 function ParticipantApp() {
   useEffect(()=>attachVisualViewportNavigation(window,document.documentElement),[]);
+  useEffect(()=>{
+    // Public event data and map tiles (our own SVG/JSON, not Google satellite imagery)
+    // are saved separately from authentication, live locations and notifications.
+    void warmParticipantOffline();
+    const refresh=()=>{void warmParticipantOffline();};
+    window.addEventListener('online',refresh);
+    window.addEventListener('focus',refresh);
+    return()=>{window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
+  },[]);
   const [routePath,setRoutePath]=useState(window.location.pathname);
+  const [isOffline,setIsOffline]=useState(()=>!navigator.onLine);
+  useEffect(()=>{
+    const refresh=()=>setIsOffline(!navigator.onLine);
+    window.addEventListener('online',refresh);window.addEventListener('offline',refresh);
+    return()=>{window.removeEventListener('online',refresh);window.removeEventListener('offline',refresh);};
+  },[]);
   const [inboxOpen,setInboxOpen]=useState(false);
   // O destino fica em estado React até o mapa e seus pontos estarem carregados.
   const [focusRequest,setFocusRequest]=useState<{eventId:string;pointId:string;requestId:number}|null>(()=>{
@@ -144,6 +164,7 @@ function ParticipantApp() {
         <button aria-label="Avisos" onClick={() => setInboxOpen(true)} className="relative rounded-xl border border-white/10 p-2.5 text-white/70"><Bell size={18}/>{unreadCount>0&&<span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#c4ff40] px-1 text-center text-[10px] font-bold text-black">{unreadCount>99?"99+":unreadCount}</span>}</button>
       </header>
       <main className="px-5 pt-7">
+       {isOffline&&<p role="status" className="mb-3 rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs text-[#c4ff40]">Modo offline · exibindo a última versão baixada do evento. O GPS do aparelho pode continuar funcionando.</p>}
        {!allowed?<NotFound/>:<ErrorBoundary resetKey={routePath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>        {tab === 'inicio' && <PublicEvents activeEventId={activeEventId} onSelectEvent={selectEvent} onClearEvent={clearEvent}/>}
         {mapMounted&&<div hidden={tab!=='mapa'} aria-hidden={tab!=='mapa'}><VenueMap activeEventId={activeEventId} focusRequest={focusRequest} onChooseEvent={()=>navigate('inicio')}/></div>}
         {tab === 'cardapio' && <EventMenu activeEventId={activeEventId} onChooseEvent={chooseAnotherEvent}/>}
