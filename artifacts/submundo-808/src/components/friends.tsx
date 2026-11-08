@@ -1,5 +1,7 @@
 import FriendQR from './friend-qr';
 import FriendGroups from './friend-groups';
+import OfflineGroupInvites from './offline-group-invites';
+import {getCachedGroupInvites} from './group-invite-cache';
 import Account from './account';
 import {captureGroupInviteFromUrl,getPendingGroupInvite} from './pending-group-invite';
 import SocialAvatar from './social-avatar';
@@ -157,8 +159,10 @@ export default function Friends(){
       }
     }
   }
+  const hasOfflineGroupInvites=getCachedGroupInvites().length>0;
   const showLoading=useMinimumLoading(access==='loading');
   if(showLoading)return <PageLoading label="Carregando amigos" description="Verificando seu acesso e preparando sua lista de amigos."/>;
+  if(access==='error'&&!navigator.onLine)return <OfflineGroupInvites/>;
   if(access==='error')return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível carregar seus amigos.</p><p className="mt-2 text-xs text-red-200/70">{error}</p><button onClick={()=>{setAccess('loading');void load();}} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   return <div>
     <div className="mb-5"><p className={'text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40] '+(tab==='people'?'mb-2':'')}>Sua galera</p>{tab==='people'&&<h2 className="font-display text-2xl font-black uppercase">Meus amigos</h2>}</div>
@@ -166,7 +170,7 @@ export default function Friends(){
     {access==='guest'?pendingInvite?<div className="space-y-4" aria-label="Entrar no grupo convidado">
      <div className="rounded-2xl border border-[#c4ff40]/30 bg-[#c4ff40]/[.055] p-4"><p className="font-bold text-[#c4ff40]">Você recebeu um convite de grupo</p><p className="mt-2 text-sm text-white/70">Seu convite está guardado neste aparelho. Entre na sua conta ou cadastre-se aqui mesmo para continuar e confirmar sua entrada no grupo.</p></div>
      <Account onUser={user=>{if(user){setAccess('loading');void load();}}}/>
-    </div>:<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<><FriendGroups onDetailChange={setGroupDetailOpen}/>{!groupDetailOpen&&<button type="button" onClick={()=>switchTab('people')} className="mt-6 flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[.035] px-4 py-4 text-left"><span className="flex items-center gap-3"><Users size={20} className="text-[#c4ff40]"/><span><span className="block font-bold">Meus amigos</span><span className="text-xs text-white/55">Contatos salvos para suas próximas festas</span></span></span><span className="text-xs text-[#c4ff40]">{friends.length} amigo(s) ›</span></button>}</>:<>
+    </div>:!navigator.onLine&&hasOfflineGroupInvites?<OfflineGroupInvites/>:<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<>{!navigator.onLine&&hasOfflineGroupInvites&&<div className="mb-4"><OfflineGroupInvites/></div>}<FriendGroups onDetailChange={setGroupDetailOpen}/>{!groupDetailOpen&&<button type="button" onClick={()=>switchTab('people')} className="mt-6 flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[.035] px-4 py-4 text-left"><span className="flex items-center gap-3"><Users size={20} className="text-[#c4ff40]"/><span><span className="block font-bold">Meus amigos</span><span className="text-xs text-white/55">Contatos salvos para suas próximas festas</span></span></span><span className="text-xs text-[#c4ff40]">{friends.length} amigo(s) ›</span></button>}</>:<>
       <div className="mb-5 space-y-3">
        <label className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/[.04] px-3"><Search className="shrink-0 text-white/45" size={18}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar pessoas pelo nome" className="min-w-0 w-full bg-transparent p-3 text-base text-white outline-none"/></label>
        {query.trim().length===1&&<p className="text-xs text-white/50">Digite pelo menos duas letras.</p>}
