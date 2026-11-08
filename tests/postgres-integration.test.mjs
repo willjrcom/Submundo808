@@ -113,8 +113,10 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
    gpsEnabled:true,shareEnabled:false,analyticsEnabled:false,unifiedActivation:true
   }});
   assert.equal(invalidBundle.status,400,'Não habilitar sessão parcial com confirmação integrada.');
+  // O evento deste fixture termina a mais de 30 dias; o modo "event" é
+  // corretamente proibido. Verificar o novo consentimento com janela de 1h.
   const unified=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
-   gpsEnabled:true,shareEnabled:true,mode:'event',eventId:event.data.id,analyticsEnabled:true,
+   gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id,analyticsEnabled:true,
    shareWithGroups:false,unifiedActivation:true
   }});
   assert.equal(unified.status,200,JSON.stringify(unified.data));
