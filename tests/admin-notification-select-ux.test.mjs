@@ -14,8 +14,9 @@ test('cada tipo de notificação explica a finalidade da opção selecionada',()
 });
 
 test('o evento só aparece para o público conectado ao evento',()=>{
- assert.match(component,/audience==='event'&&<label[^>]*>Evento<select/);
- assert.match(component,/if\(next==='all'\)\{setEventId\(''\);setTargetId\(''\);setTargetKind\('event'\);\}/);
+ assert.match(component,/audience==='event'&&<div[^>]*>/);
+ assert.match(component,/aria-label="Selecionar evento"/);
+ assert.match(component,/if\(next==='all'\)\{setEventId\(''\);setTargetId\(''\);setTargetKind\('event'\);setEventQuery\(''\);setIncludePastEvents\(false\);\}/);
  assert.match(component,/eventId:audience==='event'\?eventId:''/);
  assert.match(component,/setEventId\(n\.audience==='event'\?/);
 });
@@ -31,4 +32,21 @@ test('selects reservam espaço e exibem uma seta recuada nas duas telas',()=>{
  assert.match(styles,/padding-right:\s*2\.75rem;/);
  assert.match(styles,/background-position:\s*right 1rem center;/);
  assert.match(styles,/background-size:\s*1rem 1rem;/);
+});
+
+test('uma notificação nova usa todos os usuários por padrão e edição preserva o público salvo',()=>{
+ assert.match(component,/\[audience,setAudience\]=useState\('all'\)/);
+ assert.match(component,/function reset\(\)\{[^\n]*setAudience\('all'\)/);
+ assert.match(component,/function begin\(n\?:Notification\)\{reset\(\);if\(n\)\{[^\n]*setAudience\(n\.audience\)/);
+});
+
+test('busca por nome e lista prioriza futuros, mas oferece acesso aos eventos encerrados',()=>{
+ assert.match(component,/aria-label="Buscar evento por nome"/);
+ assert.match(component,/event\.name\.toLocaleLowerCase\('pt-BR'\)\.includes\(term\)/);
+ assert.match(component,/notificationEventIsUpcoming\(event,now\)/);
+ assert.match(component,/event\.id===selectedId/);
+ assert.match(component,/Incluir eventos encerrados/);
+ assert.match(component,/\[includePastEvents,setIncludePastEvents\]=useState\(false\)/);
+ assert.match(component,/eventOptions\.map\(e=><option/);
+ assert.match(component,/notificationEventLabel\(e\)/);
 });
