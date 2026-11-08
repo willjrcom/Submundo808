@@ -88,10 +88,15 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
   setBusy(true);setError('');
   try{
    const j=await groupApi('/join',{token:inviteToken(joinLink)});
+   // Confirme que o grupo pode ser aberto antes de descartar o link:
+   // se a internet cair, uma nova tentativa será idempotente.
+   const detail=await groupApi('/detail?id='+encodeURIComponent(j.id));
+   await load();
+   setSelected(detail.group);setMode('list');
+   setInviteLink('');setInviteModalOpen(false);setInviteError('');setQrOpen(false);
    clearPendingGroupInvite();setLinkedInvite(false);setJoinLink('');setPreview(null);
    window.history.replaceState({},'','/groups');
    window.dispatchEvent(new Event('submundo-navigation'));
-   await load();await open(j.id);
   }catch(e){showError(e);}finally{setBusy(false);}
  }
  function toggleFriend(id:string){setPickedFriends(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);}
