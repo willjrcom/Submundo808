@@ -85,7 +85,7 @@ test('o botão principal ativa geolocalização antes de qualquer await/fetch',(
  const callbackStart=handler.indexOf('const onGpsSuccess=');
  assert.ok(callbackStart>0);
  assert.doesNotMatch(handler.slice(0,callbackStart),/await\s|fetch\(/);
- assert.match(handler.slice(callbackStart),/await savePrefs\(true,true\)/);
+ assert.match(handler.slice(callbackStart),/await savePrefs\(true,true,shareMode,activeEventId\)/);
  assert.match(source,/Busca de localização cancelada/);
  assert.match(source,/gpsActivatingRef\.current/);
 });
