@@ -5,7 +5,9 @@ const read=p=>readFileSync(new URL('../artifacts/submundo-808/src/components/'+p
 test('perfil explica que a permissão GPS não equivale a compartilhar e que há prazo',()=>{
  const content=read('account.tsx');
  assert.match(content,/A permissão de localização não ativa o compartilhamento/);
- assert.match(content,/escolher um evento e um prazo/);
+ assert.match(content,/Ativar GPS e compartilhar no Mapa/);
+ assert.match(content,/até o fim da festa/);
+ assert.match(content,/revogar a participação nas Estatísticas/);
  assert.doesNotMatch(content,/Nenhuma localização é coletada/);
 });
 test('falha em parar compartilhamento não é silenciosa',()=>{
