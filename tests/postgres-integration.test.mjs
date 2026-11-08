@@ -100,6 +100,38 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   assert.equal(enabled.status,200,JSON.stringify(enabled.data));
   const approved=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{gpsEnabled:true,shareEnabled:true,mode:'1h',eventId:event.data.id}});
   assert.equal(approved.status,200,JSON.stringify(approved.data));
+
+  // Consentimento integrado após toque informado no Mapa:
+  // revogação antiga continua eficaz até uma nova ativação explícita.
+  const optedOut=await api('/api/location/share-friends-preference',{method:'POST',cookie:register.cookie,body:{disabled:true}});
+  assert.equal(optedOut.status,200,JSON.stringify(optedOut.data));
+  const oldPreference=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
+   gpsEnabled:true,shareEnabled:true,mode:'event',eventId:event.data.id,analyticsEnabled:true
+  }});
+  assert.equal(oldPreference.status,403,'Nenhum carregamento automático pode superar a preferência antiga.');
+  const invalidBundle=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
+   gpsEnabled:true,shareEnabled:false,analyticsEnabled:false,unifiedActivation:true
+  }});
+  assert.equal(invalidBundle.status,400,'Não habilitar sessão parcial com confirmação integrada.');
+  const unified=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
+   gpsEnabled:true,shareEnabled:true,mode:'event',eventId:event.data.id,analyticsEnabled:true,
+   shareWithGroups:false,unifiedActivation:true
+  }});
+  assert.equal(unified.status,200,JSON.stringify(unified.data));
+  assert.equal(unified.data.analyticsEnabled,true);
+  assert.equal(unified.data.shareWithGroups,false);
+  const actual=await api('/api/location/preferences',{cookie:register.cookie});
+  assert.equal(actual.data.shareEnabled,true);
+  assert.equal(actual.data.analyticsEnabled,true);
+  assert.equal(actual.data.dontShareWithFriends,false);
+  const stoppedAll=await api('/api/location/preferences',{method:'POST',cookie:register.cookie,body:{
+   gpsEnabled:false,shareEnabled:false,analyticsEnabled:false,shareWithGroups:false
+  }});
+  assert.equal(stoppedAll.status,200,JSON.stringify(stoppedAll.data));
+  const afterStop=await api('/api/location/preferences',{cookie:register.cookie});
+  assert.equal(afterStop.data.shareEnabled,false);
+  assert.equal(afterStop.data.analyticsEnabled,false);
+
   const disabled=await api('/api/admin/edit-event',{method:'POST',cookie:register.cookie,body:{id:event.data.id,name:'Evento Teste PG',venue_id:venue.data.id,map_ids:[map.data.id],starts_at:'2027-01-01T20:00',ends_at:'2027-01-02T04:00',lineup:[],location_sharing_enabled:false}});
   assert.equal(disabled.status,200,JSON.stringify(disabled.data));
   const revoked=await api('/api/location/preferences',{cookie:register.cookie});
