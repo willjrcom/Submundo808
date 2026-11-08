@@ -130,7 +130,7 @@ test('fotos ou iniciais e visualização por grupos exigem consentimento explíc
  assert.match(avatar,/parts\[1\]\?\.\[0\]/);
  assert.doesNotMatch(frontend,/Compartilhar também com meus grupos/);
  assert.match(frontend,/shareWithGroups:false/);
- assert.match(frontend,/contribuirá para Estatísticas agregadas/);
+ assert.match(frontend,/contribua para estatísticas agregadas/);
  assert.match(frontend,/Perfil → Permissões/);
  assert.match(backend,/p.share_with_groups=1/);
  assert.match(notifications,/Aceitar amizade/);
