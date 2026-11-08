@@ -7,11 +7,15 @@ import GroupQrScanner from './group-qr-scanner';
 import GroupInviteQRCode from './group-invite-qr-code';
 import {cacheGroupInvite,findCachedGroupInvite,groupInviteUrl,removeCachedGroupInvite} from './group-invite-cache';
 import {captureGroupInviteFromUrl,getPendingGroupInvite,clearPendingGroupInvite,savePendingGroupInvite} from './pending-group-invite';
+import {privateParticipantGet} from './offline-private-data';
 
 type Person={id:string;name:string;avatar?:string};
 type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string;photo?:string};
 type GroupDetail=Group&{members:(Person&{role:string;relation:'self'|'friends'|'sent'|'received'|'none'})[];role:string};
 async function groupApi(route:string,data?:object){
+ if(!data&&(route===''||route.startsWith('/detail?id=')||route.startsWith('/alerts?id=')))
+  return privateParticipantGet<Record<string,any>>('/api/groups'+route);
+ if(!navigator.onLine)throw Error('É necessária uma conexão para concluir esta operação.');
  const r=await fetch('/api/groups'+route,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível concluir a operação.');return j;
 }
@@ -305,8 +309,8 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  </div>;
  return <div className="space-y-4">
   {mode==='list'?<><div className="grid grid-cols-2 gap-3">
-    <button className={button} onClick={()=>{setMode('create');setError('');}}><Plus className="mr-1 inline" size={16}/> Criar grupo</button>
-    <button className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold" onClick={()=>{setLinkedInvite(false);setJoinLink('');setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
+    <button disabled={!navigator.onLine} className={button} onClick={()=>{setMode('create');setError('');}}><Plus className="mr-1 inline" size={16}/> Criar grupo</button>
+    <button disabled={!navigator.onLine} className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold disabled:opacity-40" onClick={()=>{setLinkedInvite(false);setJoinLink('');setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
    </div><h3 className="pt-3 text-sm font-black uppercase">Meus grupos ({groups.length})</h3>
    {!groups.length?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users size={32} className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-semibold">Nenhum grupo ainda</p><p className="mt-2 text-sm text-white/55">Crie um grupo para organizar sua galera nas próximas festas.</p></div>:
    groups.map(g=><button key={g.id} onClick={()=>void open(g.id)} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left">
