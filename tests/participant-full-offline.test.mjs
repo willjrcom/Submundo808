@@ -52,6 +52,13 @@ test('sincroniza usuário e recupera Amigos, grupos, detalhes e ingressos offlin
  assert.deepEqual(await offline.privateParticipantGet('/api/meaple/tickets'),ticketsA);
  assert.equal(offline.getCachedFriendCode(),'c'.repeat(64));
 });
+test('rede instável com HTTP 503 mostra dados já sincronizados, sem mascarar um erro de autenticação',async()=>{
+ globalThis.navigator.onLine=true;
+ globalThis.fetch=async()=>({ok:false,status:503,json:async()=>({error:'Serviço indisponível'})});
+ assert.deepEqual(await offline.privateParticipantGet('/api/friends'),friendsA);
+ assert.deepEqual(await offline.privateParticipantGet('/api/groups/detail?id=g-one'),detailA);
+ assert.deepEqual(await offline.privateParticipantGet('/api/auth/me'),meA);
+});
 test('não armazena GPS de amigos, sessão ou buscas/convites por token',()=>{
  for(const path of [
   '/api/location/friends','/api/location/positions','/api/groups/preview?token=abc',
