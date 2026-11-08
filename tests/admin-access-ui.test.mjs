@@ -38,7 +38,7 @@ test('interface preserva conta de usuário e não divulga credenciais em histór
  assert.doesNotMatch(component,/localStorage\.setItem/);
  assert.match(component,/\/api\/admin\/admins/);
  assert.match(component,/\/api\/admin\/admins-search/);
- assert.match(component,/\/api\/admin\/admins-audit/);
+ assert.match(component,/adminApi<\{items:Log\[\]\}>\('admins-audit'\)/);
  assert.match(backend,/ensureAdminAccessSchema\(db\)/);
  assert.match(backend,/adminRole:adminRole\(db,user\.id\)/);
  assert.match(backend,/handleAdminAccess/);
