@@ -43,10 +43,13 @@ export async function registerPush({notification,serviceWorker,pushSupported,req
  const config=await response.json();
  if(!response.ok)throw new Error(config?.error||'Não foi possível consultar a configuração de notificações.');
  if(!config?.enabled||!config.publicKey)throw new Error('As notificações ainda não foram configuradas neste servidor.');
- const registration=await Promise.race([
-  serviceWorker.ready,
-  new Promise((_,reject)=>setTimeout(()=>reject(new Error('O aplicativo demorou para preparar notificações. Reabra-o e tente novamente.')),12000))
- ]);
+ const registration=await new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>reject(new Error('O aplicativo demorou para preparar notificações. Reabra-o e tente novamente.')),12000);
+  Promise.resolve(serviceWorker.ready).then(
+   value=>{clearTimeout(timeout);resolve(value);},
+   error=>{clearTimeout(timeout);reject(error);}
+  );
+ });
  let subscription=await registration.pushManager.getSubscription();
  if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:decodeVapidKey(config.publicKey,decode)});
  const res=await request('/api/push/subscribe',{
