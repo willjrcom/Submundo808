@@ -10,6 +10,8 @@ import Friends from './components/friends';
 import NotificationCenter from './components/notification-center';
 import {attachVisualViewportNavigation} from './components/visual-viewport-nav';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
+import {captureGroupInviteFromUrl,getPendingGroupInvite} from './components/pending-group-invite';
+import {warmParticipantOffline} from './components/participant-offline';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
@@ -43,7 +45,10 @@ function Tag({ children }: { children: React.ReactNode }) { return <span classNa
 function Title({ eyebrow, children }: { eyebrow: string; children: React.ReactNode }) { return <div className="mb-5"><p className="mb-2 text-[11px] font-bold uppercase tracking-[.24em] text-[#c4ff40]">{eyebrow}</p><h2 className="font-display text-2xl font-black uppercase leading-tight text-white">{children}</h2></div>; }
 function tabFromUrl():Tab {
   const params=new URLSearchParams(window.location.search);
-  if(params.has('invite')||params.has('group_invite'))return 'amigos';
+  if(params.has('group_invite')){captureGroupInviteFromUrl(window.location.search);return 'amigos';}
+  if(params.has('invite'))return 'amigos';
+  // OAuth and email sign-in return to /profile, but pending invites must win.
+  if(getPendingGroupInvite()&&['/','/profile','/login','/register','/groups','/friends'].includes(window.location.pathname))return 'amigos';
   const segment=window.location.pathname.replace(/^\/+|\/+$/g,'').split('/')[0];
   if(segment==='programacao'||segment==='schedule')return 'inicio';
   const routes:Record<string,Tab>={map:'mapa',menu:'cardapio',friends:'amigos',groups:'amigos',profile:'perfil',register:'perfil',login:'perfil',recovery:'perfil','reset-password':'perfil','change-password':'perfil',mapa:'mapa',cardapio:'cardapio',amigos:'amigos',perfil:'perfil',cadastrar:'perfil'};
@@ -55,6 +60,15 @@ export default function App() {
 }
 function ParticipantApp() {
   useEffect(()=>attachVisualViewportNavigation(window,document.documentElement),[]);
+  useEffect(()=>{
+    // Public event data and map tiles (our own SVG/JSON, not Google satellite imagery)
+    // are saved separately from authentication, live locations and notifications.
+    void warmParticipantOffline();
+    const refresh=()=>{void warmParticipantOffline();};
+    window.addEventListener('online',refresh);
+    window.addEventListener('focus',refresh);
+    return()=>{window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};
+  },[]);
   const [routePath,setRoutePath]=useState(window.location.pathname);
   const [inboxOpen,setInboxOpen]=useState(false);
   // O destino fica em estado React até o mapa e seus pontos estarem carregados.
