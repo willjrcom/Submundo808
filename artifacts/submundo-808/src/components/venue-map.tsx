@@ -618,7 +618,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const directLineStart=mapped?{x:Math.max(0,Math.min(100,mapped.x)),y:Math.max(0,Math.min(100,mapped.y))}:null;
  const directionsUrl=closestEntrance?'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(closestEntrance.target.lat+','+closestEntrance.target.lng):null;
  const scale=bounds?mapSize(bounds):null;
- const gpsActive=sharing&&tracking&&!!location&&!gpsPermissionRequired;
+ const gpsActive=localGpsEnabled||sharing||gpsStarting||tracking;
  const eventForSharing=activeEvent;
  const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
@@ -641,9 +641,9 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    <p className="text-[11px] leading-relaxed text-white/60">{dontShareWithFriends?'GPS apenas para você, inclusive offline.':activeEvent?.location_sharing_enabled!==1?'GPS local. O evento não permite compartilhar com amigos.':'Ao ativar o GPS, sua posição também fica visível aos amigos enquanto houver conexão.'}</p>
    {sharing&&sharingExpiresAt&&<p className="text-[11px] font-semibold text-[#c4ff40]">Compartilhando até {sharingDeadline}</p>}
   </div>
-  <button type="button" onClick={toggleUnifiedGps} aria-pressed={localGpsEnabled||sharing||gpsStarting}
-   className={'shrink-0 rounded-lg px-3 py-2 text-xs font-bold '+(localGpsEnabled||sharing||gpsStarting?'border border-red-400/40 text-red-200':'bg-[#c4ff40] text-black')}>
-   {localGpsEnabled||sharing||gpsStarting?'Parar GPS':'Ativar GPS'}
+  <button type="button" onClick={toggleUnifiedGps} aria-pressed={gpsActive}
+   className={'shrink-0 rounded-lg px-3 py-2 text-xs font-bold '+(gpsActive?'border border-red-400/40 text-red-200':'bg-[#c4ff40] text-black')}>
+   {gpsActive?'Parar GPS':'Ativar GPS'}
   </button>
   <button type="button" aria-label="Configurar localização" title="Configurar localização"
    onClick={()=>setLocationSetupOpen(true)} className="rounded-lg border border-white/20 p-2.5 text-white/80"><Settings2 size={17}/></button>
