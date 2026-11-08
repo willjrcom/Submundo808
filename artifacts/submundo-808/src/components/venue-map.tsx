@@ -366,7 +366,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    // User gesture begins geolocation watch directly; this works without internet.
    localGpsWatch.current=navigator.geolocation.watchPosition(
     position=>{consumeGpsPosition(position);setLocalGpsError('');},
-    error=>{setLocalGpsError(gpsErrorText(error));if(error.code===1){if(localGpsWatch.current!==null)navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;setLocalGpsEnabled(false);}},
+    error=>{setLocalGpsError(gpsErrorText(error));if(error.code===1){if(localGpsWatch.current!==null)navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;setLocalGpsEnabled(false);setTracking(false);trackingRef.current=false;setLocation(null);locationRef.current=null;}},
     {enableHighAccuracy:true,maximumAge:5000,timeout:18000}
    );
   };
@@ -539,8 +539,14 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     toggleLocalPosition();
     return;
    }
-   if(watch.current!==null||gpsStarting||sharingRef.current){
+   if(watch.current!==null||gpsStarting){
     void stopSharing();
+    return;
+   }
+   // The server may remember a past session while Android GPS is no longer on.
+   // A new user gesture must be able to restart the device GPS.
+   if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
+    startSharing();
     return;
    }
    // Trigger device permission synchronously on the user's first tap.
@@ -618,7 +624,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
  const directLineStart=mapped?{x:Math.max(0,Math.min(100,mapped.x)),y:Math.max(0,Math.min(100,mapped.y))}:null;
  const directionsUrl=closestEntrance?'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(closestEntrance.target.lat+','+closestEntrance.target.lng):null;
  const scale=bounds?mapSize(bounds):null;
- const gpsActive=localGpsEnabled||sharing||gpsStarting||tracking;
+ const gpsActive=localGpsEnabled||gpsStarting||tracking;
  const eventForSharing=activeEvent;
  const sharingDeadline=sharingExpiresAt?formatDeadline(sharingExpiresAt):'';
  const mapResolved=!selectedMap||(mapDataReady&&data?.map.id===selectedMap)||!!mapError;
