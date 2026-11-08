@@ -32,9 +32,9 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   const oldAdmins=await api('/api/admin/admins',{cookie:register.cookie});
   assert.equal(oldAdmins.status,200,JSON.stringify(oldAdmins.data));
   assert.equal(oldAdmins.data.ownerCount,0);
-  const initialOwner=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap',password:'SenhaNova123456'}});
+  const initialOwner=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap'}});
   assert.equal(initialOwner.status,200,JSON.stringify(initialOwner.data));
-  const initialOwnerAgain=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap',password:'SenhaNova123456'}});
+  const initialOwnerAgain=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap'}});
   assert.equal(initialOwnerAgain.status,403);
   const newAdminEmail='pg-admin-crud-'+Date.now()+'@example.invalid';
   const createdAdmin=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{
