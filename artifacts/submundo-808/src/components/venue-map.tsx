@@ -306,7 +306,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    }).catch(e=>{
     if(epoch!==shareEpoch.current)return;
     if([403,409,410].includes((e as {status?:number}).status||0)){
-     endLocalSharing('O prazo de compartilhamento terminou ou foi desativado.');
+     endFriendShareKeepingGps('Compartilhamento encerrado. O GPS local continua ativo.');
     }else setFriendError(e instanceof Error?e.message:'Falha ao enviar localização.');
    }).finally(()=>{sendBusy.current=false;});
   };
@@ -383,6 +383,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(localGpsWatch.current!==null){navigator.geolocation?.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
    };
   },[]);
+  const endFriendShareKeepingGps=(message:string)=>{
+   // Expiry/revocation stops publishing but never stops the phone's local GPS.
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);
+   setSharingExpiresAt(null);setSharingEventId(null);
+   setFriendError('');setGeoError(message);
+  };
   const endLocalSharing=(message:string)=>{
    gpsAttemptId.current++;
    gpsActivatingRef.current=false;
@@ -399,7 +405,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(!activeEvent||activeEvent.id!==activeEventId||activeEvent.location_sharing_enabled===1)return;
    setFriends([]);setLocationSetupOpen(false);
    if(sharingRef.current||gpsActivatingRef.current||watch.current!==null){
-    endLocalSharing('O organizador desabilitou a localização de amigos neste evento.');
+    endFriendShareKeepingGps('O organizador desabilitou o compartilhamento. Sua posição local permanece disponível.');
     void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
     void requestLocation('stop',{}).catch(()=>{});
    }
@@ -407,7 +413,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   useEffect(()=>{
    if(!sharingExpiresAt)return;
    const check=()=>{
-    if(Date.now()>=sharingExpiresAt)endLocalSharing('O compartilhamento terminou no horário escolhido.');
+    if(Date.now()>=sharingExpiresAt)endFriendShareKeepingGps('O compartilhamento terminou. O GPS local continua ativo.');
    };
    check();
    const timer=window.setInterval(check,5000);
