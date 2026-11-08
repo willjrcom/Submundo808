@@ -5,27 +5,20 @@ const read=path=>readFileSync(new URL('../artifacts/submundo-808/src/components/
 const map=read('venue-map.tsx');
 const perms=read('profile-permissions.tsx');
 
-test('o mapa e seus pontos aparecem antes dos controles de localização e orientação',()=>{
+test('o botão único de GPS aparece no início e o mapa permanece visível',()=>{
  const root=map.indexOf('return <section className="space-y-3">');
+ const gps=map.indexOf('aria-label="Controles de GPS"',root);
  const title=map.indexOf('Mapa do evento</h2>',root);
  const canvas=map.indexOf('ref={setMapElement}',title);
- const sharing=map.indexOf('Localização com amigos</h3>',root);
  const outside=map.indexOf('aria-label="Orientação até o evento"',root);
- assert.ok(root>=0&&title>root&&canvas>title,'mapa renderizado');
- assert.ok(sharing>canvas,'controles de compartilhamento devem ficar depois da planta');
- assert.ok(outside>canvas,'orientação deve ser mostrada depois da planta');
- assert.match(map,/bg-\[#17111d\] p-3 sm:p-5/);
+ assert.ok(root>=0&&gps>root&&title>gps&&canvas>title&&outside>canvas);
  assert.match(map,/text-xl font-black uppercase">Mapa do evento/);
-});
-test('informações de localização são compactas, mas deixam direção e desativação acessíveis',()=>{
- assert.match(map,/rounded-xl border border-\[#c4ff40\]\/20 bg-\[#c4ff40\]\/\[\.035\] px-3 py-2\.5/);
- assert.match(map,/Localização com amigos/);
- assert.match(map,/Até \{sharingDeadline\}/);
- assert.match(map,/gpsActive\?'Desativar localização'/);
+ assert.match(map,/onClick=\{toggleUnifiedGps\}/);
+ assert.match(map,/role="dialog" aria-modal="true" aria-label="Configurações de localização"/);
+ assert.match(map,/Por quanto tempo compartilhar\?/);
+ assert.match(map,/Compartilhar também com meus grupos/);
  assert.match(map,/Como chegar à entrada/);
- assert.match(map,/em linha reta/);
- assert.match(map,/Desativar compartilhamento/);
- assert.doesNotMatch(map,/className="space-y-3 rounded-2xl border border-\[#c4ff40\]\/35 bg-\[#211a29\] p-4"/);
+ assert.doesNotMatch(map,/Localização com amigos<\/h3>/);
 });
 test('estatísticas anônimas não aparecem na página do mapa nem na ativação do GPS',()=>{
  assert.doesNotMatch(map,/analyticsConsent|toggleAnalyticsConsent|analyticsBusy/);
