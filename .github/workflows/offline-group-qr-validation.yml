@@ -1,0 +1,31 @@
+name: Validate group QR offline (temporary)
+on:
+  push:
+    branches:
+      - feat/offline-group-invite-qr
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies with frozen lockfile
+        run: pnpm install --frozen-lockfile
+      - name: QR offline and groups regressions
+        run: node --test tests/group-invite-offline-qr.test.mjs tests/group-invite-modal.test.mjs tests/group-invite-auth-resume.test.mjs tests/participant-offline-pwa.test.mjs
+      - name: Validate participant frontend build
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build
+      - name: Check PWA assets
+        run: |
+          test -s artifacts/submundo-808/dist/public/offline-assets.json
+          node --check artifacts/submundo-808/public/sw.js
