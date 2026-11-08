@@ -23,7 +23,9 @@ test('PWA build generates an asset manifest after Vite completes',()=>{
 test('service worker uses cache fallback for navigation and public map JSON only',()=>{
  assert.match(sw,/request\.mode==='navigate'/);
  assert.match(sw,/cache\.match\(cacheKey\)/);
- assert.match(sw,/catch\(async\(\)=>\(await caches\.open\(SHELL\)\)\.match\(ROOT\)\)/);
+ assert.match(sw,/if\(url\.href===ROOT&&response\.ok\)await safePut\(cache,ROOT,response\)/);
+ assert.match(sw,/return \(await cache\.match\(ROOT\)\)\|\|/);
+ assert.doesNotMatch(sw,/networkFirst\(request,SHELL,ROOT/);
  assert.match(sw,/if\(url\.pathname\.startsWith\('\/api'\)\)/);
  assert.match(sw,/if\(!isPublicApi\(url\)\)return/);
  assert.doesNotMatch(sw,/api\/auth\/me|\/api\/groups\/detail|\/api\/location\/friends/);
