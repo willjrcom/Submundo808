@@ -63,7 +63,7 @@ test('opt-out remove só compartilhamento, mantém GPS e bloqueia novos envios a
  assert.match(map,/shareEpoch\.current\+\+;sharingRef\.current=false;setSharing\(false\)/);
  assert.match(map,/dontShareRef\.current=disabled;setDontShareWithFriends\(disabled\)/);
  assert.match(map,/if\(disabled\)\{/);
- assert.match(map,/if\(dontShareRef\.current\|\|sharingRef\.current\|\|!navigator\.onLine/);
+ assert.match(map,/if\(autoShareSuppressed\.current\|\|dontShareRef\.current\|\|sharingRef\.current\|\|!navigator\.onLine/);
  assert.match(server,/share_friends_disabled/);
  assert.match(map,/sendLatestLocation\(\)/);
  assert.match(map,/const endFriendShareKeepingGps=\(message:string\)=>\{/);
