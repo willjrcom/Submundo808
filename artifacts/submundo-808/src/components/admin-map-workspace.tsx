@@ -62,7 +62,7 @@ function editableAreaGeometry(area:Area):AreaGeometry{
   curves:{...(legacy?{[legacy.side]:legacy}:{}),...(geometry.curves||{})}};
 }
 export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
- const [mapName,setMapName]=useState(map.name),[nameSaving,setNameSaving]=useState(false),[renameOpen,setRenameOpen]=useState(false);
+ const [mapName,setMapName]=useState(map.name),[renameDraft,setRenameDraft]=useState(map.name),[renameError,setRenameError]=useState(''),[nameSaving,setNameSaving]=useState(false),[renameOpen,setRenameOpen]=useState(false);
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
  const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
  const [frame,setFrame]=useState<MapFrame>({...DEFAULT_MAP_FRAME}),[frameEditing,setFrameEditing]=useState(false);
@@ -208,6 +208,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
  },[editMenuOpen]);
  useEffect(()=>{
   const onKeyboard=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'&&renameOpen){event.preventDefault();if(!nameSaving)setRenameOpen(false);return;}
    if(event.key==='Escape'&&editMenuOpen){event.preventDefault();setEditMenuOpen(false);return;}
    if(event.key==='Escape'&&pendingDiscardAction){event.preventDefault();event.stopPropagation();if(!loading&&!saving)setPendingDiscardAction(null);return;}
    if(event.key==='Escape'&&pendingDelete){event.preventDefault();event.stopPropagation();setPendingDelete(null);return;}
@@ -231,7 +232,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   };
   window.addEventListener('keydown',onKeyboard);
   return()=>window.removeEventListener('keydown',onKeyboard);
- },[editMenuOpen,calibrationOpen,manualCalibrationOpen,calibrationChoiceOpen,calibrationOverviewOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
+ },[renameOpen,nameSaving,editMenuOpen,calibrationOpen,manualCalibrationOpen,calibrationChoiceOpen,calibrationOverviewOpen,captureReview,pendingDelete,pendingDiscardAction,loading,saving,history,future,areas,markers,frame]);
 
  function checkpoint(){editRevision.current+=1;setHistory(v=>[...v.slice(-39),{areas,markers,frame}]);setFuture([]);setDirty(true);setNotice('');}
  function undo(){if(!history.length)return;editRevision.current+=1;const previous=history[history.length-1];setFuture(v=>[...v,{areas,markers,frame}]);setHistory(v=>v.slice(0,-1));setAreas(previous.areas);setMarkers(previous.markers);setFrame(previous.frame);setDirty(true);setResizeId(null);}
@@ -614,7 +615,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
   {draftUnavailable&&dirty&&<p role="alert" className="rounded-xl border border-amber-400/35 bg-amber-400/10 p-3 text-xs text-amber-100">O navegador não permitiu salvar o rascunho local. Evite atualizar a página até conseguir salvar o mapa no servidor.</p>}
   <div className="rounded-xl border border-white/10 bg-white/[.035]">
   <div className="flex flex-wrap items-center gap-2 p-2">
-   <button type="button" onClick={()=>setRenameOpen(v=>!v)} aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
+   <button type="button" onClick={()=>{setRenameDraft(mapName);setRenameError('');setRenameOpen(true);}} aria-haspopup="dialog" aria-expanded={renameOpen} className={button+' '+(renameOpen?'border-[#c4ff40] text-[#c4ff40]':'')}><Pencil size={16}/> Renomear planta</button>
    <button onClick={createArea} className={button}><Plus size={16}/> Ambiente</button>
    <button onClick={createMarker} className={button}><MapPin size={16}/> Ponto</button>
    <button onClick={()=>{setEditLayout(!frameEditing);setFrameEditing(v=>!v);setResizeId(null);setSelected('');setEditMenuOpen(false);setGroupOpen(false);setCurveOpen(false);}} aria-pressed={editing&&frameEditing} className={button+' '+(editing&&frameEditing?'border-[#c4ff40] bg-[#c4ff40]/15 text-[#c4ff40]':'')}><Maximize2 size={16}/>{editing&&frameEditing?'Concluir área do mapa':'Editar área do mapa'}</button>
@@ -635,11 +636,15 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    </div>
    {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes ou grupos retangulares conectados. Arraste a nova parte até encostar em uma das bordas do grupo.</p>}
   </section></div>}
-  {renameOpen&&  <form onSubmit={async event=>{event.preventDefault();const name=mapName.trim();if(!name||nameSaving)return;setNameSaving(true);setError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="flex flex-wrap items-end gap-3 border-t border-white/10 p-3">
-   <label className="min-w-0 flex-1 space-y-1 text-xs text-white/60">Nome da planta<input maxLength={100} required value={mapName} onChange={e=>setMapName(e.target.value)} className={input}/></label>
-   <button type="submit" disabled={nameSaving||!mapName.trim()||mapName.trim()===map.name&&notice==='Nome da planta atualizado.'} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button>
-  </form>
-  }
+  {renameOpen&&<div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget&&!nameSaving)setRenameOpen(false);}}>
+   <form role="dialog" aria-modal="true" aria-labelledby="rename-map-title" onSubmit={async event=>{event.preventDefault();const name=renameDraft.trim();if(!name||nameSaving)return;setNameSaving(true);setRenameError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setMapName(name);setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setRenameError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="w-full max-w-md space-y-4 rounded-2xl border border-[#c4ff40]/35 bg-[#191320] p-4 shadow-2xl sm:p-6">
+    <div className="flex items-center justify-between gap-3"><h3 id="rename-map-title" className="text-lg font-black">Renomear planta</h3><button type="button" aria-label="Fechar renomeação" disabled={nameSaving} onClick={()=>setRenameOpen(false)} className={button}><X size={18}/></button></div>
+    <p className="text-sm text-white/60">Altere somente o nome da planta. Ambientes, pontos e calibração serão preservados.</p>
+    <label className="block space-y-2 text-sm font-semibold text-white/75">Nome da planta<input autoFocus maxLength={100} required value={renameDraft} onChange={e=>setRenameDraft(e.target.value)} className={input}/></label>
+    {renameError&&<p role="alert" className="text-xs text-red-300">{renameError}</p>}
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" disabled={nameSaving} onClick={()=>setRenameOpen(false)} className={button}>Cancelar</button><button type="submit" disabled={nameSaving||!renameDraft.trim()||renameDraft.trim()===mapName} className="rounded-xl bg-[#c4ff40] px-4 py-2.5 text-sm font-bold text-black disabled:opacity-40">{nameSaving?'Salvando...':'Salvar nome'}</button></div>
+   </form>
+  </div>}
   </div>
   <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_290px]">
    <div className="min-w-0 space-y-3">
