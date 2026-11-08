@@ -5,7 +5,7 @@ Ao acessar o aplicativo do participante com internet, ele baixa uma cópia local
 
 Os conteúdos públicos são atualizados quando houver internet. A geração da lista versionada de assets acontece após o build Vite. **É necessário abrir o PWA conectado pelo menos uma vez para preparar o cache**. O aplicativo exibe uma indicação quando o dispositivo está offline.
 
-O cache **não inclui** autenticação, sessões, dados privados, convites, grupos, notificações pessoais nem posições dos amigos. Envio de avisos, entrada em grupos, autenticação e atualização da posição de terceiros ainda exigem conexão. Satélite do Google e imagens de domínios externos também não são garantidos offline; a planta interna é renderizada com os dados públicos e coordenadas salvas.
+O **cache compartilhado do Service Worker** não inclui autenticação, sessões, grupos privados, notificações pessoais nem posições dos amigos. Como exceção, os links de QR Code gerados explicitamente pela própria conta são mantidos separadamente no armazenamento local do aparelho, não no cache de APIs. Envio de avisos, entrada em grupos, autenticação e atualização da posição de terceiros ainda exigem conexão. Satélite do Google e imagens de domínios externos também não são garantidos offline; a planta interna é renderizada com os dados públicos e coordenadas salvas.
 
 ## GPS do próprio participante sem internet
 Na aba Mapa, o botão **Mostrar minha posição** ativa o GPS diretamente pelo navegador, sem login e sem compartilhar localização. A latitude e longitude recebidas são convertidas localmente para a planta georreferenciada. A localização continua mudando se o aparelho fornecer GPS durante a falta de internet. Leituras antigas são ocultadas e a precisão pode variar muito em ambientes fechados. O usuário pode parar o GPS local pelo mesmo botão.
@@ -14,6 +14,13 @@ Teste manual no Android: abrir o PWA conectado, carregar o evento, o mapa e o ca
 
 ## Convites após login/cadastro
 O link /groups?group_invite=TOKEN fica guardado por até 48 horas no armazenamento local do navegador. Pessoas sem sessão veem a tela **Entrar no grupo convidado**, com login e cadastro; após autenticar (inclusive com Google ou Meaple), o aplicativo recupera o convite e mostra a prévia do grupo. A entrada depende de confirmação explícita. O token é descartado após a entrada ou cancelamento.
+
+## QR Code de convite de grupo offline
+Na aba Amigos → grupo → Convidar, o aplicativo solicita o convite ao servidor com internet, guarda o token **por até 30 dias neste dispositivo** e desenha o QR Code como SVG diretamente no navegador, sem dependência de imagens externas. Em visitas posteriores, é possível voltar a exibir o mesmo QR Code sem rede.
+
+Ao reiniciar o PWA sem conexão, a aba Amigos oferece **Convites salvos offline** para acessar o QR Code de grupos previamente preparados, mesmo quando a API de grupos está indisponível. Convites nunca abertos com internet não podem ser criados offline. Ao sair/excluir um grupo ou sair da conta, o aplicativo remove os tokens locais. Se o convite deixar de ser válido no servidor (por exemplo, grupo excluído), a confirmação de entrada falhará quando o destinatário voltar a ficar online.
+
+Gerar/exibir o QR Code não precisa de internet após o primeiro carregamento. **Escanear o código é possível no outro celular, mas autenticar e entrar no grupo ainda exigem internet.** Não armazenar convites no Service Worker ou em endpoints públicos.
 
 ## Testes
 Os testes de regressão abrangem o convite persistente e o login, as restrições de cache para APIs públicas, o GPS local e a geração da lista de assets pelo build. A publicação passa por GitHub Actions antes de chegar ao Dokploy.

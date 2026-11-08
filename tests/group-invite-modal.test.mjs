@@ -13,14 +13,16 @@ test('Convidar exibe modal com cabeçalho, sem card fixo',()=>{
  assert.match(src,/e\.target===e\.currentTarget\)closeInviteModal\(\)/);
 });
 test('Modal mantém convite copiável, compartilhamento, QR Code e mensagens dentro do modal',()=>{
- assert.match(src,/window\.location\.origin\+'\/groups\?group_invite='/);
+ assert.match(src,/groupInviteUrl\(j\.token\)/);
  assert.match(src,/aria-label="Link do grupo" readOnly value=\{inviteLink\}/);
  assert.match(src,/onClick=\{\(\)=>void copy\(\)\}/);
  assert.match(src,/onClick=\{\(\)=>void share\(\)\}/);
  assert.match(src,/aria-expanded=\{qrOpen\}/);
- assert.match(src,/alt="QR Code para entrar no grupo"/);
+ assert.match(src,/<GroupInviteQRCode link=\{inviteLink\} size=\{220\}\/>/);
  assert.match(src,/setCopied\(true\)/);
  assert.match(src,/Gerando link de convite/);
+ assert.match(src,/cacheGroupInvite\(selected\.id,selected\.name,j\.token\)/);
+ assert.match(src,/findCachedGroupInvite\(selected\.id\)/);
  assert.match(src,/Tentar novamente/);
  assert.match(src,/Entrar no grupo não ativa o compartilhamento de localização/);
 });
