@@ -8,7 +8,7 @@ import {displayLabel} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
 import {
  ArrowLeft,Plus,Save,Trash2,Move,MapPin,Pencil,Maximize2,Undo2,Redo2,CheckCircle2,
- Eye,MousePointer2,Square,RotateCcw,Info,Group,Unplug,Blend,ChevronDown,Grid3X3,X
+ Eye,MousePointer2,Square,RotateCcw,Info,Group,Unplug,Blend,ChevronDown,Grid3X3,X,AlertTriangle
 } from 'lucide-react';
 import {freeAreaPosition,sharesBorder,limit,type Edge} from './map-layout-geometry';
 import {areaPath,visibleAreas,rootAreaId,canGroup,groupWith,ungroup,isGrouped,groupMembers,moveAreaGroup,outerResizeHandles,resizeOuterGroupEdge,type AreaGeometry,type CurveSide,type CurveDirection} from './map-area-shapes';
