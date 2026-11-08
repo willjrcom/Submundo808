@@ -2,7 +2,6 @@ import {useEffect,useState} from 'react';
 import {Bell,MapPin,Camera,CheckCircle2,Download,Share,Smartphone,X,ExternalLink,AlertTriangle} from 'lucide-react';
 import {isIosDevice,isPwaInstalled,requiresIosInstallationForPush} from './pwa-installation';
 type State='granted'|'denied'|'prompt'|'unsupported';
-type CrowdPreferences={shareEnabled:boolean;eventId:string|null;analyticsEnabled:boolean};
 /** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
 export async function hasPendingAppPermissions():Promise<boolean>{
  if(typeof navigator==='undefined'||typeof window==='undefined')return false;
@@ -26,13 +25,9 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [installed,setInstalled]=useState(isPwaInstalled);
  const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
  const [tutorialOpen,setTutorialOpen]=useState(false);
- const [crowdPrefs,setCrowdPrefs]=useState<CrowdPreferences|null>(null);
- const [crowdLoading,setCrowdLoading]=useState(true),[crowdBusy,setCrowdBusy]=useState(false);
- const [crowdMessage,setCrowdMessage]=useState(''),[crowdError,setCrowdError]=useState('');
- const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
- const [friendPrivacyReady,setFriendPrivacyReady]=useState(false);
- const [friendPrivacyBusy,setFriendPrivacyBusy]=useState(false);
- const [friendPrivacyMessage,setFriendPrivacyMessage]=useState('');
+ const [locationActive,setLocationActive]=useState(false);
+ const [locationBusy,setLocationBusy]=useState(false),[locationLoading,setLocationLoading]=useState(true);
+ const [locationMessage,setLocationMessage]=useState(''),[locationError,setLocationError]=useState('');
  const ios=isIosDevice();
  const needsIosInstall=ios&&!installed;
  useEffect(()=>{
@@ -53,64 +48,40 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    document.removeEventListener('visibilitychange',onVisible);
   };
  },[]);
- // This independent, voluntary consent never triggers GPS or friend sharing.
+ // Só o botão informado no Mapa inicia o compartilhamento e Estatísticas.
  useEffect(()=>{
   let alive=true;
-  const refresh=async()=>{
-   try{
-    const response=await fetch('/api/location/preferences',{credentials:'same-origin'});
-    const payload=await response.json().catch(()=>null);
-    if(!response.ok)throw Error(payload?.error||'Não foi possível consultar as estatísticas.');
-    if(alive){
-     setCrowdPrefs({shareEnabled:payload.shareEnabled===true,eventId:payload.eventId||null,analyticsEnabled:payload.analyticsEnabled===true});
-     setDontShareWithFriends(payload.dontShareWithFriends===true);
-     setFriendPrivacyReady(true);
-    }
-   }catch(error){if(alive)setCrowdError(error instanceof Error?error.message:'Não foi possível consultar as preferências.');}
-   finally{if(alive)setCrowdLoading(false);}
-  };
-  void refresh();
+  void fetch('/api/location/preferences',{credentials:'same-origin'})
+   .then(async response=>{const data=await response.json();if(!response.ok)throw Error(data.error||'Não foi possível consultar a localização.');return data;})
+   .then(data=>{if(alive)setLocationActive(data.shareEnabled===true);})
+   .catch(error=>{if(alive)setLocationError(error instanceof Error?error.message:'Falha ao consultar a localização.');})
+   .finally(()=>{if(alive)setLocationLoading(false);});
   return()=>{alive=false;};
  },[]);
- async function updateFriendPrivacy(disabled:boolean){
-  if(friendPrivacyBusy||!friendPrivacyReady)return;
+ async function stopLocationSession(){
+  if(locationBusy)return;
+  setLocationBusy(true);setLocationError('');setLocationMessage('');
+  // Bloqueie novas transmissões mesmo antes de receber resposta do servidor.
+  try{localStorage.setItem('submundo-gps-stop-pending','1');}catch{}
+  window.dispatchEvent(new Event('submundo-location-stop'));
+  setLocationActive(false);
   if(!navigator.onLine){
-   setFriendPrivacyMessage('Conecte-se à internet para alterar essa permissão em todos os dispositivos.');
-   return;
+   setLocationMessage('Localização interrompida neste aparelho. A desativação será sincronizada quando houver internet.');
+   setLocationBusy(false);return;
   }
-  setFriendPrivacyBusy(true);setFriendPrivacyMessage('');
   try{
-   const response=await fetch('/api/location/share-friends-preference',{
+   const response=await fetch('/api/location/preferences',{
     method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({disabled})
+    body:JSON.stringify({gpsEnabled:false,shareEnabled:false,analyticsEnabled:false,shareWithGroups:false})
    });
    const payload=await response.json().catch(()=>null);
-   if(!response.ok)throw Error(payload?.error||'Não foi possível alterar a permissão.');
-   setDontShareWithFriends(payload.dontShareWithFriends===true);
-   setCrowdPrefs(previous=>previous&&disabled?{...previous,shareEnabled:false,analyticsEnabled:false}:previous);
-   window.dispatchEvent(new CustomEvent('submundo-friend-sharing-privacy',{detail:{disabled}}));
-   setFriendPrivacyMessage(disabled
-    ?'Compartilhamento com amigos desativado. O GPS continua disponível somente para você.'
-    :'Ao ativar o GPS no Mapa, sua posição será compartilhada com amigos enquanto houver conexão.');
-  }catch(error){
-   setFriendPrivacyMessage(error instanceof Error?error.message:'Falha ao salvar a permissão.');
-  }finally{setFriendPrivacyBusy(false);}
- }
- async function toggleCrowdConsent(){
-  if(crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId)return;
-  setCrowdBusy(true);setCrowdMessage('');setCrowdError('');
-  try{
-   const next=!crowdPrefs.analyticsEnabled;
-   const response=await fetch('/api/location/analytics-consent',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:crowdPrefs.eventId,enabled:next})});
-   const payload=await response.json().catch(()=>null);
-   if(!response.ok)throw Error(payload?.error||'Não foi possível atualizar sua autorização.');
-   setCrowdPrefs(previous=>previous?{...previous,analyticsEnabled:payload.analyticsEnabled===true}:previous);
-   window.dispatchEvent(new CustomEvent('submundo-statistics-consent',{
-    detail:{eventId:crowdPrefs.eventId,enabled:payload.analyticsEnabled===true}
-   }));
-   setCrowdMessage(payload.analyticsEnabled===true?'Você autorizou as Estatísticas agregadas deste evento.':'Autorização revogada. Sua localização deixou de contribuir para novas Estatísticas.');
-  }catch(error){setCrowdError(error instanceof Error?error.message:'Não foi possível alterar a autorização.');}
-  finally{setCrowdBusy(false);}
+   if(!response.ok)throw Error(payload?.error||'Não foi possível interromper o compartilhamento no servidor.');
+   const stopped=await fetch('/api/location/stop',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
+   if(!stopped.ok)throw Error('Não foi possível confirmar a remoção da última localização.');
+   try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
+   setLocationMessage('Localização e compartilhamento encerrados.');
+  }catch(error){setLocationError(error instanceof Error?error.message:'Não foi possível sincronizar a desativação.');}
+  finally{setLocationBusy(false);}
  }
  async function installApp(){
   clearNotice();
@@ -136,7 +107,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   setBusy('location');clearNotice();
   try{if(!navigator.geolocation)throw Error('Localização indisponível neste navegador.');
    await new Promise<void>((resolve,reject)=>navigator.geolocation.getCurrentPosition(()=>resolve(),reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
-   update('location','granted');setNotice('location','Permissão do GPS autorizada. O compartilhamento com amigos só começa quando você tocar em Ativar GPS no Mapa, respeitando a opção Não compartilhar com amigos.');
+   update('location','granted');setNotice('location','Permissão do GPS autorizada. A localização só será compartilhada quando você tocar em Ativar GPS e compartilhar na aba Mapa.');
   }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setNotice('location',denied?'O acesso à localização está bloqueado. Abra as configurações do aplicativo ou do navegador, autorize a localização e volte ao Submundo808.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
  }
  async function askNotification(){
@@ -168,7 +139,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    stream.getTracks().forEach(t=>t.stop());update('camera','granted');setNotice('camera','Câmera autorizada para ler QR Codes de amigos.');
   }catch(e){setNotice('camera','Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
  }
- const rows=[{key:'location',title:'Localização',description:'Permite ver sua posição na planta. O compartilhamento só começa após tocar em Ativar GPS no mapa.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
+ const rows=[{key:'location',title:'Localização',description:'Permite ver sua posição na planta. Para compartilhar com amigos e contribuir para Estatísticas, toque em Ativar GPS e compartilhar no Mapa.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
  const label:Record<State,string>={granted:'Permitida',denied:'Bloqueada',prompt:'Não solicitada',unsupported:'Indisponível'};
  function explainBlockedPermission(key:string){
   const title=key==='location'?'localização':key==='camera'?'câmera':'notificações';
@@ -218,30 +189,14 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    </div>;
   })}
   
-  <section aria-label="Compartilhamento de GPS com amigos" className="space-y-2 rounded-xl border border-white/10 bg-white/[.035] p-3">
-   <label className="flex cursor-pointer items-start gap-3">
-    <input type="checkbox" disabled={!friendPrivacyReady||friendPrivacyBusy} checked={dontShareWithFriends}
-     onChange={e=>void updateFriendPrivacy(e.target.checked)}
-     className="mt-1 h-5 w-5 shrink-0 accent-[#c4ff40] disabled:opacity-45"/>
-    <span className="min-w-0">
-     <strong className="block text-sm">Não compartilhar com amigos</strong>
-     <span className="mt-1 block text-xs leading-relaxed text-white/60">Desmarcado por padrão. Ao tocar em Ativar GPS e compartilhar no Mapa, sua posição fica visível aos amigos até o fim da festa, se o evento permitir e houver internet. Marque para manter o GPS somente no aparelho. A permissão do Android, sozinha, não inicia o compartilhamento.</span>
-    </span>
-   </label>
-   {!friendPrivacyReady&&<p className="text-xs text-amber-200">Conecte-se e entre na conta para configurar o compartilhamento.</p>}
-   {friendPrivacyMessage&&<p role="status" className="text-xs text-white/70">{friendPrivacyMessage}</p>}
-  </section>
-  <section aria-label="Permissão para estatísticas anônimas" className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
-   <MapPin size={22} className="shrink-0 text-[#c4ff40]"/>
-   <div className="min-w-0 flex-1">
-    <p className="font-semibold">Estatísticas anônimas do evento</p>
-    <p className="text-xs leading-relaxed text-white/55">Ao tocar em Ativar GPS e compartilhar no Mapa, sua localização também contribui para Estatísticas agregadas da festa. O organizador não vê nomes nem trajetos individuais neste painel. Você pode revogar aqui a qualquer momento; os totais históricos agregados anteriores permanecem.</p>
-    <p className={'mt-1 text-xs font-bold '+(crowdPrefs?.analyticsEnabled?'text-[#c4ff40]':'text-white/50')}>{crowdLoading?'Consultando autorização...':crowdPrefs?.analyticsEnabled?'Autorizada':crowdPrefs?.shareEnabled?'Não autorizada':'Ative o compartilhamento na aba Mapa para autorizar'}</p>
-   </div>
-   <button type="button" disabled={crowdLoading||crowdBusy||!crowdPrefs?.shareEnabled||!crowdPrefs.eventId} onClick={()=>void toggleCrowdConsent()} className={'min-w-[98px] rounded-xl border px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40 '+(crowdPrefs?.analyticsEnabled?'border-amber-400/50 text-amber-200':'border-[#c4ff40]/50 text-[#c4ff40]')}>{crowdBusy?'Aguarde...':crowdPrefs?.analyticsEnabled?'Revogar':'Autorizar'}</button>
-   {crowdMessage&&<p role="status" className="w-full text-xs text-[#c4ff40]">{crowdMessage}</p>}
-   {crowdError&&<p role="alert" className="w-full text-xs text-rose-300">{crowdError}</p>}
-  </section>
+  {locationLoading&&<p role="status" className="text-xs text-white/45">Consultando sessão de localização...</p>}
+  {locationActive&&<section aria-label="Sessão de localização ativa" className="space-y-2 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.05] p-3">
+   <p className="font-bold text-[#c4ff40]">Localização ativa</p>
+   <p className="text-xs leading-relaxed text-white/65">Sua posição é compartilhada com amigos e contribui para Estatísticas agregadas até o fim da festa. É possível encerrar a sessão a qualquer momento.</p>
+   <button type="button" disabled={locationBusy} onClick={()=>void stopLocationSession()} className="rounded-xl border border-amber-400/45 px-3 py-2.5 text-xs font-bold text-amber-200 disabled:opacity-50">{locationBusy?'Encerrando...':'Encerrar localização e compartilhamento'}</button>
+  </section>}
+  {locationMessage&&<p role="status" className="rounded-lg border border-white/15 p-3 text-xs text-white/70">{locationMessage}</p>}
+  {locationError&&<p role="alert" className="rounded-lg border border-rose-400/40 p-3 text-xs text-rose-200">{locationError}</p>}
   <p className="text-xs text-white/45">Se uma permissão foi bloqueada, ajuste-a nas configurações do navegador ou do dispositivo. O aplicativo não pode autorizar permissões automaticamente.</p>
   {onClose&&<button type="button" onClick={onClose} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black">Concluir</button>}
   {tutorialOpen&&<div role="presentation" onClick={e=>{if(e.target===e.currentTarget)setTutorialOpen(false);}} className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 p-3">
