@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 
 const component=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-engagement.tsx',import.meta.url),'utf8');
 const styles=readFileSync(new URL('../artifacts/submundo-808/src/index.css',import.meta.url),'utf8');
+const backend=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
+const inbox=readFileSync(new URL('../artifacts/submundo-808/src/components/notification-center.tsx',import.meta.url),'utf8');
 
 test('cada tipo de notificação explica a finalidade da opção selecionada',()=>{
  for(const type of ['promo','info','lineup','survey']){
@@ -37,7 +39,7 @@ test('selects reservam espaço e exibem uma seta recuada nas duas telas',()=>{
 test('uma notificação nova usa todos os usuários por padrão e edição preserva o público salvo',()=>{
  assert.match(component,/\[audience,setAudience\]=useState\('all'\)/);
  assert.match(component,/function reset\(\)\{[^\n]*setAudience\('all'\)/);
- assert.match(component,/function begin\(n\?:Notification\)\{reset\(\);if\(n\)\{[^\n]*setAudience\(n\.audience\)/);
+ assert.match(component,/function begin\(n\?:Notification\)\{reset\(\);if\(n\)\{[^\n]*setAudience\(n\.kind==='survey'\?'event':n\.audience\)/);
 });
 
 test('busca por nome e lista prioriza futuros, mas oferece acesso aos eventos encerrados',()=>{
@@ -49,4 +51,26 @@ test('busca por nome e lista prioriza futuros, mas oferece acesso aos eventos en
  assert.match(component,/\[includePastEvents,setIncludePastEvents\]=useState\(false\)/);
  assert.match(component,/eventOptions\.map\(e=><option/);
  assert.match(component,/notificationEventLabel\(e\)/);
+});
+
+test('pesquisa selecionada define publico do evento e destino de avaliacao fixo',()=>{
+ assert.match(component,/onChange=\{e=>changeNotificationType\(e\.target\.value\)\}/);
+ assert.match(component,/if\(next==='survey'\)\{setAudience\('event'\);setTargetKind\('survey'\);setTargetId\(''\);setIncludePastEvents\(true\);\}/);
+ assert.match(component,/disabled=\{kind==='survey'\}/);
+ assert.match(component,/kind==='survey'\?<><span[^\n]*>Pesquisa de satisfação<\/span>/);
+ assert.match(component,/Abre diretamente o formulário de avaliação do evento selecionado/);
+ assert.match(component,/targetKind:kind==='survey'\?'survey':targetKind/);
+ assert.match(component,/audience:kind==='survey'\?'event':audience/);
+ assert.match(component,/\(kind==='survey'\|\|audience==='event'\)&&!eventId/);
+});
+
+test('servidor rejeita pesquisas sem evento ou destino de avaliacao',()=>{
+ assert.match(backend,/if\(kind==='survey'&&\(audience!=='event'\|\|!eventId\|\|targetKind!=='survey'\|\|targetId\)\)/);
+ assert.match(backend,/if\(kind!=='survey'&&targetKind==='survey'\)/);
+ assert.match(backend,/if\(source.kind==='survey'&&\(!source.event_id\|\|source.audience!=='event'\)\)/);
+ assert.match(backend,/source.kind==='survey'\?'survey':source.target_kind/);
+});
+
+test('inbox de notificações abre avaliacao inclusive para modelos legados',()=>{
+ assert.match(inbox,/if\(n.kind==='survey'\|\|n.targetKind==='survey'\)/);
 });
