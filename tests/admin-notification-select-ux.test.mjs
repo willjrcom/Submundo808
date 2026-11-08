@@ -25,7 +25,7 @@ test('o evento só aparece para o público conectado ao evento',()=>{
 
 test('notificações gerais abrem a página inicial e não um evento inexistente',()=>{
  assert.match(component,/audience==='all'\?<span[^>]*>Início do aplicativo<\/span>/);
- assert.match(component,/setTargetKind\(n\.audience==='all'\?'event'/);
+ assert.match(component,/setTargetKind\(n\.kind==='survey'\?'survey':n\.audience==='all'\?'event'/);
 });
 
 test('selects reservam espaço e exibem uma seta recuada nas duas telas',()=>{
