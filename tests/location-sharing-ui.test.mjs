@@ -39,7 +39,7 @@ test('amigos de outra festa não aparecem no mapa ativo',()=>{
 });
 test('a expiração continua ocorrendo no servidor mesmo com a aba fechada',()=>{
  assert.match(frontend,/Date\.now\(\)>=sharingExpiresAt/);
- assert.match(frontend,/endLocalSharing\('O compartilhamento terminou no horário escolhido\.'\)/);
+ assert.match(frontend,/endFriendShareKeepingGps\('O compartilhamento terminou\. O GPS local continua ativo\.'\)/);
  assert.match(frontend,/\[403,409,410\]\.includes/);
  assert.match(backend,/expireLocationShares\(db,now\)/);
  assert.match(backend,/p\.share_expires_at>\?/);
