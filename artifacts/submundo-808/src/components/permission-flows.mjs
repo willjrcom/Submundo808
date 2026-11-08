@@ -12,6 +12,8 @@ export function permissionFailure(feature,error){
  if(feature==='camera'&&(name==='NotFoundError'||name==='DevicesNotFoundError'))return {denied:false,message:'Nenhuma câmera foi encontrada neste dispositivo.'};
  if(feature==='camera'&&(name==='NotReadableError'||name==='TrackStartError'))return {denied:false,message:'A câmera está ocupada em outro aplicativo. Feche-o e tente novamente.'};
  if(name==='AbortError')return {denied:false,message:'A operação foi interrompida. Tente novamente.'};
+ if(name==='NotSupportedError')return {denied:false,message:'Este navegador não oferece o recurso necessário. Atualize o navegador ou abra o aplicativo instalado.'};
+ if(name==='NetworkError'||/Failed to fetch|Load failed|Network request failed|NetworkError/i.test(String(error?.message||'')))return {denied:false,message:'Não foi possível conectar ao servidor. Confira sua internet e tente novamente.'};
  return {denied:false,message:error instanceof Error&&error.message?error.message:'Não foi possível concluir a operação. Verifique sua conexão e tente novamente.'};
 }
 export function requestGpsPosition(geolocation){
@@ -40,7 +42,7 @@ export async function registerPush({notification,serviceWorker,pushSupported,req
   throw new Error('A autorização de notificações foi cancelada. Você pode tentar novamente quando quiser.');
  }
  const response=await request('/api/push/config',{credentials:'same-origin'});
- const config=await response.json();
+ const config=await response.json().catch(()=>({}));
  if(!response.ok)throw new Error(config?.error||'Não foi possível consultar a configuração de notificações.');
  if(!config?.enabled||!config.publicKey)throw new Error('As notificações ainda não foram configuradas neste servidor.');
  const registration=await new Promise((resolve,reject)=>{
@@ -56,7 +58,7 @@ export async function registerPush({notification,serviceWorker,pushSupported,req
   method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
   body:JSON.stringify({subscription:subscription.toJSON()})
  });
- const value=await res.json();
+ const value=await res.json().catch(()=>({}));
  if(!res.ok)throw new Error(value?.error||'Não foi possível registrar o dispositivo para receber avisos.');
  return subscription;
 }
