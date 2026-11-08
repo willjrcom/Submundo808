@@ -57,7 +57,7 @@ function reasonFor(error){
 }
 export async function processPendingPushes(db,send,{now=Date.now,batchSize=20,pushConfigured=true}={}){
  const current=now();
- const rows=db.prepare("SELECT q.*,n.title,n.body,n.event_id,n.target_kind,n.target_id,s.subscription_json FROM notification_push_queue q JOIN notifications n ON n.id=q.notification_id LEFT JOIN push_subscriptions s ON s.endpoint=q.endpoint AND s.user_id=q.user_id WHERE (q.status='pending' AND q.next_attempt_at<=?) OR (q.status='processing' AND q.lease_until<=?) ORDER BY q.next_attempt_at LIMIT ?").all(current,current,batchSize);
+ const rows=db.prepare("SELECT q.*,n.title,n.body,n.event_id,n.kind,n.target_kind,n.target_id,s.subscription_json FROM notification_push_queue q JOIN notifications n ON n.id=q.notification_id LEFT JOIN push_subscriptions s ON s.endpoint=q.endpoint AND s.user_id=q.user_id WHERE (q.status='pending' AND q.next_attempt_at<=?) OR (q.status='processing' AND q.lease_until<=?) ORDER BY q.next_attempt_at LIMIT ?").all(current,current,batchSize);
  const stats={processed:0,accepted:0,retried:0,failed:0,expired:0};
  const finish=db.prepare("UPDATE notification_push_queue SET status=?,lease_until=NULL,accepted_at=?,next_attempt_at=?,last_error=?,updated_at=? WHERE notification_id=? AND endpoint=? AND status='processing'");
  async function processJob(job){
