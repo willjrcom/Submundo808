@@ -1,6 +1,8 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Bell,MapPin,Camera,CheckCircle2,Download,Share,Smartphone,X,ExternalLink,AlertTriangle} from 'lucide-react';
-import {isIosDevice,isPwaInstalled,requiresIosInstallationForPush} from './pwa-installation';
+import {isIosDevice,isPwaInstalled,requiresIosInstallationForPush,isIosEmbeddedBrowser,getDeferredInstallPrompt,clearDeferredInstallPrompt} from './pwa-installation';
+import {permissionFailure,requestGpsPosition,requestCameraAccess,registerPush,requestNativeInstallation} from './permission-flows.mjs';
 type State='granted'|'denied'|'prompt'|'unsupported';
 /** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
 export async function hasPendingAppPermissions():Promise<boolean>{
@@ -18,18 +20,28 @@ export async function hasPendingAppPermissions():Promise<boolean>{
 }
 export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [statuses,setStatuses]=useState<Record<string,State>>({location:'prompt',notifications:'prompt',camera:'prompt'});
- const [message,setMessage]=useState(''),[messageKey,setMessageKey]=useState<'installation'|'location'|'notifications'|'camera'|null>(null),[busy,setBusy]=useState('');
- const setNotice=(key:'installation'|'location'|'notifications'|'camera',text:string)=>{setMessageKey(key);setMessage(text);};
- const clearNotice=()=>{setMessage('');setMessageKey(null);};
+ const [message,setMessage]=useState(''),[messageKey,setMessageKey]=useState<'installation'|'location'|'notifications'|'camera'|null>(null),[noticeTone,setNoticeTone]=useState<'info'|'success'|'error'>('info'),[busy,setBusy]=useState('');
+ const setNotice=(key:'installation'|'location'|'notifications'|'camera',text:string,tone:'info'|'success'|'error'='info')=>{setMessageKey(key);setMessage(text);setNoticeTone(tone);};
+ const clearNotice=()=>{setMessage('');setMessageKey(null);setNoticeTone('info');};
  const [pushRegistered,setPushRegistered]=useState(false);
  const [installed,setInstalled]=useState(isPwaInstalled);
- const [installPrompt,setInstallPrompt]=useState<Event|null>(null);
+ const [installPrompt,setInstallPrompt]=useState<Event|null>(getDeferredInstallPrompt);
  const [tutorialOpen,setTutorialOpen]=useState(false);
+ const tutorialCloseRef=useRef<HTMLButtonElement|null>(null);
  const [locationActive,setLocationActive]=useState(false);
  const [locationBusy,setLocationBusy]=useState(false),[locationLoading,setLocationLoading]=useState(true);
  const [locationMessage,setLocationMessage]=useState(''),[locationError,setLocationError]=useState('');
  const ios=isIosDevice();
  const needsIosInstall=ios&&!installed;
+ const embeddedIos=isIosEmbeddedBrowser();
+ useEffect(()=>{
+  if(!tutorialOpen)return;
+  const previousFocus=document.activeElement as HTMLElement|null;
+  const frame=window.requestAnimationFrame(()=>tutorialCloseRef.current?.focus());
+  const onKeyDown=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setTutorialOpen(false);}};
+  document.addEventListener('keydown',onKeyDown);
+  return()=>{window.cancelAnimationFrame(frame);document.removeEventListener('keydown',onKeyDown);previousFocus?.focus?.();};
+ },[tutorialOpen]);
  useEffect(()=>{
   const prompt=(e:Event)=>{e.preventDefault();setInstallPrompt(e);};
   const installedHandler=()=>{setInstalled(true);setInstallPrompt(null);setTutorialOpen(false);};
@@ -85,9 +97,25 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  }
  async function installApp(){
   clearNotice();
-  if(ios){setTutorialOpen(true);return;}
-  if(installPrompt){const event=installPrompt as Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>};try{await event.prompt();if(event.userChoice){const result=await event.userChoice;if(result.outcome==='accepted')setNotice('installation','Instalação iniciada. Abra o app instalado para ativar notificações.');else setNotice('installation','Instalação cancelada.');}setInstallPrompt(null);}catch{setNotice('installation','Use a opção Instalar aplicativo no menu do navegador.');}return;}
-  setNotice('installation','No Chrome ou Edge: abra o menu ⋮ e escolha Instalar aplicativo ou Adicionar à tela inicial. Se não aparecer, confira se está em HTTPS.');
+  if(installed){setNotice('installation','O aplicativo já está instalado. Abra-o pelo ícone na Tela de Início.','success');return;}
+  if(ios){
+   setTutorialOpen(true);
+   setNotice('installation','Abra o tutorial para adicionar o Submundo808 à Tela de Início.');
+   return;
+  }
+  const prompt=(installPrompt||getDeferredInstallPrompt()) as (Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>})|null;
+  if(prompt){
+   setBusy('installation');
+   try{
+    const outcome=await requestNativeInstallation(prompt);
+    if(outcome==='accepted')setNotice('installation','Instalação solicitada. Aguarde o ícone na Tela de Início e abra o aplicativo.','success');
+    else if(outcome==='dismissed')setNotice('installation','Instalação cancelada. Você pode tentar novamente pelo navegador.');
+    else setNotice('installation','Confirme a instalação na janela do navegador.');
+   }catch(e){setNotice('installation',permissionFailure('installation',e).message,'error');}
+   finally{setInstallPrompt(null);clearDeferredInstallPrompt();setBusy('');}
+   return;
+  }
+  setNotice('installation','No Chrome ou Edge, abra o menu ⋮ e escolha Instalar aplicativo ou Adicionar à tela inicial. Se a opção não aparecer, abra o site em HTTPS.');
  }
 
  const update=(key:string,state:State)=>setStatuses(v=>({...v,[key]:state}));
@@ -95,49 +123,76 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   let alive=true;
   const check=async()=>{
    if(!('geolocation'in navigator))update('location','unsupported');
-   if(!('Notification'in window))update('notifications','unsupported');else update('notifications',Notification.permission as State);
-   if('serviceWorker'in navigator&&'PushManager'in window){try{const registration=await navigator.serviceWorker.ready;const subscription=await registration.pushManager.getSubscription();if(alive)setPushRegistered(!!subscription);}catch{}}
+   if(!('Notification'in window))update('notifications','unsupported');
+   else update('notifications',Notification.permission as State);
+   if('serviceWorker'in navigator&&'PushManager'in window){
+    try{
+     const registration=await navigator.serviceWorker.getRegistration();
+     const subscription=registration?await registration.pushManager.getSubscription():null;
+     if(alive)setPushRegistered(!!subscription);
+    }catch{if(alive)setPushRegistered(false);}
+   }
    if(!navigator.mediaDevices?.getUserMedia)update('camera','unsupported');
    if(navigator.permissions?.query)for(const [key,name] of [['location','geolocation'],['camera','camera']] as const){
     try{const status=await navigator.permissions.query({name:name as PermissionName});if(alive)update(key,status.state as State);}catch{}
    }
-  };void check();return()=>{alive=false;};
+  };
+  const onVisible=()=>{if(document.visibilityState==='visible')void check();};
+  const onFocus=()=>void check();
+  void check();
+  window.addEventListener('focus',onFocus);
+  window.addEventListener('pageshow',onFocus);
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>{alive=false;window.removeEventListener('focus',onFocus);window.removeEventListener('pageshow',onFocus);document.removeEventListener('visibilitychange',onVisible);};
  },[]);
  async function askLocation(){
+  if(busy)return;
   setBusy('location');clearNotice();
-  try{if(!navigator.geolocation)throw Error('Localização indisponível neste navegador.');
-   await new Promise<void>((resolve,reject)=>navigator.geolocation.getCurrentPosition(()=>resolve(),reject,{enableHighAccuracy:true,timeout:18000,maximumAge:0}));
-   update('location','granted');setNotice('location','Permissão do GPS autorizada. A localização só será compartilhada quando você tocar em Ativar GPS e compartilhar na aba Mapa.');
-  }catch(e){const denied=typeof e==='object'&&e!==null&&'code'in e&&(e as {code:number}).code===1;if(denied)update('location','denied');setNotice('location',denied?'O acesso à localização está bloqueado. Abra as configurações do aplicativo ou do navegador, autorize a localização e volte ao Submundo808.':'Localização: '+(e instanceof Error?e.message:'Não foi possível obter a posição.'));}finally{setBusy('');}
+  try{
+   await requestGpsPosition(navigator.geolocation);
+   update('location','granted');
+   setNotice('location','GPS autorizado. Sua posição só será compartilhada quando você tocar em Ativar GPS e compartilhar no Mapa.','success');
+  }catch(e){
+   const result=permissionFailure('location',e);
+   if(result.denied)update('location','denied');
+   setNotice('location',result.message,'error');
+  }finally{setBusy('');}
  }
  async function askNotification(){
+  if(busy)return;
   if(requiresIosInstallationForPush()){
-   setNotice('notifications','Instale o Submundo808 pela opção Compartilhar do Safari e abra o aplicativo pela Tela de Início antes de ativar as notificações.');
+   setNotice('notifications','Para receber notificações, instale o aplicativo pelo Safari e abra-o pelo ícone na Tela de Início.');
    setTutorialOpen(true);
    return;
   }
   setBusy('notifications');clearNotice();
   try{
-   if(!('Notification'in window)||!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('Push indisponível neste navegador. No iPhone, instale o aplicativo na Tela de Início.');
-   const response=await fetch('/api/push/config',{credentials:'same-origin'}),config=await response.json();
-   if(!config.enabled)throw Error('O servidor ainda não tem as chaves VAPID configuradas.');
-   const permission=await Notification.requestPermission();update('notifications',permission as State);
-   if(permission!=='granted')throw Error('Notificações não foram autorizadas.');
-   const registration=await navigator.serviceWorker.ready;
-   const key=atob(config.publicKey.replace(/-/g,'+').replace(/_/g,'/').padEnd(Math.ceil(config.publicKey.length/4)*4,'='));
-   const bytes=Uint8Array.from(key,c=>c.charCodeAt(0));
-   const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
-   const res=await fetch('/api/push/subscribe',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:subscription.toJSON()})});
-   const j=await res.json();if(!res.ok)throw Error(j.error||'Não foi possível registrar o dispositivo.');
-   setPushRegistered(true);setNotice('notifications','Notificações push ativadas neste dispositivo.');
-  }catch(e){setNotice('notifications','Notificações: '+(e instanceof Error?e.message:'Não foi possível ativar.'));}finally{setBusy('');}
+   await registerPush({
+    notification:'Notification'in window?Notification:null,
+    serviceWorker:'serviceWorker'in navigator?navigator.serviceWorker:null,
+    pushSupported:'PushManager'in window,
+    request:fetch
+   });
+   update('notifications','granted');setPushRegistered(true);
+   setNotice('notifications','Notificações push ativadas neste dispositivo.','success');
+  }catch(e){
+   const result=permissionFailure('notifications',e);
+   if(result.denied||('Notification'in window&&Notification.permission==='denied'))update('notifications','denied');
+   setPushRegistered(false);
+   setNotice('notifications',result.message,'error');
+  }finally{setBusy('');}
  }
  async function askCamera(){
+  if(busy)return;
   setBusy('camera');clearNotice();
-  try{if(!navigator.mediaDevices?.getUserMedia)throw Error('Câmera indisponível.');
-   const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
-   stream.getTracks().forEach(t=>t.stop());update('camera','granted');setNotice('camera','Câmera autorizada para ler QR Codes de amigos.');
-  }catch(e){setNotice('camera','Câmera: '+(e instanceof Error?e.message:'Não foi possível solicitar.'));}finally{setBusy('');}
+  try{
+   await requestCameraAccess(navigator.mediaDevices);
+   update('camera','granted');setNotice('camera','Câmera autorizada para leitura de QR Codes de amigos.','success');
+  }catch(e){
+   const result=permissionFailure('camera',e);
+   if(result.denied)update('camera','denied');
+   setNotice('camera',result.message,'error');
+  }finally{setBusy('');}
  }
  const rows=[{key:'location',title:'Localização',description:'Permite ver sua posição na planta. Para compartilhar com amigos e contribuir para Estatísticas, toque em Ativar GPS e compartilhar no Mapa.',Icon:MapPin,run:askLocation},{key:'notifications',title:'Notificações',description:'Promoções, avisos e convites para avaliar eventos.',Icon:Bell,run:askNotification},{key:'camera',title:'Câmera',description:'Leitura de QR Code para adicionar amigos.',Icon:Camera,run:askCamera}];
  const label:Record<State,string>={granted:'Permitida',denied:'Bloqueada',prompt:'Não solicitada',unsupported:'Indisponível'};
@@ -148,7 +203,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    :'Abra as configurações deste site no navegador e altere a permissão para Permitir. Depois, volte ao Submundo808.';
   setNotice(key as 'location'|'notifications'|'camera','A permissão de '+title+' está bloqueada. '+where+' O aplicativo não consegue remover esse bloqueio sozinho.');
  }
- const warningMessage=/(bloquead|negad|indisponível|não foi possível|não foram autorizad|não tem as chaves|falha)/i.test(message);
+ const warningMessage=noticeTone==='error';
  return <div className="space-y-4">
   <p className="text-sm text-white/60">Configure os recursos do celular. Permissões já concedidas aparecem como ativadas.</p>
   <div className="flex min-h-[92px] flex-wrap items-center gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
