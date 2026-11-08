@@ -17,8 +17,8 @@ test('o evento só aparece para o público conectado ao evento',()=>{
  assert.match(component,/audience==='event'&&<div[^>]*>/);
  assert.match(component,/aria-label="Selecionar evento"/);
  assert.match(component,/if\(next==='all'\)\{setEventId\(''\);setTargetId\(''\);setTargetKind\('event'\);setEventQuery\(''\);setIncludePastEvents\(false\);\}/);
- assert.match(component,/eventId:audience==='event'\?eventId:''/);
- assert.match(component,/setEventId\(n\.audience==='event'\?/);
+ assert.match(component,/eventId:kind==='survey'\|\|audience==='event'\?eventId:''/);
+ assert.match(component,/setEventId\(n\.kind==='survey'\|\|n\.audience==='event'\?/);
 });
 
 test('notificações gerais abrem a página inicial e não um evento inexistente',()=>{
