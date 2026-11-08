@@ -12,6 +12,7 @@ import {attachVisualViewportNavigation} from './components/visual-viewport-nav';
 import {getActiveEventId,setActiveEventId as saveActiveEventId,clearActiveEventId as resetActiveEventId,eventIdFromPath,eventProgramPath,ACTIVE_EVENT_CHANGED,ACTIVE_EVENT_KEY} from './components/active-event';
 import {captureGroupInviteFromUrl,getPendingGroupInvite} from './components/pending-group-invite';
 import {warmParticipantOffline} from './components/participant-offline';
+import {warmParticipantPrivateOffline} from './components/offline-private-data';
 import { Instagram, ExternalLink } from 'lucide-react';
 import { CalendarDays, MapPinned, Martini, Users, UserRound, Music2, Clock3, Bell, ShieldCheck, Navigation, Search, UserPlus, Check, X, MapPin, Ticket, ChevronRight, Radio, LockKeyhole, Info, Heart, Volume2 } from 'lucide-react';
 
@@ -64,7 +65,8 @@ function ParticipantApp() {
     // Public event data and map tiles (our own SVG/JSON, not Google satellite imagery)
     // are saved separately from authentication, live locations and notifications.
     void warmParticipantOffline();
-    const refresh=()=>{void warmParticipantOffline();};
+    void warmParticipantPrivateOffline();
+    const refresh=()=>{void warmParticipantOffline();void warmParticipantPrivateOffline();};
     window.addEventListener('online',refresh);
     window.addEventListener('focus',refresh);
     return()=>{window.removeEventListener('online',refresh);window.removeEventListener('focus',refresh);};

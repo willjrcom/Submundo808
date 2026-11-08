@@ -2,6 +2,7 @@ import MeapleTickets from './meaple-tickets';
 import ProfilePermissions, {hasPendingAppPermissions} from './profile-permissions';
 import {optimizeAvatar} from './optimized-avatar';
 import {clearCachedGroupInvites} from './group-invite-cache';
+import {privateParticipantGet,clearOfflineParticipantData,warmParticipantPrivateOffline} from './offline-private-data';
 import {formatMobile,mobileDigits} from './phone-mask';
 import { useEffect, useState } from 'react';
 import {createPortal} from 'react-dom';
@@ -31,6 +32,8 @@ function authError(status?:string) {
   }
 }
 async function request(path:string, payload?:object) {
+  if(!payload&&path==='me')return privateParticipantGet<{user:User|null}>('/api/auth/me');
+  if(!navigator.onLine)throw Error('Esta ação exige conexão. Seus dados salvos continuam disponíveis para consulta.');
   const res=await fetch('/api/auth/'+path,{method:payload?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:payload?JSON.stringify(payload):undefined});
   const data=await res.json();if(!res.ok)throw new Error(data.error||'Não foi possível continuar.');return data;
 }
@@ -44,7 +47,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   const [providers,setProviders]=useState({google:false,meaple:false});
   const [connections,setConnections]=useState<string[]>([]);
   useEffect(()=>{void fetch('/api/auth/providers').then(r=>r.json()).then(setProviders).catch(()=>{});},[]);
-  useEffect(()=>{if(user)void fetch('/api/auth/connections').then(r=>r.json()).then(j=>setConnections(j.providers||[])).catch(()=>{});},[user]);
+  useEffect(()=>{if(user)void privateParticipantGet<{providers:string[]}>('/api/auth/connections').then(j=>setConnections(j.providers||[])).catch(()=>{});},[user]);
   const [permissionOpen,setPermissionOpen]=useState(false),[profileAvatar,setProfileAvatar]=useState(''),[profilePhotoBusy,setProfilePhotoBusy]=useState(false);
   const [profileEditing,setProfileEditing]=useState(false),[profilePhone,setProfilePhone]=useState(''),[profileInstagram,setProfileInstagram]=useState(''),[profileName,setProfileName]=useState(''),[phone,setPhone]=useState('');
   const [name,setName]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [confirm,setConfirm]=useState('');const [current,setCurrent]=useState('');
@@ -69,7 +72,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     if(['register','password','reset'].includes(mode) && password!==confirm){setError('As senhas não coincidem.');return;}
     setBusy(true);
     try {
-      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
+      if(mode==='login'||mode==='register'){const data=await request(mode,mode==='login'?{email,password} :{name,email,password,phone:mobileDigits(phone)});const me=await request('me');void warmParticipantPrivateOffline();if(!me.user)throw new Error(authError(me.authStatus));setUser(me.user);onUser?.(me.user);void hasPendingAppPermissions().then(pending=>{if(pending)setPermissionOpen(true);}).catch(()=>{});window.history.replaceState({},'', '/profile');setPassword('');setConfirm('');}
       if(mode==='forgot'){const data=await request('forgot',{email});setSuccess(data.message||'Confira seu e-mail.');}
       if(mode==='password'){await request('password',{current,password});change('login');setSuccess('Senha alterada com sucesso. Sua sessão foi renovada.');}
       if(mode==='reset'){await request('reset',{token:resetToken,password});window.history.replaceState({},'', '/login');change('login');setSuccess('Senha redefinida. Faça login.');}
@@ -81,9 +84,10 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
   if(showLoading)return <PageLoading label="Carregando seu perfil" description="Verificando sua sessão e preparando seu perfil."/>;
   if(initialError)return <div role="alert" className="rounded-2xl border border-red-400/25 bg-red-400/5 p-6 text-center"><p className="font-bold text-red-200">Não foi possível verificar sua sessão.</p><p className="mt-2 text-xs text-white/60">Confira a conexão e tente novamente. O formulário de login não será exibido até a verificação terminar.</p><button onClick={()=>window.location.reload()} className="mt-4 rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">Tentar novamente</button></div>;
   if(user && mode!=='password' && mode!=='reset')return <div>
+    {!navigator.onLine&&<p role="status" className="mb-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-3 py-2 text-xs text-[#c4ff40]">Perfil salvo neste aparelho. Você pode consultar suas informações sem conexão; alterações de conta exigem internet.</p>}
     <section className="mb-5 overflow-hidden rounded-3xl border border-[#c4ff40]/25 bg-[#17101e]">
       <div className="relative h-24 bg-[radial-gradient(circle_at_70%_20%,#652b77,transparent_60%),linear-gradient(100deg,#2b1335,#15111d)]">
-       <button type="button" onClick={()=>{setProfileName(user.name);setProfilePhone(formatMobile(user.phone||''));setProfileInstagram(user.instagram||'');setProfileAvatar(user.avatar||'');setProfileEditing(true);}} aria-expanded={profileEditing} className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-[#17101e]/85 px-3 py-2 text-xs font-semibold text-[#c4ff40] shadow-lg backdrop-blur transition hover:border-[#c4ff40]/70" title="Editar meu perfil"><Pencil size={14}/>Editar perfil</button>
+       <button type="button" disabled={!navigator.onLine} onClick={()=>{setProfileName(user.name);setProfilePhone(formatMobile(user.phone||''));setProfileInstagram(user.instagram||'');setProfileAvatar(user.avatar||'');setProfileEditing(true);}} aria-expanded={profileEditing} className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-[#17101e]/85 px-3 py-2 text-xs font-semibold text-[#c4ff40] shadow-lg backdrop-blur transition hover:border-[#c4ff40]/70" title="Editar meu perfil"><Pencil size={14}/>Editar perfil</button>
       </div>
       <div className="relative px-5 pb-5">
         <div className="-mt-9 flex items-end justify-between"><div className="flex h-[76px] w-[76px] items-center justify-center rounded-full border-4 border-[#17101e] bg-[#c4ff40]/20 text-[#c4ff40]">{user.avatar?<img src={user.avatar} alt="Sua foto de perfil" className="h-full w-full rounded-full object-cover"/>:<UserRound size={38}/>}</div><span className="rounded-full border border-[#c4ff40]/30 px-3 py-1 text-[10px] font-bold text-[#c4ff40]">Membro</span></div>
@@ -111,7 +115,7 @@ export default function Account({onUser}:{onUser?:(user:User|null)=>void}) {
     {user.isAdmin&&<a href="https://admin.submundo.menudevendas.com.br" className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-4 text-sm font-black text-black"><ShieldCheck size={19}/> Acessar painel administrativo</a>}
         {(demoCredentials||savedDemoEmail===user.email)&&<div className="mb-5 rounded-xl border border-[#c4ff40]/30 bg-[#c4ff40]/10 p-4 text-xs"><p className="mb-2 font-bold text-[#c4ff40]">Credenciais desta conta — salve antes de sair</p><p className="break-all">E-mail: {demoCredentials?.email||savedDemoEmail}</p><p className="mt-1 break-all">Senha: {demoCredentials?.password||'Exibida somente na criação da conta'}</p>{demoCredentials&&<button onClick={async()=>{try{await navigator.clipboard.writeText(`E-mail: ${demoCredentials.email}\nSenha: ${demoCredentials.password}`);setCredentialsCopied(true);window.setTimeout(()=>setCredentialsCopied(false),2200);}catch{setError("Não foi possível copiar as credenciais.");}}} className="mt-3 rounded-lg border border-[#c4ff40]/30 px-3 py-2 font-bold text-[#c4ff40]">{credentialsCopied?"✓ Copiado!":"Copiar credenciais"}</button>}</div>}
 
-    <div className="space-y-3"><button onClick={()=>setPermissionOpen(true)} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><Settings2 size={19} className="text-[#c4ff40]"/> Permissões do aplicativo</button><button onClick={()=>change('password')} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><KeyRound size={19} className="text-[#c4ff40]"/> Alterar minha senha</button><button onClick={async()=>{try{await request('logout',{});clearCachedGroupInvites();setUser(null);onUser?.(null);change('login');}catch(e){setError(String(e));}}} className="flex w-full items-center gap-3 rounded-xl border border-white/15 px-4 py-4 text-sm font-bold"><LogOut size={19}/> Sair da conta</button></div>
+    <div className="space-y-3"><button onClick={()=>setPermissionOpen(true)} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold"><Settings2 size={19} className="text-[#c4ff40]"/> Permissões do aplicativo</button><button disabled={!navigator.onLine} onClick={()=>change('password')} className="flex w-full items-center gap-3 rounded-xl border border-white/15 bg-white/[.04] px-4 py-4 text-sm font-bold disabled:opacity-40"><KeyRound size={19} className="text-[#c4ff40]"/> Alterar minha senha</button><button onClick={async()=>{try{if(navigator.onLine)await request('logout',{});clearCachedGroupInvites();clearOfflineParticipantData();setUser(null);onUser?.(null);change('login');}catch(e){setError(String(e));}}} className="flex w-full items-center gap-3 rounded-xl border border-white/15 px-4 py-4 text-sm font-bold"><LogOut size={19}/> Sair da conta</button></div>
     <div className="mt-5 rounded-xl border border-white/10 p-4 text-xs leading-relaxed text-white/50"><ShieldCheck size={17} className="mb-2 text-[#c4ff40]"/> Sua conta está salva no servidor. Para compartilhar seu QR Code de amizade, acesse a aba Amigos e toque em Ver meu QR Code. A permissão de localização não ativa o compartilhamento com amigos. Você precisa confirmar o compartilhamento no Mapa, escolher um evento e um prazo; é possível interrompê-lo a qualquer momento. Com o compartilhamento ativo, coordenadas recentes ficam temporariamente disponíveis para seus amigos e são eliminadas quando o compartilhamento termina.</div>
     {error&&<p role="alert" className="mt-4 text-sm text-red-300">{error}</p>}
   </div>;

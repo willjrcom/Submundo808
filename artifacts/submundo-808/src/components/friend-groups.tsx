@@ -7,11 +7,15 @@ import GroupQrScanner from './group-qr-scanner';
 import GroupInviteQRCode from './group-invite-qr-code';
 import {cacheGroupInvite,findCachedGroupInvite,groupInviteUrl,removeCachedGroupInvite} from './group-invite-cache';
 import {captureGroupInviteFromUrl,getPendingGroupInvite,clearPendingGroupInvite,savePendingGroupInvite} from './pending-group-invite';
+import {privateParticipantGet} from './offline-private-data';
 
 type Person={id:string;name:string;avatar?:string};
 type Group={id:string;name:string;description:string;color:string;ownerId:string;memberCount:number;avatars:Person[];editPolicy?:'admin'|'everyone';joinPolicy?:'direct'|'approval';icon?:string;photo?:string};
 type GroupDetail=Group&{members:(Person&{role:string;relation:'self'|'friends'|'sent'|'received'|'none'})[];role:string};
 async function groupApi(route:string,data?:object){
+ if(!data&&(route===''||route.startsWith('/detail?id=')||route.startsWith('/alerts?id=')))
+  return privateParticipantGet<Record<string,any>>('/api/groups'+route);
+ if(!navigator.onLine)throw Error('É necessária uma conexão para concluir esta operação.');
  const r=await fetch('/api/groups'+route,{method:data?'POST':'GET',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Não foi possível concluir a operação.');return j;
 }
@@ -231,12 +235,12 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
      <div className="grid grid-cols-2 gap-2 rounded-xl bg-white/5 p-1">{(['send','history'] as const).map(t=><button key={t} onClick={()=>{setAlertTab(t);setAlertChoice('');}} className={'rounded-lg py-2 text-sm font-bold '+(alertTab===t?'bg-[#c4ff40] text-black':'text-white/70')}>{t==='send'?'Enviar aviso':'Avisos anteriores'}</button>)}</div>
     </div>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-     {alertTab==='send'?<><p className="text-xs text-white/60">Escolha uma mensagem pronta. Ela será enviada para os integrantes deste grupo.</p><div className="grid grid-cols-2 gap-2">{quickAlerts.map(([code,emoji,label])=><button key={code} onClick={()=>setAlertChoice(code)} className={'flex min-h-[90px] flex-col items-start gap-2 rounded-xl border p-3 text-left text-xs font-semibold '+(alertChoice===code?'border-[#c4ff40] bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}><span className="text-xl">{emoji}</span><span>{label}</span></button>)}</div></>:<div className="space-y-2">{alerts.length===0?<p className="py-6 text-center text-sm text-white/50">Nenhum aviso enviado ainda.</p>:alerts.map(a=>{const raw=a.createdAt??(a as typeof a&{createdat?:number;created_at?:number}).createdat??(a as typeof a&{created_at?:number}).created_at;const ms=Number(raw);const formatted=Number.isFinite(ms)&&ms>0?new Date(ms<1e11?ms*1000:ms).toLocaleString('pt-BR'):'Data indisponível';return <div key={a.id} className="rounded-xl border border-white/10 bg-white/[.04] p-3"><p className="text-xs text-white/50">{a.senderName||'Integrante'} · {formatted}</p><p className="mt-1 text-sm font-semibold">{a.message}</p></div>;})}</div>}
+     {alertTab==='send'?<><p className="text-xs text-white/60">Escolha uma mensagem pronta. Ela será enviada para os integrantes deste grupo.</p>{!navigator.onLine&&<p role="status" className="text-xs text-amber-200">Sem internet: você pode consultar os avisos anteriores, mas não enviar novos avisos.</p>}<div className="grid grid-cols-2 gap-2">{quickAlerts.map(([code,emoji,label])=><button key={code} onClick={()=>setAlertChoice(code)} className={'flex min-h-[90px] flex-col items-start gap-2 rounded-xl border p-3 text-left text-xs font-semibold '+(alertChoice===code?'border-[#c4ff40] bg-[#c4ff40]/10':'border-white/15 bg-white/[.025]')}><span className="text-xl">{emoji}</span><span>{label}</span></button>)}</div></>:<div className="space-y-2">{alerts.length===0?<p className="py-6 text-center text-sm text-white/50">Nenhum aviso enviado ainda.</p>:alerts.map(a=>{const raw=a.createdAt??(a as typeof a&{createdat?:number;created_at?:number}).createdat??(a as typeof a&{created_at?:number}).created_at;const ms=Number(raw);const formatted=Number.isFinite(ms)&&ms>0?new Date(ms<1e11?ms*1000:ms).toLocaleString('pt-BR'):'Data indisponível';return <div key={a.id} className="rounded-xl border border-white/10 bg-white/[.04] p-3"><p className="text-xs text-white/50">{a.senderName||'Integrante'} · {formatted}</p><p className="mt-1 text-sm font-semibold">{a.message}</p></div>;})}</div>}
     </div>
     {alertTab==='send'&&<div className="shrink-0 space-y-2 border-t border-white/15 bg-[#201728] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_#0005]">
      {alertChoice?<p className="truncate text-xs text-[#c4ff40]">Selecionado: {quickAlerts.find(a=>a[0]===alertChoice)?.[2]}</p>:<p className="text-xs text-white/55">Selecione uma mensagem para habilitar o envio.</p>}
      {['mal','roubo'].includes(alertChoice)&&<p className="flex items-start gap-2 text-xs text-amber-200"><AlertTriangle size={16} className="shrink-0"/> Este aviso não chama segurança nem serviços de emergência.</p>}
-     <button type="button" disabled={busy||!alertChoice} onClick={()=>void sendAlert()} className={button}>{busy?'Enviando...':'Enviar aviso'}</button>
+     <button type="button" disabled={busy||!navigator.onLine||!alertChoice} onClick={()=>void sendAlert()} className={button}>{busy?'Enviando...':'Enviar aviso'}</button>
     </div>}
     {error&&<p role="alert" className="shrink-0 px-4 pb-3 text-xs text-red-300">{error}</p>}
    </div>
@@ -305,8 +309,8 @@ export default function FriendGroups({onDetailChange}:{onDetailChange?:(open:boo
  </div>;
  return <div className="space-y-4">
   {mode==='list'?<><div className="grid grid-cols-2 gap-3">
-    <button className={button} onClick={()=>{setMode('create');setError('');}}><Plus className="mr-1 inline" size={16}/> Criar grupo</button>
-    <button className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold" onClick={()=>{setLinkedInvite(false);setJoinLink('');setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
+    <button disabled={!navigator.onLine} className={button} onClick={()=>{setMode('create');setError('');}}><Plus className="mr-1 inline" size={16}/> Criar grupo</button>
+    <button disabled={!navigator.onLine} className="rounded-xl border border-white/20 px-3 py-3 text-sm font-bold disabled:opacity-40" onClick={()=>{setLinkedInvite(false);setJoinLink('');setMode('join');setError('');}}><Link2 className="mr-1 inline" size={16}/> Entrar em grupo</button>
    </div><h3 className="pt-3 text-sm font-black uppercase">Meus grupos ({groups.length})</h3>
    {!groups.length?<div className="rounded-2xl border border-white/10 p-8 text-center"><Users size={32} className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-semibold">Nenhum grupo ainda</p><p className="mt-2 text-sm text-white/55">Crie um grupo para organizar sua galera nas próximas festas.</p></div>:
    groups.map(g=><button key={g.id} onClick={()=>void open(g.id)} className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[.04] p-4 text-left">
