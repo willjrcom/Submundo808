@@ -66,6 +66,8 @@ test('opt-out remove só compartilhamento, mantém GPS e bloqueia novos envios a
  assert.match(map,/if\(dontShareRef\.current\|\|sharingRef\.current\|\|!navigator\.onLine/);
  assert.match(server,/share_friends_disabled/);
  assert.match(map,/sendLatestLocation\(\)/);
+ assert.match(map,/const endFriendShareKeepingGps=\(message:string\)=>\{/);
+ assert.match(map,/O compartilhamento terminou\. O GPS local continua ativo/);
 });
 test('GPS local aparece antes da resposta da API e dados offline não esperam localização de amigos',()=>{
  const callback=map.indexOf('const onGpsSuccess='),render=map.indexOf('consumeGpsPosition(position);',callback);
