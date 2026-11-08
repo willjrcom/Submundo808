@@ -1,0 +1,27 @@
+name: Validate read-only calibration overview (temporary)
+on:
+  push:
+    branches:
+      - refactor/calibration-view-readonly-live-editor
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Calibration regression
+        run: node --test tests/map-calibration-flow.test.mjs tests/map-calibration-satellite.test.mjs tests/map-calibration-manual.test.mjs tests/map-calibration-guidance.test.mjs tests/map-calibration-preview-projection.test.mjs tests/map-calibration-save.test.mjs
+      - name: Build frontend
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build
