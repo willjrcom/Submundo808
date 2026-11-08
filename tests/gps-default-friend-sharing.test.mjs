@@ -42,7 +42,7 @@ test('um botão de GPS acima do mapa, compartilhando por padrão só após toque
  assert.match(map,/if\(!dontShareRef\.current&&navigator\.onLine/);
  assert.match(map,/startSharing\(\)/);
  assert.match(map,/toggleLocalPosition\(\)/);
- assert.match(map,/Ao ativar o GPS, sua posição também fica visível aos amigos/);
+ assert.match(map,/sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas/);
  assert.match(map,/Ativar GPS e compartilhar/);
  assert.match(map,/\{\(!tracking\|\|!location\)&&<div/);
  assert.match(map,/analyticsEnabled:shareEnabled&&statisticsEnabled/);
