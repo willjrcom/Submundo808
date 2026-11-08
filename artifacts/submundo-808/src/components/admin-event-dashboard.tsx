@@ -1,5 +1,6 @@
 import {CalendarDays,Clock3,MapPin,Map as MapIcon,Music2,Pencil,ExternalLink,Ticket,ArrowUpRight} from 'lucide-react';
 import {displayLabel} from './display-label';
+import {formatDJTimeRange} from './dj-schedule';
 import {AdminMapThumbnail,useAdminMapAreas} from './admin-map-thumbnail';
 import AdminDashboardReviews from './admin-dashboard-reviews';
 
@@ -50,7 +51,7 @@ export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,
    </section>
    <section className="space-y-3 rounded-2xl border border-white/10 bg-white/[.035] p-4 sm:p-5">
     <h3 className="flex items-center gap-2 font-bold"><Music2 size={18} className="text-[#c4ff40]"/> Programação</h3>
-    {djs.length?<div className="grid grid-cols-2 gap-2">{djs.slice(0,6).map((dj,i)=><div key={i} className="rounded-xl border border-white/10 bg-[#18131e] p-3"><p className="truncate text-sm font-bold">{dj.nome||'DJ a confirmar'}</p><p className="mt-1 text-xs text-white/50">{dj.inicio?formatted(dj.inicio):'Horário a definir'}</p></div>)}</div>:<p className="text-sm text-white/55">Line-up em breve.</p>}
+    {djs.length?<div className="grid grid-cols-2 gap-2">{djs.slice(0,6).map((dj,i)=><div key={i} className="rounded-xl border border-white/10 bg-[#18131e] p-3"><p className="truncate text-sm font-bold">{dj.nome||'DJ a confirmar'}</p><p className="mt-1 text-xs text-white/50">{dj.inicio||dj.fim?formatDJTimeRange(dj,event.starts_at||''):'Horário a definir'}</p></div>)}</div>:<p className="text-sm text-white/55">Line-up em breve.</p>}
     {djs.length>6&&<p className="text-xs text-white/55">+ {djs.length-6} DJs cadastrados</p>}
    </section>
   </div>

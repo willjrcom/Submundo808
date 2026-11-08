@@ -114,8 +114,9 @@ test('entrada em grupo permite escanear QR Code pela câmera e mantém link manu
 
 test('evento sem atrações exibe Line-up em breve e não exibe horas inventadas',()=>{
  assert.match(home,/Line-up em breve/);
- assert.match(home,/event\.lineup\.length\?/);
- assert.match(home,/\(dj\.inicio\|\|dj\.fim\)\&\&<p/);
+ assert.match(home,/timeline\.length\?/);
+ assert.match(home,/slot\.timeLabel/);
+ assert.match(home,/getDJTimeline\(event\.lineup,event\.starts_at,nowMs\)/);
 });
 test('mapa sem avisos de desenvolvimento não inventa navegação GPS; cardápio ainda protege preços de exemplo',()=>{
  assert.doesNotMatch(map,/Mapa demonstrativo — não representa a planta real/);
