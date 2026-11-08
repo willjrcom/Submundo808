@@ -10,7 +10,7 @@ test('GPS: sucesso retorna posição, negação e timeout dão orientação dife
  const geo={getCurrentPosition(success,fail,options){assert.equal(options.timeout,18000);success(position);}};
  assert.equal(await requestGpsPosition(geo),position);
  await assert.rejects(()=>requestGpsPosition({getCurrentPosition(_,fail){fail({code:1});}}),error=>error.code===1);
- await assert.rejects(()=>requestGpsPosition(null),/GPS indisponível/);
+ assert.throws(()=>requestGpsPosition(null),/GPS indisponível/);
  assert.match(permissionFailure('location',{code:1}).message,/Como liberar/);
  assert.equal(permissionFailure('location',{code:1}).denied,true);
  assert.match(permissionFailure('location',{code:3}).message,/demorou/);
