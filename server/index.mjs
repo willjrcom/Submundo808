@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PostgresSync } from './postgres-sync.mjs';
+import {ensureAdminAccessSchema,adminRole,handleAdminAccess} from './admin-access.mjs';
 import {databaseMode} from './database-mode.mjs';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS friend_invites (user_id TEXT PRIMARY KEY, token_hash 
 CREATE TABLE IF NOT EXISTS live_locations (user_id TEXT PRIMARY KEY, lat REAL NOT NULL, lng REAL NOT NULL, accuracy REAL NOT NULL, updated_at INTEGER NOT NULL);`);
 for(const [column,def] of [['phone',"TEXT NOT NULL DEFAULT ''"],['instagram',"TEXT NOT NULL DEFAULT ''"]]){if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name===column))db.exec('ALTER TABLE users ADD COLUMN '+column+' '+def);}
 db.exec('CREATE TABLE IF NOT EXISTS admin_users(user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL)');
+ensureAdminAccessSchema(db);
 if(!db.prepare('PRAGMA table_info(users)').all().some(c=>c.name==='avatar_data'))db.exec("ALTER TABLE users ADD COLUMN avatar_data TEXT NOT NULL DEFAULT ''");
 db.exec("CREATE TABLE IF NOT EXISTS push_subscriptions(user_id TEXT NOT NULL,endpoint TEXT NOT NULL PRIMARY KEY,subscription_json TEXT NOT NULL,created_at INTEGER NOT NULL)");
 db.exec(`CREATE TABLE IF NOT EXISTS event_participants (
@@ -194,9 +196,9 @@ const requestIp=req=>clientIp(req,{trustProxy:trustedProxy});
 const loginKey=(req,email)=>requestIp(req)+':'+email;
 function limited(req){return generalPostLimit.hit(requestIp(req));}
 async function body(req) { let raw=''; for await (const chunk of req) { raw+=chunk; if(raw.length>200000) throw Error('Payload muito grande'); } return JSON.parse(raw || '{}'); }
-async function sendReset(email, link) {
+async function sendReset(email, link,options={}) {
   if (!process.env.RESEND_API_KEY || !process.env.RESET_FROM_EMAIL) return false;
-  const result = await fetch('https://api.resend.com/emails', { method:'POST', headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'}, body:JSON.stringify({from:process.env.RESET_FROM_EMAIL,to:[email],subject:'Redefinir senha — Submundo 808',text:'Para redefinir sua senha, abra este link (válido por 30 minutos): '+link}) });
+  const result = await fetch('https://api.resend.com/emails', { method:'POST', headers:{Authorization:'Bearer '+process.env.RESEND_API_KEY,'Content-Type':'application/json'}, body:JSON.stringify({from:process.env.RESET_FROM_EMAIL,to:[email],subject:options.subject||'Redefinir senha — Submundo 808',text:options.text||'Para redefinir sua senha, abra este link (válido por 30 minutos): '+link}) });
   if (!result.ok) throw Error('Falha no serviço de e-mail');
   return true;
 }
@@ -603,6 +605,19 @@ http.createServer(async (req,res)=>{
         const user=getUser(req);if(!user)return json(res,401,{error:'Faça login.'});
         if(!isAdmin(user))return json(res,403,{error:'Acesso restrito a administradores.'});
         const key=url.pathname.slice('/api/admin/'.length);
+        if(['admins','admins-search','admins-audit'].includes(key)){
+          const result=await handleAdminAccess({
+            db,actor:user,key,method:req.method,url,data:req.method==='POST'?await body(req):{},
+            passwordHash,validPassword,
+            mailConfigured:!!(process.env.RESEND_API_KEY&&process.env.RESET_FROM_EMAIL),
+            baseUrl:PUBLIC_APP_ORIGIN,
+            sendInvite:(email,link)=>sendReset(email,link,{
+              subject:'Convite para administrar o Submundo 808',
+              text:'Você recebeu acesso administrativo ao Submundo 808. Para definir sua senha, abra este link (válido por 30 minutos): '+link+'\nSe não reconhece este convite, ignore este e-mail.'
+            })
+          });
+          return json(res,result.status,result.body);
+        }
         if(req.method==='GET'&&key==='database-status')return json(res,200,{engine:storageMode});
         if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history'||key==='crowd-hourly')){
           const eventId=String(url.searchParams.get('event_id')||'');
@@ -933,7 +948,7 @@ http.createServer(async (req,res)=>{
             authStatus=!row?'user_missing':row.token_version!==claims.ver?'token_revoked':'unknown';
           }
         }
-        return json(res,200,{user:user?{...user,isAdmin:isAdmin(user)}:null,authStatus});
+        return json(res,200,{user:user?{...user,isAdmin:isAdmin(user),adminRole:adminRole(db,user.id)}:null,authStatus});
       }
       if (url.pathname==='/api/auth/demo-admin' && req.method==='POST') {
         if(process.env.ENABLE_DEMO_USERS!=='true' || process.env.ENABLE_DEMO_ADMIN!=='true')return json(res,403,{error:'Criação de administrador de teste desativada. Configure ENABLE_DEMO_USERS e ENABLE_DEMO_ADMIN.'});
@@ -944,7 +959,7 @@ http.createServer(async (req,res)=>{
         db.exec('BEGIN');
         try{
           db.prepare('INSERT INTO users(id,name,email,password,created_at) VALUES(?,?,?,?,?)').run(id,name,email,passwordHash(password),Date.now());
-          db.prepare('INSERT INTO admin_users VALUES(?,?)').run(id,Date.now());
+          db.prepare('INSERT INTO admin_users(user_id,created_at,role) VALUES(?,?,?)').run(id,Date.now(),'admin');
           db.exec('COMMIT');
         }catch(e){db.exec('ROLLBACK');throw e;}
         createSession(req,res,id);
