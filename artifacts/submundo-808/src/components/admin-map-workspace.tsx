@@ -61,7 +61,7 @@ function editableAreaGeometry(area:Area):AreaGeometry{
  return {...geometry,shape:geometry.shape||'rect',curve:null,
   curves:{...(legacy?{[legacy.side]:legacy}:{}),...(geometry.curves||{})}};
 }
-export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>void}){
+export default function AdminMapWorkspace({map,onBack,onRenamed}:{map:MapItem;onBack:()=>void;onRenamed?:()=>void}){
  const [mapName,setMapName]=useState(map.name),[renameDraft,setRenameDraft]=useState(map.name),[renameError,setRenameError]=useState(''),[nameSaving,setNameSaving]=useState(false),[renameOpen,setRenameOpen]=useState(false);
  const [areas,setAreas]=useState<Area[]>([]),[markers,setMarkers]=useState<Marker[]>([]);
  const [catalogCategories,setCatalogCategories]=useState<string[]>([]);
@@ -637,7 +637,7 @@ export default function AdminMapWorkspace({map,onBack}:{map:MapItem;onBack:()=>v
    {!groupCandidates.length&&<p className="text-xs text-amber-200">Não há outros ambientes ou grupos retangulares conectados. Arraste a nova parte até encostar em uma das bordas do grupo.</p>}
   </section></div>}
   {renameOpen&&<div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 p-3 sm:p-6" onMouseDown={e=>{if(e.target===e.currentTarget&&!nameSaving)setRenameOpen(false);}}>
-   <form role="dialog" aria-modal="true" aria-labelledby="rename-map-title" onSubmit={async event=>{event.preventDefault();const name=renameDraft.trim();if(!name||nameSaving)return;setNameSaving(true);setRenameError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setMapName(name);setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setRenameError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="w-full max-w-md space-y-4 rounded-2xl border border-[#c4ff40]/35 bg-[#191320] p-4 shadow-2xl sm:p-6">
+   <form role="dialog" aria-modal="true" aria-labelledby="rename-map-title" onSubmit={async event=>{event.preventDefault();const name=renameDraft.trim();if(!name||nameSaving)return;setNameSaving(true);setRenameError('');setNotice('');try{await api('edit-map',{id:map.id,venue_id:map.venue_id,name});setMapName(name);onRenamed?.();setNotice('Nome da planta atualizado.');setRenameOpen(false);}catch(e){setRenameError(e instanceof Error?e.message:'Erro ao alterar nome.');}finally{setNameSaving(false);}}} className="w-full max-w-md space-y-4 rounded-2xl border border-[#c4ff40]/35 bg-[#191320] p-4 shadow-2xl sm:p-6">
     <div className="flex items-center justify-between gap-3"><h3 id="rename-map-title" className="text-lg font-black">Renomear planta</h3><button type="button" aria-label="Fechar renomeação" disabled={nameSaving} onClick={()=>setRenameOpen(false)} className={button}><X size={18}/></button></div>
     <p className="text-sm text-white/60">Altere somente o nome da planta. Ambientes, pontos e calibração serão preservados.</p>
     <label className="block space-y-2 text-sm font-semibold text-white/75">Nome da planta<input autoFocus maxLength={100} required value={renameDraft} onChange={e=>setRenameDraft(e.target.value)} className={input}/></label>
