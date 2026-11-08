@@ -69,7 +69,7 @@ test('o usuário consegue encerrar o GPS, interromper os envios e sincronizar of
  assert.match(map,/if\(localStorage\.getItem\('submundo-gps-stop-pending'\)==='1'\)/);
  assert.match(map,/GPS parado\. A desativação no servidor será sincronizada/);
  assert.match(server,/DELETE FROM live_locations WHERE user_id=\?/);
- assert.match(server,/if\(url\.pathname==='\/api\/location\/stop'/);
+ assert.match(server,/if\s*\(url\.pathname==='\/api\/location\/stop'/);
 });
 
 test('o GPS local continua possível em eventos sem compartilhamento e antes da conexão',()=>{
@@ -82,7 +82,7 @@ test('o GPS local continua possível em eventos sem compartilhamento e antes da 
 
 test('GPS local aparece antes da resposta da API e dados offline não esperam localização de amigos',()=>{
  const callback=map.indexOf('const onGpsSuccess='),render=map.indexOf('consumeGpsPosition(position);',callback);
- const prefs=map.indexOf('await savePrefs(true,true,activeEventId,true)',callback);
+ const prefs=map.indexOf('await savePrefs(true,true,activeEventId,true,unifiedActivationPending.current)',callback);
  assert.ok(callback>=0&&render>callback&&prefs>render);
  assert.match(map,/setTimeout\(\(\)=>controller\.abort\(\),10000\)/);
  assert.match(map,/const showLoading=useMinimumLoading\(!!activeEventId&&\(!mapsReady\|\|loadedForEventId!==activeEventId\|\|!mapResolved\)\)/);
