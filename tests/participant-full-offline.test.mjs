@@ -120,6 +120,19 @@ test('as cinco abas mantêm suas telas habituais e os QR Codes são gerados loca
  assert.doesNotMatch(qr,/api\.qrserver\.com/);
  assert.match(sw,/if\(!isPublicApi\(url\)\)return/);
 });
+test('um carregamento iniciado antes do logout não restaura dados privados',async()=>{
+ storage.clear();
+ offline.saveOfflinePrivateResponse('/api/auth/me',meA);
+ globalThis.navigator.onLine=true;
+ let deliver=()=>{};
+ globalThis.fetch=()=>new Promise(resolve=>{deliver=()=>resolve({ok:true,status:200,json:async()=>friendsA});});
+ const inFlight=offline.privateParticipantGet('/api/friends');
+ offline.clearOfflineParticipantData();
+ deliver();
+ await inFlight;
+ assert.equal(offline.getOfflineProfile(),null);
+ assert.equal(offline.getOfflinePrivateResponse('/api/friends'),null);
+});
 test.after(()=>{
  if(originalStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=originalStorage;
  if(originalNavigator===undefined)delete globalThis.navigator;else Object.defineProperty(globalThis,'navigator',{value:originalNavigator,configurable:true});
