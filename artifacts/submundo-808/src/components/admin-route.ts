@@ -70,3 +70,9 @@ export function adminRoutePath(route:AdminRoute):string{
  if(route.id)return base+'/'+encodeURIComponent(route.id);
  return base;
 }
+
+/** Valida deep links do painel, inclusive /events/:id/menu após F5. */
+export function isKnownAdminPath(pathname:string):boolean{
+ const pathParts=pathname.split('/').filter(Boolean);
+ return (pathParts.length===5&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='events'&&pathParts[4]==='analysis'&&!!pathParts[1]&&!!pathParts[3])||pathParts.length===0||(pathParts.length===3&&['venues','estabelecimentos'].includes(pathParts[0])&&pathParts[2]==='analytics'&&!!pathParts[1])||(pathParts.length===1&&['venues','events','products','maps','preferences','reviews','notifications','administradores','admins','intelligence','inteligencia','statistics','estatisticas','estabelecimentos','eventos','produtos','mapas'].includes(pathParts[0]))||(pathParts.length===2&&['venues','events','maps','estabelecimentos','eventos','mapas'].includes(pathParts[0])&&!!pathParts[1])||(pathParts.length===4&&['venues','estabelecimentos'].includes(pathParts[0])&&['maps','mapas'].includes(pathParts[2])&&!!pathParts[1]&&!!pathParts[3])||(pathParts.length===3&&['events','eventos'].includes(pathParts[0])&&!!pathParts[1]&&['menu','cardapio'].includes(pathParts[2]));
+}
