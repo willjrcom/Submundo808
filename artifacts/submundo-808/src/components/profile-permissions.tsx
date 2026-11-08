@@ -203,7 +203,14 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
    :'Abra as configurações deste site no navegador e altere a permissão para Permitir. Depois, volte ao Submundo808.';
   setNotice(key as 'location'|'notifications'|'camera','A permissão de '+title+' está bloqueada. '+where+' O aplicativo não consegue remover esse bloqueio sozinho.');
  }
+ function explainUnsupportedPermission(key:string){
+  const explanation=key==='location'?'GPS indisponível: confira se a localização do aparelho está ativa e abra o site em um navegador atualizado, por HTTPS.'
+   :key==='camera'?'Câmera indisponível: atualize o navegador, verifique se há uma câmera conectada e abra o site por HTTPS.'
+   :'Notificações indisponíveis: instale o aplicativo na Tela de Início, use um navegador compatível e tente novamente.';
+  setNotice(key as 'location'|'notifications'|'camera',explanation,'error');
+ }
  const warningMessage=noticeTone==='error';
+ const successMessage=noticeTone==='success';
  return <div className="space-y-4">
   <p className="text-sm text-white/60">Configure os recursos do celular. Permissões já concedidas aparecem como ativadas.</p>
   <div className="flex min-h-[92px] flex-wrap items-center gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
@@ -214,7 +221,7 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
     <p className="mt-1 text-[11px] text-white/45">{installed?'Instalado':needsIosInstall?'Necessário para notificações':'Opcional'}</p>
    </div>
    {installed?<span className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={16}/> Instalado</span>:<button type="button" onClick={()=>void installApp()} disabled={!!busy} className="rounded-xl border border-[#c4ff40]/40 px-3 py-2 text-xs font-bold text-[#c4ff40]"><Download size={15} className="mr-1 inline"/>{ios?'Ver tutorial':'Instalar'}</button>}
-   {messageKey==='installation'&&message&&<p role={warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border px-3 py-3 text-xs leading-relaxed '+(warningMessage?'border-rose-400/50 bg-rose-500/15 font-semibold text-rose-100':'border-white/20 bg-white/5 text-white/80')}>{warningMessage&&<AlertTriangle size={17} className="shrink-0 text-rose-300"/>}{message}</p>}
+   {messageKey==='installation'&&message&&<p role={warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border px-3 py-3 text-xs leading-relaxed '+(warningMessage?'border-rose-400/50 bg-rose-500/15 font-semibold text-rose-100':(successMessage?'border-[#c4ff40]/35 bg-[#c4ff40]/[.07] text-[#c4ff40]':'border-white/20 bg-white/5 text-white/80'))}>{warningMessage&&<AlertTriangle size={17} className="shrink-0 text-rose-300"/>}{message}</p>}
   </div>
   {rows.map(({key,title,description,Icon,run})=>{
    const status=statuses[key]||'prompt';
@@ -235,9 +242,9 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
      
     </div>
     <div className="flex min-w-[98px] justify-end">
-     {locked?<button type="button" onClick={()=>{setTutorialOpen(true);setNotice('notifications','Siga o tutorial de instalação para liberar notificações no iPhone.');}} className="rounded-xl border border-amber-400/35 bg-amber-400/[.07] px-3 py-2 text-xs font-bold text-amber-200">Ver como instalar</button>:ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:denied?<button type="button" disabled={!!busy} onClick={()=>explainBlockedPermission(key)} className="rounded-xl border border-rose-400/55 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-200 disabled:opacity-50">Como liberar</button>:unsupported?<span className="text-right text-xs text-white/45">Indisponível</span>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-white/30 px-3 py-2 text-xs font-bold text-white/85 disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':'Ativar'}</button>}
+     {locked?<button type="button" onClick={()=>{setTutorialOpen(true);setNotice('notifications','Siga o tutorial de instalação para liberar notificações no iPhone.');}} className="rounded-xl border border-amber-400/35 bg-amber-400/[.07] px-3 py-2 text-xs font-bold text-amber-200">Ver como instalar</button>:ready?<span aria-label={title+' autorizada'} className="inline-flex items-center gap-1.5 rounded-full border border-[#c4ff40]/35 bg-[#c4ff40]/10 px-3 py-2 text-xs font-bold text-[#c4ff40]"><CheckCircle2 size={17}/> Ativada</span>:denied?<button type="button" disabled={!!busy} onClick={()=>explainBlockedPermission(key)} className="rounded-xl border border-rose-400/55 bg-rose-400/10 px-3 py-2 text-xs font-bold text-rose-200 disabled:opacity-50">Como liberar</button>:unsupported?<button type="button" onClick={()=>explainUnsupportedPermission(key)} className="rounded-xl border border-white/20 px-3 py-2 text-xs font-semibold text-white/70">Como resolver</button>:<button type="button" disabled={!!busy} onClick={()=>void run()} className="rounded-xl border border-white/30 px-3 py-2 text-xs font-bold text-white/85 disabled:opacity-50">{busy===key?'Aguarde...':permissionGranted&&key==='notifications'?'Ativar push':'Ativar'}</button>}
     </div>
-    {(denied||(messageKey===key&&message))&&<div role={denied||warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed '+(denied||warningMessage?'border-rose-400/55 bg-rose-500/15 font-semibold text-rose-100':'border-white/15 bg-white/5 text-white/75')}>
+    {(denied||(messageKey===key&&message))&&<div role={denied||warningMessage?'alert':'status'} className={'flex w-full items-start gap-2 rounded-xl border p-3 text-xs leading-relaxed '+(denied||warningMessage?'border-rose-400/55 bg-rose-500/15 font-semibold text-rose-100':(successMessage?'border-[#c4ff40]/35 bg-[#c4ff40]/[.07] text-[#c4ff40]':'border-white/15 bg-white/5 text-white/75'))}>
      {(denied||warningMessage)&&<AlertTriangle size={18} className="shrink-0 text-rose-300" aria-hidden="true"/>}
      <span>{messageKey===key&&message?message:denied?'Acesso bloqueado. Para liberar, toque em Como liberar e ajuste a permissão nas configurações do aparelho ou navegador.':''}</span>
     </div>}
