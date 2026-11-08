@@ -13,6 +13,8 @@ type SessionUser={id:string;name:string;email:string;phone?:string;instagram?:st
 const allowedPaths=new Set(['/api/auth/me','/api/auth/connections','/api/friends','/api/groups','/api/meaple/tickets']);
 const maxGroups=30;
 const maxBytes=3_500_000;
+// Prevent in-flight old-account responses from repopulating snapshots after logout.
+let cacheEpoch=0;
 
 export function allowedOfflinePrivatePath(path:string):boolean{
  try{
@@ -83,6 +85,7 @@ function saveUser(data:{user?:SessionUser|null}):void{
  const user=data.user;
  if(!user?.id)return;
  const previous=readRaw();
+ if(previous?.ownerId&&previous.ownerId!==user.id)cacheEpoch++;
  const responses:Record<string,unknown>=previous?.ownerId===user.id?{...previous.responses}:{};
  responses['/api/auth/me']=sanitise({user}) as object;
  persist({ownerId:user.id,updatedAt:Date.now(),responses,friendCode:previous?.ownerId===user.id?previous.friendCode:undefined});
@@ -112,6 +115,7 @@ export function getOfflinePrivateUpdatedAt():number|null{
  return readRaw()?.updatedAt||null;
 }
 export function clearOfflineParticipantData():void{
+ cacheEpoch++;
  try{localStorage.removeItem(OFFLINE_PRIVATE_KEY);}catch{}
 }
 /** A GET either returns fresh server data or the last authenticated snapshot.
@@ -119,6 +123,7 @@ export function clearOfflineParticipantData():void{
  */
 export async function privateParticipantGet<T=unknown>(path:string):Promise<T>{
  if(!allowedOfflinePrivatePath(path))throw Error('Este recurso não pode ser armazenado offline.');
+ const requestEpoch=cacheEpoch;
  if(typeof navigator!=='undefined'&&!navigator.onLine){
   const cached=getOfflinePrivateResponse<T>(path);
   if(cached!==null)return cached;
@@ -141,8 +146,10 @@ export async function privateParticipantGet<T=unknown>(path:string):Promise<T>{
    const err=Object.assign(new Error(data?.error||'Não foi possível concluir a consulta.'),{status:response.status});
    throw err;
   }
-  if(path==='/api/auth/me'&&!data?.user)clearOfflineParticipantData();
-  else saveOfflinePrivateResponse(path,data);
+  if(cacheEpoch===requestEpoch){
+   if(path==='/api/auth/me'&&!data?.user)clearOfflineParticipantData();
+   else saveOfflinePrivateResponse(path,data);
+  }
   return data as T;
  }catch(error){
   // A definite HTTP response is authoritative, even when we have a snapshot.
