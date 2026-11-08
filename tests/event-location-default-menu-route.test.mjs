@@ -12,6 +12,7 @@ function fixture(){
  db.exec('CREATE TABLE events(id TEXT PRIMARY KEY,location_sharing_enabled INTEGER NOT NULL DEFAULT 0); CREATE TABLE location_preferences(user_id TEXT PRIMARY KEY,gps_enabled INTEGER NOT NULL DEFAULT 0,share_enabled INTEGER NOT NULL DEFAULT 0,share_with_groups INTEGER NOT NULL DEFAULT 0,share_expires_at INTEGER,share_event_id TEXT,analytics_enabled INTEGER NOT NULL DEFAULT 0,analytics_event_id TEXT,updated_at INTEGER NOT NULL DEFAULT 0); CREATE TABLE live_locations(user_id TEXT PRIMARY KEY,lat REAL,lng REAL,updated_at INTEGER NOT NULL DEFAULT 0);');
  db.prepare('INSERT INTO events VALUES(?,?)').run('festival',1);
  db.prepare('INSERT INTO events VALUES(?,?)').run('other',1);
+ db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?,?,?)').run('orphan',0,0,0,null,null,1,'festival',50);
  for(const [user,event] of [['friend','festival'],['other-user','other']]){
   db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?,?,?)').run(user,1,1,0,10000,event,1,event,50);
   db.prepare('INSERT INTO live_locations VALUES(?,?,?,?)').run(user,-23,-47,50);
@@ -34,6 +35,7 @@ test('desabilitar evento remove posições e estatísticas somente de sua festa'
   assert.equal(pref.analytics_event_id,null);
   assert.equal(pref.updated_at,123456);
   assert.equal(db.prepare("SELECT share_enabled FROM location_preferences WHERE user_id='other-user'").get().share_enabled,1);
+  assert.equal(db.prepare("SELECT analytics_enabled FROM location_preferences WHERE user_id='orphan'").get().analytics_enabled,0);
   assert.equal(db.prepare("SELECT location_sharing_enabled FROM events WHERE id='other'").get().location_sharing_enabled,1);
  }finally{db.close();}
 });
