@@ -29,7 +29,7 @@ test('criação de admin é apresentada só quando o servidor habilita e preserv
  assert.match(account,/Copiar credenciais/);
  assert.doesNotMatch(account,/localStorage\.setItem\('submundo-demo-email'/);
  assert.match(server,/process\.env\.ENABLE_DEMO_USERS!=='true' \|\| process\.env\.ENABLE_DEMO_ADMIN!=='true'/);
- assert.match(server,/INSERT INTO admin_users VALUES/);
+ assert.match(server,/INSERT INTO admin_users\(user_id,created_at,role\) VALUES/);
 });
 
 test('o endpoint de provedores só oferece admin de teste com duas flags explícitas',async()=>{

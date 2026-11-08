@@ -26,6 +26,46 @@ test('PostgreSQL grava usuário, autentica sessão, edita perfil e desliga compa
   const script="import {PostgresSync} from '/app/server/postgres-sync.mjs';const db=new PostgresSync(process.env.DATABASE_URL);db.prepare('INSERT OR IGNORE INTO admin_users(user_id,created_at) VALUES(?,?)').run(process.env.GRANT_USER_ID,Date.now());db.close();";
   execFileSync('docker',['exec','-e','GRANT_USER_ID='+register.data.user.id,process.env.PG_TEST_CONTAINER,'node','--input-type=module','-e',script],{timeout:20000,stdio:['ignore','pipe','pipe']});
   const denied=await api('/api/admin/venues',{cookie:register.cookie});assert.equal(denied.status,200);
+
+  // The old SQL grant remains an administrator role; an existing admin must
+  // explicitly claim ownership, never via automatic startup migration.
+  const oldAdmins=await api('/api/admin/admins',{cookie:register.cookie});
+  assert.equal(oldAdmins.status,200,JSON.stringify(oldAdmins.data));
+  assert.equal(oldAdmins.data.ownerCount,0);
+  const initialOwner=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap',password:'SenhaNova123456'}});
+  assert.equal(initialOwner.status,200,JSON.stringify(initialOwner.data));
+  const initialOwnerAgain=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'bootstrap',password:'SenhaNova123456'}});
+  assert.equal(initialOwnerAgain.status,403);
+  const newAdminEmail='pg-admin-crud-'+Date.now()+'@example.invalid';
+  const createdAdmin=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{
+   action:'create',name:'Administrador PostgreSQL',email:newAdminEmail,role:'admin'
+  }});
+  assert.equal(createdAdmin.status,201,JSON.stringify(createdAdmin.data));
+  assert.equal(createdAdmin.data.newAccount,true);
+  assert.ok(createdAdmin.data.tempPassword);
+  const secondLogin=await api('/api/auth/login',{method:'POST',body:{email:newAdminEmail,password:createdAdmin.data.tempPassword}});
+  assert.equal(secondLogin.status,200,JSON.stringify(secondLogin.data));
+  const secondMe=await api('/api/auth/me',{cookie:secondLogin.cookie});
+  assert.equal(secondMe.data.user.adminRole,'admin');
+  const forbiddenAdminCreate=await api('/api/admin/admins',{method:'POST',cookie:secondLogin.cookie,body:{action:'create',email:'other@example.com',name:'Outro'}});
+  assert.equal(forbiddenAdminCreate.status,403);
+  const cannotRemoveOwner=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'revoke',id:register.data.user.id}});
+  assert.equal(cannotRemoveOwner.status,409);
+  const promoted=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{
+   action:'update',id:createdAdmin.data.item.id,name:'Admin PostgreSQL editado',role:'owner'
+  }});
+  assert.equal(promoted.status,200,JSON.stringify(promoted.data));
+  assert.equal(promoted.data.item.role,'owner');
+  const removed=await api('/api/admin/admins',{method:'POST',cookie:register.cookie,body:{action:'revoke',id:createdAdmin.data.item.id}});
+  assert.equal(removed.status,200,JSON.stringify(removed.data));
+  const revokedSession=await api('/api/auth/me',{cookie:secondLogin.cookie});
+  assert.equal(revokedSession.data.user.isAdmin,false);
+  const blockedSecond=await api('/api/admin/venues',{cookie:secondLogin.cookie});
+  assert.equal(blockedSecond.status,403);
+  const accessHistory=await api('/api/admin/admins-audit',{cookie:register.cookie});
+  assert.equal(accessHistory.status,200);
+  assert.ok(accessHistory.data.items.some(entry=>entry.action==='revoke'&&entry.target_user_id===createdAdmin.data.item.id));
+
   const venue=await api('/api/admin/venues',{method:'POST',cookie:register.cookie,body:{name:'Local PostgreSQL',city:'Sorocaba'}});
   assert.equal(venue.status,201,JSON.stringify(venue.data));
   const map=await api('/api/admin/maps',{method:'POST',cookie:register.cookie,body:{name:'Pista principal',venue_id:venue.data.id}});

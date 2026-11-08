@@ -17,7 +17,9 @@ test('section aliases restore canonical admin route after refreshing',()=>{
   ['/estabelecimentos','Estabelecimentos','/venues'],
   ['/mapas','Mapas e ambientes','/maps'],
   ['/eventos','Eventos','/events'],
-  ['/produtos','Produtos','/products']
+  ['/produtos','Produtos','/products'],
+  ['/administradores','Administradores','/admins'],
+  ['/admins','Administradores','/admins']
  ]){
   const route=parseAdminRoute(url);
   assert.equal(route.section,section);
@@ -65,4 +67,11 @@ test('venue floor plan deep link preserves both ids',()=>{
 test('standalone event menu deep link preserves event id',()=>{
  assert.deepEqual(parseAdminRoute('/events/event-42/menu'),{section:'Eventos',id:'event-42',creating:false,menu:true});
  assert.equal(adminRoutePath(parseAdminRoute('/eventos/event-42/cardapio')),'/events/event-42/menu');
+});
+
+test('administrators section preserves canonical route and has no detail editor',()=>{
+ const section=parseAdminRoute('/admins');
+ assert.deepEqual(section,{section:'Administradores',id:null,creating:false});
+ assert.equal(adminRoutePath(section),'/admins');
+ assert.equal(adminRoutePath(parseAdminRoute('/administradores/')), '/admins');
 });

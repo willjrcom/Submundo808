@@ -26,8 +26,8 @@ para PostgreSQL. O PostgreSQL **não recebe dados do SQLite**.
    por conexão administrativa no próprio PostgreSQL:
 
    ```sql
-   INSERT INTO admin_users(user_id,created_at)
-   SELECT id, (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000)::bigint
+   INSERT INTO admin_users(user_id,created_at,role)
+   SELECT id, (EXTRACT(EPOCH FROM CURRENT_TIMESTAMP) * 1000)::bigint, 'admin'
    FROM users WHERE email = 'administrador@exemplo.com'
    ON CONFLICT (user_id) DO NOTHING;
    ```
@@ -35,6 +35,29 @@ para PostgreSQL. O PostgreSQL **não recebe dados do SQLite**.
    **Confira quem controla o e-mail antes de executar o SQL**. Na modalidade
    PostgreSQL, `ADMIN_EMAIL` não atribui permissões automaticamente:
    cadastro de e-mail ainda não é verificado e não concede admin por si só.
+
+   Na primeira abertura de **Administradores** (`/admins`), a conta
+   administradora existente deve escolher **Assumir propriedade** e confirmar
+   a senha de login. Esta etapa **não ocorre automaticamente**; protege os
+   dados atuais em atualizações. Depois disso, o proprietário poderá promover
+   contas cadastradas ou criar novas, atribuir `owner`/`admin`, editar nomes,
+   revogar acessos administrativos e consultar auditoria.
+
+   Se a conta usa somente OAuth e ainda não tem senha, defina uma pelo
+   fluxo de recuperação, quando o e-mail estiver configurado. Alternativamente,
+   um operador com acesso ao banco pode fazer a atribuição **explicitamente**,
+   após confirmar a identidade do usuário:
+   ```sql
+   UPDATE admin_users SET role = 'owner'
+   WHERE user_id = (SELECT id FROM users WHERE email = 'administrador@exemplo.com')
+     AND NOT EXISTS (SELECT 1 FROM admin_users WHERE role = 'owner');
+   ```
+   Execute esse procedimento apenas com credenciais de operação confiáveis e
+   confirme que a conta indicada já faz parte de `admin_users`.
+   Nunca habilite `ENABLE_DEMO_ADMIN` para distribuir acesso real.
+   O cadastro de administrador novo exibe uma senha provisória uma única vez;
+   quando Resend estiver configurado, também envia um link de definição de
+   senha por e-mail, válido por 30 minutos.
 
 6. Valide os fluxos do aplicativo nos navegadores reais, especialmente OAuth,
    push e filas de notificações. A CI usa banco PostgreSQL efêmero separado
@@ -63,9 +86,9 @@ sem avaliar dados novos se o sistema já estiver atendendo usuários reais.
 - Em execução local de desenvolvimento/testes, a ausência de `DATABASE_URL`
   ainda permite o SQLite legado; isso **não** significa que o SQLite esteja
   habilitado no ambiente de produção. Nenhum dado é migrado automaticamente.
-- O painel administrativo em **Preferências** consulta `/api/admin/database-status`
-  e exibe qual driver a instância conectada realmente utiliza, sem revelar
-  hostname, usuário, senha ou URL do banco.
+- A identificação do driver é uma verificação interna, não aparece no perfil
+  empresarial. A seção **Administradores** permite gerenciar acessos com
+  auditoria e preserva a conta pessoal quando o acesso é revogado.
 - Backups passam a ser de PostgreSQL (ex.: `pg_dump` com política de retenção,
   armazenamento externo e teste de restauração); não configure backups SQLite
   para o novo banco.
