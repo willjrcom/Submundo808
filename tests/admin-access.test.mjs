@@ -12,7 +12,7 @@ function setup(){
  insert('root','Administrador inicial','root@exemplo.com');
  insert('staff','Administrador operacional','staff@exemplo.com');
  insert('normal','Participante normal','normal@exemplo.com');
- db.prepare('INSERT INTO admin_users(user_id,created_at) VALUES(?,?)').run('root',Date.now());
+ db.prepare('INSERT INTO admin_users(user_id,created_at) VALUES(?,?)').run('root',Date.now()-2000);
  db.prepare('INSERT INTO admin_users(user_id,created_at) VALUES(?,?)').run('staff',Date.now());
  ensureAdminAccessSchema(db);
  const opts={db,passwordHash:pass=>'hashed:'+pass,validPassword:(pass,stored)=>stored==='hashed:'+pass,baseUrl:'https://submundo.example'};
@@ -29,20 +29,23 @@ test('migração preserva administradores existentes sem atribuir propriedade au
  return call('root').then(res=>{
   assert.equal(res.status,200);
   assert.equal(res.body.ownerCount,0);
+   assert.equal(res.body.bootstrapEligible,true);
   assert.equal(res.body.items.length,2);
   assert.ok(res.body.items.every(item=>!('password' in item)));
   db.close();
  });
 });
 
-test('bootstrap exige senha do admin existente e só pode ocorrer uma vez',async()=>{
+test('bootstrap usa a sessão do primeiro admin sem exigir senha, inclusive OAuth',async()=>{
  const {db,call}=setup();
  assert.equal((await call('normal')).status,403);
  assert.equal((await call('staff','admins','POST',{action:'create',email:'new@exemplo.com',name:'Outro'})).status,403);
- assert.equal((await call('root','admins','POST',{action:'bootstrap',password:'errada'})).status,403);
- assert.equal((await call('root','admins','POST',{action:'bootstrap',password:'ok'})).status,200);
+ assert.equal((await call('staff','admins','POST',{action:'bootstrap'})).status,403,'Apenas o primeiro administrador pode assumir a propriedade.');
+ assert.equal((await call('root')).body.bootstrapEligible,true);
+ assert.equal((await call('staff')).body.bootstrapEligible,false);
+ assert.equal((await call('root','admins','POST',{action:'bootstrap'})).status,200);
  assert.equal(adminRole(db,'root'),'owner');
- assert.equal((await call('staff','admins','POST',{action:'bootstrap',password:'ok'})).status,409);
+ assert.equal((await call('staff','admins','POST',{action:'bootstrap'})).status,409);
  assert.equal(adminRole(db,'staff'),'admin');
  const log=(await call('root','admins-audit')).body.items;
  assert.equal(log[0].action,'bootstrap');
@@ -51,7 +54,7 @@ test('bootstrap exige senha do admin existente e só pode ocorrer uma vez',async
 
 test('proprietário promove contas existentes e altera os níveis sem trocar a senha',async()=>{
  const {db,call}=setup();
- await call('root','admins','POST',{action:'bootstrap',password:'ok'});
+ await call('root','admins','POST',{action:'bootstrap'});
  const initial=db.prepare('SELECT password FROM users WHERE id=?').get('normal').password;
  const created=await call('root','admins','POST',{action:'create',email:'NORMAL@exemplo.com',role:'admin'});
  assert.equal(created.status,201);
@@ -73,7 +76,7 @@ test('proprietário promove contas existentes e altera os níveis sem trocar a s
 
 test('revogação retira acesso imediatamente mas mantém a conta e registra auditoria',async()=>{
  const {db,call}=setup();
- await call('root','admins','POST',{action:'bootstrap',password:'ok'});
+ await call('root','admins','POST',{action:'bootstrap'});
  assert.equal((await call('root','admins','POST',{action:'revoke',id:'root'})).status,409);
  assert.equal((await call('root','admins','POST',{action:'revoke',id:'staff'})).status,200);
  assert.equal(adminRole(db,'staff'),null);
@@ -86,7 +89,7 @@ test('revogação retira acesso imediatamente mas mantém a conta e registra aud
 
 test('cria conta com senha provisória única e envia convite opcional por e-mail',async()=>{
  const {db,call}=setup();
- await call('root','admins','POST',{action:'bootstrap',password:'ok'});
+ await call('root','admins','POST',{action:'bootstrap'});
  const created=await call('root','admins','POST',{action:'create',email:'novo@exemplo.com',name:'Novo gestor',role:'admin'});
  assert.equal(created.status,201);
  assert.equal(created.body.newAccount,true);
@@ -103,7 +106,7 @@ test('cria conta com senha provisória única e envia convite opcional por e-mai
 
 test('consulta candidatos e protege o histórico, aceita convite com token de uso único',async()=>{
  const {db,call}=setup();
- await call('root','admins','POST',{action:'bootstrap',password:'ok'});
+ await call('root','admins','POST',{action:'bootstrap'});
  assert.equal((await call('staff','admins-audit')).status,403);
  assert.equal((await call('staff','admins-search','GET',{},'?q=normal')).status,403);
  const found=await call('root','admins-search','GET',{},'?q=normal');
@@ -123,5 +126,14 @@ test('consulta candidatos e protege o histórico, aceita convite com token de us
  assert.match(token,/^[a-f0-9]{64}$/);
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM resets').get().n,1);
  assert.ok(!JSON.stringify((await call('root','admins-audit')).body).includes(token));
+ db.close();
+});
+
+test('admin autenticado com senha ausente no OAuth pode assumir a propriedade sem senha adicional',async()=>{
+ const {db,call}=setup();
+ db.prepare('UPDATE users SET password=? WHERE id=?').run('','root');
+ const result=await call('root','admins','POST',{action:'bootstrap'});
+ assert.equal(result.status,200);
+ assert.equal(adminRole(db,'root'),'owner');
  db.close();
 });
