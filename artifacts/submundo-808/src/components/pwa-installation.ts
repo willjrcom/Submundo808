@@ -17,3 +17,21 @@ export function isPwaInstalled():boolean {
 export function requiresIosInstallationForPush():boolean {
  return isIosDevice()&&!isPwaInstalled();
 }
+
+/** Captura antecipadamente o evento Android, mesmo antes de o Perfil ser aberto. */
+export type InstallPromptEvent=Event&{prompt:()=>Promise<void>;userChoice?:Promise<{outcome:string}>};
+let deferredInstallPrompt:InstallPromptEvent|null=null;
+if(typeof window!=='undefined'){
+ window.addEventListener('beforeinstallprompt',event=>{
+  event.preventDefault();
+  deferredInstallPrompt=event as InstallPromptEvent;
+ });
+ window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;});
+}
+export function getDeferredInstallPrompt():InstallPromptEvent|null{return deferredInstallPrompt;}
+export function clearDeferredInstallPrompt():void{deferredInstallPrompt=null;}
+/** A orientação difere quando o usuário está em um navegador interno. */
+export function isIosEmbeddedBrowser():boolean{
+ if(!isIosDevice()||typeof navigator==='undefined')return false;
+ return /WhatsApp|Instagram|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger|TikTok/i.test(navigator.userAgent);
+}
