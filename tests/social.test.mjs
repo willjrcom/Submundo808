@@ -86,6 +86,30 @@ test('criar, convidar e entrar em grupo exige link; membros permanecem independe
   assert.equal((await call(db,'ana','/api/groups/detail?id='+g.id)).data.group.memberCount,1);
  }finally{db.close();}
 });
+test('convite permite visualizar somente o nome e a identidade do grupo antes do login',async()=>{
+ const db=fixture();try{
+  const created=await call(db,'ana','/api/groups/create','POST',{name:'Galera da Pista',color:'#8957e5'});
+  const groupId=created.data.group.id;
+  const invited=await call(db,'ana','/api/groups/invite','POST',{id:groupId});
+  const token=invited.data.token;
+  const guest=await call(db,'guest','/api/public/group-invite?token='+token);
+  assert.equal(guest.status,200);
+  assert.deepEqual(guest.data,{group:{name:'Galera da Pista',color:'#8957e5',icon:'users',photo:''}});
+  assert.equal(guest.data.group.memberCount,undefined);
+  assert.equal(guest.data.group.id,undefined);
+  assert.equal(guest.data.group.members,undefined);
+  assert.equal(JSON.stringify(guest.data).includes(token),false);
+  assert.equal((await call(db,'guest','/api/public/group-invite?token=invalid')).status,400);
+  assert.equal((await call(db,'guest','/api/public/group-invite?token='+'f'.repeat(64))).status,404);
+  assert.equal((await call(db,'guest','/api/public/group-invite?token='+token,'POST')).status,405);
+  assert.equal((await call(db,'guest','/api/groups/preview?token='+token)).status,401);
+  assert.equal((await call(db,'guest','/api/groups/join','POST',{token})).status,401);
+  assert.equal((await call(db,'bruno','/api/groups/join','POST',{token})).status,200);
+  assert.equal((await call(db,'bruno','/api/groups/join','POST',{token})).status,200);
+  assert.equal((await call(db,'ana','/api/groups/detail?id='+groupId)).data.group.memberCount,2);
+ }finally{db.close();}
+});
+
 test('somente o administrador remove membros, mas todo membro pode sair',async()=>{
  const db=fixture();try{
   const g=(await call(db,'ana','/api/groups/create','POST',{name:'Grupo Um'})).data.group;
