@@ -145,3 +145,17 @@ test('pesquisa de satisfação abre avaliação também para notificações anti
  assert.equal(notificationTargetUrl({kind:'survey',target_kind:'menu',event_id:'evento 2',target_id:''}),'/schedule/evento%202?review=1');
  assert.equal(notificationTargetUrl({kind:'promo',target_kind:'menu',event_id:'evento-1',target_id:''}),'/menu?event=evento-1');
 });
+
+test('fila de push mantém o tipo pesquisa ao enviar modelos antigos com destino evento',async()=>{
+ const db=fixture();
+ try{
+  subscribe(db,'u1');
+  addNotification(db,{kind:'survey',targetKind:'event',status:'pending'});
+  publishDueNotificationReceipts(db,1000);
+  let delivered='';
+  const send=async(_subscription,payload)=>{delivered=JSON.parse(payload).url;};
+  const stats=await processPendingPushes(db,send,{now:()=>1000});
+  assert.equal(stats.accepted,1);
+  assert.equal(delivered,'/schedule/event-1?review=1');
+ }finally{db.close();}
+});

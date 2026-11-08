@@ -27,6 +27,7 @@ jobs:
             tests/admin-access.test.mjs \
             tests/admin-access-ui.test.mjs \
             tests/admin-notification-select-ux.test.mjs \
+            tests/notification-delivery.test.mjs \
             tests/admin-company-profile.test.mjs \
             tests/login-back-admin-test.test.mjs \
             tests/group-invite-auth-resume.test.mjs \
