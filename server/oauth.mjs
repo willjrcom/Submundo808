@@ -14,7 +14,7 @@ export function createOauth({db,getUser,createSession,passwordHash,secret}){
  const reply=(res,data,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  const go=(res,location)=>{res.writeHead(302,{Location:location,'Cache-Control':'no-store'});res.end();};
  async function handle(req,res,url){
-  if(url.pathname==='/api/auth/providers')return reply(res,{google:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REDIRECT_URI),meaple:!!(process.env.MEAPLE_CLIENT_ID&&process.env.MEAPLE_REDIRECT_URI)});
+  if(url.pathname==='/api/auth/providers')return reply(res,{google:!!(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.GOOGLE_REDIRECT_URI),meaple:!!(process.env.MEAPLE_CLIENT_ID&&process.env.MEAPLE_REDIRECT_URI),demoAdmin:process.env.ENABLE_DEMO_USERS==='true'&&process.env.ENABLE_DEMO_ADMIN==='true'});
   if(url.pathname==='/api/auth/connections'){
    const user=getUser(req);if(!user)return reply(res,{error:'Faça login.'},401);
    return reply(res,{providers:db.prepare('SELECT provider FROM oauth_links WHERE user_id=?').all(user.id).map(r=>r.provider)});

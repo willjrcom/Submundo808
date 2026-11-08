@@ -74,7 +74,7 @@ test('login começa pelas três opções e usa a cor dinâmica da marca para e-m
  assert.match(account,/Continuar com Google/);
  assert.match(account,/Continuar com Meaple/);
  assert.match(account,/className=\{btn\+' flex min-h-12 items-center justify-center gap-2'\}/);
- assert.match(account,/Outras formas de entrar/);
+ assert.match(account,/Voltar para outras formas de entrar/);
  assert.match(account,/getPendingGroupInvite\(\)\?'\/groups':'\/profile'/);
  assert.match(accent,/--submundo-accent/);
  assert.match(accent,/bg-\[#c4ff40\]/);
