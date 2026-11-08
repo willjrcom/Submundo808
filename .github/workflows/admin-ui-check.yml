@@ -1,0 +1,42 @@
+name: Validate admin UI changes
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  admin-ui:
+    name: Test admin UI and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Configure pnpm
+        run: corepack enable && corepack prepare pnpm@10.28.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test map dialogs, event menu routing and existing admin regressions
+        run: |
+          node --test \
+            tests/admin-map-modals-menu-page.test.mjs \
+            tests/admin-route.test.mjs \
+            tests/admin-dashboard-routing.test.mjs \
+            tests/admin-event-dashboard.test.mjs \
+            tests/admin-venue-dashboard.test.mjs \
+            tests/admin-venue-maps.test.mjs \
+            tests/map-editor-error-recovery.test.mjs \
+            tests/map-area-editor.test.mjs \
+            tests/entity-crud-ui.test.mjs \
+            tests/event-save-validation.test.mjs
+      - name: Build frontend
+        env:
+          PORT: '3000'
+          BASE_PATH: /
+          NODE_ENV: production
+        run: pnpm --filter @workspace/submundo-808 build

@@ -2,7 +2,7 @@ import {venueLocation,completeVenueAddress} from '../venue-address';
 import {formatMobile} from './phone-mask';
 import {applyAccentColor,DEFAULT_COLOR} from '../theme-accent';
 import {accentTextColor,contrastRatio,readableAccentOnDark} from '../accent-contrast';
-import AdminProducts from './admin-products';
+import AdminProducts,{EventMenuEditor} from './admin-products';
 import {AdminReviews,AdminNotifications} from './admin-engagement';
 import NotFound from '../pages/not-found';
 import {ErrorBoundary} from './error-boundary';
@@ -170,8 +170,8 @@ export default function AdminShell(){
   </aside>
   <main className="mx-auto w-full min-w-0 max-w-6xl px-4 py-5 sm:px-6 xl:px-10 xl:py-10">
  {!knownAdminRoute?<NotFound/>:<ErrorBoundary resetKey={currentPath} FallbackComponent={({resetError})=><NotFound status={500} onRetry={resetError}/>}>
- {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back}/>:<>
- {(editing||creating)&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
+ {route.id&&!editing?<NotFound/>:route.eventId&&!selectedVenueEvent?<NotFound/>:route.mapId&&!openedMap?<NotFound/>:openedMap?<AdminMapWorkspace key={openedMap.id} map={openedMap as Item & {venue_id:string}} onBack={back} onRenamed={()=>void reload().catch(e=>setError(String(e)))}/>:<>
+ {(editing||creating)&&!route.menu&&<button onClick={back} className="mb-5 flex items-center gap-2 text-sm text-white/60"><ArrowLeft size={16}/> Voltar</button>}
  <p className="mb-2 text-xs uppercase tracking-widest text-[#c4ff40]">Painel administrativo</p><h2 className="text-3xl font-black">{editing?displayLabel(editing.name):creating?'Criar '+(section==='Estabelecimentos'?'estabelecimento':'evento'):section}</h2><p className="mt-2 text-sm text-white/50">Olá, {user.name}</p>
  {section==='Produtos'&&<AdminProducts/>}
  {section==='Avaliações'&&<AdminReviews events={events}/>}
@@ -228,7 +228,9 @@ export default function AdminShell(){
  )}
  {section==='Eventos'&&(
    creating?<EventEditor key="new" venues={venues} maps={maps} onSaved={()=>{void reload();back();}}/>
+   :editing&&route.menu?<section className="mt-6"><EventMenuEditor key={editing.id} eventId={editing.id} onBack={()=>go({section:'Eventos',id:editing.id,creating:false})}/></section>
    :editing?<AdminEventDashboard event={editing} venues={venues} maps={maps} onEdit={()=>setEventModalId(editing.id)}
+     onOpenMenu={()=>go({section:'Eventos',id:editing.id,creating:false,menu:true})}
      onOpenVenue={venueId=>go({section:'Estabelecimentos',id:venueId,creating:false})}
      onOpenMap={(mapId,venueId)=>go({section:'Estabelecimentos',id:venueId,creating:false,mapId})}
      onOpenAnalytics={(venueId,eventId)=>go({section:'Estabelecimentos',id:venueId,creating:false,eventId})}/>
@@ -252,6 +254,7 @@ export default function AdminShell(){
     <div className="flex items-center justify-between gap-2"><h3 className="font-black">Edição do evento</h3><button type="button" onClick={()=>setEventModalId(null)} aria-label="Fechar edição do evento" className="rounded-lg border border-white/20 p-2"><X size={19}/></button></div>
     <EventEditor key={modalEvent.id} event={modalEvent} venues={venues} maps={maps}
       onSaved={()=>{setEventModalId(null);void reload().catch(err=>setError(String(err)));}}
+      onOpenMenu={()=>go({section:'Eventos',id:modalEvent.id,creating:false,menu:true})}
       onPublicationChanged={()=>{void reload();}}/>
    </div>
   </div>}

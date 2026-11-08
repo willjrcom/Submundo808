@@ -29,10 +29,15 @@ export default function AdminProducts(){
  return <div className="mt-7 space-y-8"><section className="rounded-2xl border border-white/10 bg-white/5 p-5"><div className="flex items-center justify-between"><h3 className="font-bold">Catálogo de produtos</h3><button onClick={()=>edit()} className="rounded-xl bg-[#c4ff40] px-4 py-2 text-sm font-bold text-black">+ Produto</button></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><input aria-label="Buscar produtos" placeholder="Buscar por nome ou descrição..." className={input} value={productSearch} onChange={e=>setProductSearch(e.target.value)}/><select aria-label="Filtrar produtos por categoria" className={input} value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="">Todas as categorias</option>{categories.map(c=><option key={c} value={c}>{c}</option>)}</select></div><p className="mt-2 text-xs text-white/45">{visibleProducts.length} de {products.length} produtos</p>{visibleProducts.length===0&&<p className="mt-3 text-sm text-white/50">Nenhum produto encontrado.</p>}{visibleProducts.map(p=><div key={p.id} className="mt-3 flex items-center justify-between gap-3 border-b border-white/10 py-3"><div><p className="font-semibold">{p.name}</p><p className="text-xs text-white/50">{p.category} · {money(p.default_price_cents)}</p></div><div className="flex gap-2"><button onClick={()=>edit(p)} className="rounded-lg border border-white/20 px-3 py-2 text-xs">Editar</button><button onClick={()=>setConfirm(p)} className="rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-300">Excluir</button></div></div>)}</section>{error&&<p role="alert" className="text-red-300">{error}</p>}{notice&&<p className="text-[#c4ff40]">{notice}</p>}{editing!==null&&<div role="presentation" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/80 p-4" onMouseDown={e=>{if(e.target===e.currentTarget)setEditing(null);}}><section role="dialog" aria-modal="true" aria-label={editing==='new'?'Novo produto':'Editar produto'} className="w-full max-w-lg space-y-4 rounded-2xl border border-[#c4ff40]/25 bg-[#1b1423] p-6 shadow-2xl"><h3 className="text-lg font-bold">{editing==='new'?'Novo produto':'Editar produto'}</h3><input aria-label="Nome" placeholder="Nome do produto" value={name} onChange={e=>setName(e.target.value)} className={input}/><input aria-label="Descrição" placeholder="Descrição" value={description} onChange={e=>setDescription(e.target.value)} className={input}/><input aria-label="Categoria" placeholder="Categoria" value={category} onChange={e=>setCategory(e.target.value)} className={input}/><label className="block text-xs text-white/60">Preço padrão (R$)<input value={price} onChange={e=>setPrice(e.target.value)} inputMode="decimal" className={input}/></label><div className="flex gap-2"><button disabled={busy} onClick={()=>void save()} className="rounded-xl bg-[#c4ff40] px-4 py-2 font-bold text-black">Salvar produto</button><button onClick={()=>setEditing(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button></div></section></div>}{confirm&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6"><div className="w-full max-w-sm rounded-2xl bg-[#241b2c] p-6"><h3 className="font-bold">Excluir {confirm.name}?</h3><p className="mt-2 text-sm text-white/60">O produto será removido também dos cardápios das festas.</p><div className="mt-5 flex gap-2"><button onClick={()=>setConfirm(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button><button disabled={busy} onClick={()=>void remove()} className="rounded-xl bg-red-500 px-4 py-2 font-bold">Excluir</button></div></div></div>}</div>;
 }
 
-export function EventMenuEditor({eventId}:{eventId:string}){
+export function EventMenuEditor({eventId,onBack}:{eventId:string;onBack?:()=>void}){
  const [products,setProducts]=useState<Product[]>([]);
  const [selected,setSelected]=useState<Record<string,{price:string}>>({});
+ const [savedSelection,setSavedSelection]=useState<Record<string,{price:string}>>({});
+ const [discardOpen,setDiscardOpen]=useState(false);
  const [category,setCategory]=useState(''),[query,setQuery]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const dirty=!loading&&JSON.stringify(selected)!==JSON.stringify(savedSelection);
+ function requestBack(){if(busy)return;if(dirty)setDiscardOpen(true);else onBack?.();}
+ useEffect(()=>{const guard=(event:BeforeUnloadEvent)=>{if(!dirty)return;event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);},[dirty]);
  useEffect(()=>{
   let active=true;setLoading(true);setError('');setNotice('');
   Promise.all([api('products'),api('event-products?event_id='+encodeURIComponent(eventId))])
@@ -40,7 +45,7 @@ export function EventMenuEditor({eventId}:{eventId:string}){
     setProducts(catalog.items||[]);
     const next:Record<string,{price:string}>={};
     for(const item of menu.items||[])next[item.product_id]={price:item.price_cents===null?'':(item.price_cents/100).toFixed(2).replace('.',',')};
-    setSelected(next);
+    setSelected(next);setSavedSelection(next);
    }).catch(e=>{if(active)setError(e instanceof Error?e.message:String(e));})
    .finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
@@ -53,7 +58,8 @@ export function EventMenuEditor({eventId}:{eventId:string}){
  async function saveMenu(){
   setBusy(true);setError('');setNotice('');
   try{
-   const items=Object.entries(selected).map(([product_id,details])=>{
+   const submitted=Object.fromEntries(Object.entries(selected).map(([id,details])=>[id,{price:details.price}]));
+   const items=Object.entries(submitted).map(([product_id,details])=>{
     const cleaned=details.price.trim();
     if(!cleaned)return {product_id,price_cents:null};
     const parsed=Number(cleaned.replace(',','.'));
@@ -61,15 +67,19 @@ export function EventMenuEditor({eventId}:{eventId:string}){
     return {product_id,price_cents:Math.round(parsed*100)};
    });
    await api('save-event-products',{event_id:eventId,items});
+   setSavedSelection(submitted);
    setNotice('Cardápio do evento atualizado.');
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
  }
- return <div className="space-y-4">
+ return <div className="mx-auto max-w-5xl space-y-5">
+  {onBack&&<button type="button" disabled={busy} onClick={requestBack} className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2.5 text-sm text-white/75 disabled:opacity-40">← Voltar ao evento</button>}
+  <div><h3 className="text-lg font-black">Gerenciar cardápio</h3><p className="mt-1 text-xs text-white/55">Selecione os itens e ajuste os preços. Salvar o cardápio não modifica os outros dados do evento.</p></div>
+  <section className="space-y-4 rounded-2xl border border-white/10 bg-white/[.035] p-3 sm:p-5">
   <div><h4 className="font-bold">Produtos deste evento</h4><p className="mt-1 text-xs text-white/55">Selecione produtos ou categorias. O catálogo geral não será alterado. Preço especial vazio significa preço padrão.</p></div>
   {loading?<PageLoading compact label="Carregando cardápio" description="Buscando produtos e preços do evento."/>:<>
    <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-[#c4ff40]">{chosen} de {products.length} produtos selecionados</span><div className="flex gap-2"><button type="button" onClick={()=>setSelected(Object.fromEntries(products.map(p=>[p.id,selected[p.id]||{price:''}]))) } className="rounded-lg border border-white/20 px-3 py-2 text-xs">Adicionar todos</button><button type="button" onClick={()=>setSelected({})} className="rounded-lg border border-white/20 px-3 py-2 text-xs">Remover todos</button></div></div>
    <div className="grid gap-2 sm:grid-cols-2"><input aria-label="Buscar produtos do cardápio" className={input} placeholder="Buscar produto..." value={query} onChange={e=>setQuery(e.target.value)}/><select aria-label="Filtrar categoria do cardápio" className={input} value={category} onChange={e=>setCategory(e.target.value)}><option value="">Todas as categorias</option>{categories.map(c=><option value={c} key={c}>{c}</option>)}</select></div>
-   <div className="max-h-[55vh] space-y-4 overflow-y-auto pr-1">{categories.filter(cat=>(!category||cat===category)&&visible.some(p=>p.category===cat)).map(cat=>{
+   <div className="max-h-[65dvh] space-y-4 overflow-y-auto pr-1">{categories.filter(cat=>(!category||cat===category)&&visible.some(p=>p.category===cat)).map(cat=>{
     const entries=visible.filter(p=>p.category===cat);
     const group=products.filter(p=>p.category===cat);
     const allSelected=group.every(p=>!!selected[p.id]);
@@ -78,7 +88,15 @@ export function EventMenuEditor({eventId}:{eventId:string}){
     </section>;
    })}{!visible.length&&<p className="p-4 text-center text-sm text-white/50">Nenhum produto encontrado.</p>}</div>
    {error&&<p role="alert" className="text-sm text-red-300">{error}</p>}{notice&&<p role="status" className="text-sm text-[#c4ff40]">{notice}</p>}
-   <button type="button" disabled={busy} onClick={()=>void saveMenu()} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black disabled:opacity-50">{busy?'Salvando...':'Salvar cardápio do evento'}</button>
+   <button type="button" disabled={busy||loading||!dirty} onClick={()=>void saveMenu()} className="w-full rounded-xl bg-[#c4ff40] p-3 text-sm font-bold text-black disabled:opacity-50">{busy?'Salvando...':'Salvar cardápio do evento'}</button>
   </>}
+  </section>
+  {discardOpen&&<div role="presentation" className="fixed inset-0 z-[130] flex items-center justify-center bg-black/85 p-3">
+   <div role="alertdialog" aria-modal="true" aria-labelledby="discard-menu-title" className="w-full max-w-md space-y-4 rounded-2xl border border-amber-400/35 bg-[#211729] p-5 shadow-2xl">
+    <h3 id="discard-menu-title" className="text-lg font-black">Sair sem salvar o cardápio?</h3>
+    <p className="text-sm text-white/65">Você alterou produtos ou preços e ainda não salvou. Sair agora descartará essas alterações.</p>
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><button type="button" autoFocus onClick={()=>setDiscardOpen(false)} className="rounded-xl border border-white/20 px-4 py-2.5 text-sm">Continuar editando</button><button type="button" onClick={()=>{setDiscardOpen(false);onBack?.();}} className="rounded-xl border border-amber-400/40 px-4 py-2.5 text-sm font-bold text-amber-200">Descartar e voltar</button></div>
+   </div>
+  </div>}
  </div>;
 }

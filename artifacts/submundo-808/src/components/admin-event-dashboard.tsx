@@ -1,4 +1,4 @@
-import {CalendarDays,Clock3,MapPin,Map as MapIcon,Music2,Pencil,ExternalLink,Ticket,ArrowUpRight} from 'lucide-react';
+import {CalendarDays,Clock3,MapPin,Map as MapIcon,Music2,Pencil,ExternalLink,Ticket,ArrowUpRight,ShoppingBag} from 'lucide-react';
 import {displayLabel} from './display-label';
 import {formatDJTimeRange} from './dj-schedule';
 import {AdminMapThumbnail,useAdminMapAreas} from './admin-map-thumbnail';
@@ -8,7 +8,7 @@ type Dj={nome:string;inicio?:string;fim?:string};
 type Venue={id:string;name:string;city?:string;address?:string;cover_image?:string;logo_image?:string};
 type EventItem={id:string;name:string;venue_id?:string;description?:string;starts_at?:string;ends_at?:string;doors_at?:string;is_published?:number;cover_image?:string;map_ids?:string[];lineup?:Dj[];tickets_url?:string;site_url?:string;services?:string;location_sharing_enabled?:number;};
 type EventMap={id:string;name:string;venue_id?:string};
-type Props={event:EventItem;venues:Venue[];maps:EventMap[];onEdit:()=>void;onOpenMap:(id:string,venueId:string)=>void;onOpenVenue:(id:string)=>void;onOpenAnalytics:(venueId:string,eventId:string)=>void};
+type Props={event:EventItem;venues:Venue[];maps:EventMap[];onEdit:()=>void;onOpenMap:(id:string,venueId:string)=>void;onOpenVenue:(id:string)=>void;onOpenAnalytics:(venueId:string,eventId:string)=>void;onOpenMenu:()=>void};
 const formatted=(value?:string)=>{
  if(!value)return 'A definir';
  const date=new Date(value);
@@ -16,7 +16,7 @@ const formatted=(value?:string)=>{
 };
 const safeLink=(value?:string)=>value&&/^https?:\/\//i.test(value)?value:'';
 
-export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,onOpenVenue,onOpenAnalytics}:Props){
+export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,onOpenVenue,onOpenAnalytics,onOpenMenu}:Props){
  const venue=venues.find(v=>v.id===event.venue_id);
  const linkedMaps=maps.filter(m=>event.map_ids?.includes(m.id));
  const areas=useAdminMapAreas(maps);
@@ -55,6 +55,10 @@ export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,
     {djs.length>6&&<p className="text-xs text-white/55">+ {djs.length-6} DJs cadastrados</p>}
    </section>
   </div>
+  <section className="flex flex-col gap-3 rounded-2xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.035] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+   <div className="min-w-0"><h3 className="flex items-center gap-2 font-bold"><ShoppingBag size={18} className="text-[#c4ff40]"/> Cardápio do evento</h3><p className="mt-2 text-sm text-white/60">Gerencie produtos, categorias e preços específicos deste evento em uma tela exclusiva.</p></div>
+   <button type="button" onClick={onOpenMenu} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black"><ShoppingBag size={16}/> Gerenciar cardápio</button>
+  </section>
   <section className="space-y-3">
    <h3 className="flex items-center gap-2 text-lg font-black"><MapIcon size={20} className="text-[#c4ff40]"/> Plantas vinculadas</h3>
    {linkedMaps.length?<div className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-3" aria-label="Carrossel de plantas vinculadas ao evento">
