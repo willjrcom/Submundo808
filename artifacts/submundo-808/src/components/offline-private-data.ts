@@ -8,9 +8,9 @@
  */
 export const OFFLINE_PRIVATE_KEY='submundo-participant-private-v1';
 export const OFFLINE_PRIVATE_TTL_MS=30*24*60*60*1000;
-type Snapshot={ownerId:string;updatedAt:number;responses:Record<string,unknown>};
+type Snapshot={ownerId:string;updatedAt:number;responses:Record<string,unknown>;friendCode?:string};
 type SessionUser={id:string;name:string;email:string;phone?:string;instagram?:string;avatar?:string;isAdmin?:boolean};
-const allowedPaths=new Set(['/api/auth/me','/api/auth/connections','/api/friends','/api/groups']);
+const allowedPaths=new Set(['/api/auth/me','/api/auth/connections','/api/friends','/api/groups','/api/meaple/tickets']);
 const maxGroups=30;
 const maxBytes=3_500_000;
 
@@ -85,7 +85,7 @@ function saveUser(data:{user?:SessionUser|null}):void{
  const previous=readRaw();
  const responses=previous?.ownerId===user.id?{...previous.responses}:{};
  responses['/api/auth/me']=sanitise({user}) as object;
- persist({ownerId:user.id,updatedAt:Date.now(),responses});
+ persist({ownerId:user.id,updatedAt:Date.now(),responses,friendCode:previous?.ownerId===user.id?previous.friendCode:undefined});
 }
 export function saveOfflinePrivateResponse(path:string,data:unknown):void{
  if(!allowedOfflinePrivatePath(path))return;
@@ -97,6 +97,19 @@ export function saveOfflinePrivateResponse(path:string,data:unknown):void{
  if(!snapshot?.ownerId)return;
  const next={...snapshot,updatedAt:Date.now(),responses:{...snapshot.responses,[keyOf(path)]:sanitise(data)}};
  persist(next);
+}
+/** The permanent friend QR token is intentionally device-and-account scoped. */
+export function getCachedFriendCode():string{
+ const code=readRaw()?.friendCode||'';
+ return /^[a-f0-9]{64}$/.test(code)?code:'';
+}
+export function saveCachedFriendCode(token:string):void{
+ if(!/^[a-f0-9]{64}$/.test(token))return;
+ const snapshot=readRaw();
+ if(snapshot)persist({...snapshot,friendCode:token,updatedAt:Date.now()});
+}
+export function getOfflinePrivateUpdatedAt():number|null{
+ return readRaw()?.updatedAt||null;
 }
 export function clearOfflineParticipantData():void{
  try{localStorage.removeItem(OFFLINE_PRIVATE_KEY);}catch{}
@@ -142,7 +155,9 @@ export function warmParticipantPrivateOffline():Promise<void>{
    privateParticipantGet('/api/friends'),
    privateParticipantGet<{groups?:Array<{id:string}>}>('/api/groups')
   ]);
-  await privateParticipantGet('/api/auth/connections').catch(()=>{});
+  const connection=await privateParticipantGet<{providers?:string[]}>('/api/auth/connections').catch(()=>null);
+  if(connection?.providers?.includes('meaple'))
+   await privateParticipantGet('/api/meaple/tickets').catch(()=>{});
   if(groups.status==='fulfilled'){
    const items=groups.value.groups||[];
    for(let offset=0;offset<Math.min(items.length,maxGroups);offset+=5){
