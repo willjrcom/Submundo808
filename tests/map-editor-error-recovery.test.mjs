@@ -48,7 +48,7 @@ test('blocked browser storage is safe and reports inability to persist',()=>{
  assert.equal(removeMapDraft('map',blocked),false);
 });
 test('missing icon import cannot crash React when format panel renders',()=>{
- assert.match(editor,/Grid3X3,X\s*\}\s*from 'lucide-react'/);
+ assert.match(editor,/Grid3X3,X,AlertTriangle\s*\}\s*from 'lucide-react'/);
  assert.match(editor,/<X size=\{16\}\/>/);
  assert.match(editor,/role="alert"[\s\S]*?rascunho local/);
 });
