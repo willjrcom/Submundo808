@@ -26,7 +26,7 @@ test('cardápio não exibe aviso geral e preserva as descrições legítimas',()
 test('planta e pontos não expõem avisos internos em nomes ou descrições',()=>{
  assert.match(map,/Planta ilustrativa\/i.test\(name\|\|''\)/);
  assert.match(map,/return 'Planta do local'/);
- assert.match(map,/label.replace\(\/\\s\*\\\(\(\?:demo\|demonstração\|teste\)/);
+ assert.ok(map.includes('label.replace(/\\s*\\((?:demo|demonstração|teste)'));
  assert.match(map,/<title>\{displayPublicDescription\(a.description\)\|\|name\}<\/title>/);
  assert.match(map,/title=\{displayPublicDescription\(m.description\)\|\|publicPointName/);
  assert.match(map,/displayPublicDescription\(marker.description\)/);
@@ -38,7 +38,7 @@ test('card de GPS desaparece somente após a primeira leitura válida',()=>{
  assert.match(map,/\{\(!tracking\|\|!location\)&&<div[^\n]+aria-label="Ativar minha localização"/);
  assert.match(map,/setLocation\(next\);setTracking\(true\)/);
  assert.match(map,/disabled=\{gpsStarting\|\|localGpsEnabled\}/);
- assert.match(map,/>Ativar GPS'/);
+ assert.match(map,/:'Ativar GPS'/);
  assert.doesNotMatch(map,/'Parar GPS'|'Desativar GPS'/);
  assert.match(map,/if\(error.code===1\|\|!locationRef.current\)/);
  assert.match(map,/localGpsWatch.current=null;setLocalGpsEnabled\(false\)/);
