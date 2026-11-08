@@ -2,21 +2,17 @@ import {useEffect,useState} from 'react';
 import PageLoading from './page-loading';
 import {displayLabel,displayDescription,displayAddress} from './display-label';
 import useMinimumLoading from './use-minimum-loading';
-import {ArrowLeft,CalendarDays,Clock3,MapPin,Music2,ExternalLink,Ticket,Instagram,ChevronRight} from 'lucide-react';
+import {ArrowLeft,CalendarDays,Clock3,MapPin,Music2,ExternalLink,Ticket,Instagram,ChevronRight,Radio,CheckCircle2} from 'lucide-react';
+import {getDJTimeline,type ScheduledDJ} from './dj-schedule';
 import {eventProgramPath} from './active-event';
 
-type DJ={nome:string;instagram?:string;spotify?:string;inicio?:string;fim?:string};
+type DJ=ScheduledDJ;
 type EventItem={id:string;name:string;description:string;starts_at:string;ends_at:string;site_url:string;tickets_url:string;instagram_url:string;doors_at?:string;cover_image?:string;services?:string;venue:{name:string;address:string;city:string;services?:string};map_ids:string[];lineup:DJ[]};
 
 const date=(value:string)=>{
  if(!value)return 'A definir';
  const d=new Date(value);
  return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d);
-};
-const hour=(value?:string)=>{
- if(!value)return 'A definir';
- const d=new Date(value);
- return Number.isNaN(d.getTime())?value.slice(-5):new Intl.DateTimeFormat('pt-BR',{hour:'2-digit',minute:'2-digit'}).format(d);
 };
 const link=(value:string)=>!value?'':/^https?:\/\//i.test(value)?value:'https://'+value.replace(/^@/,'');
 function changeUrl(pathname:string){
@@ -31,6 +27,15 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
  const [error,setError]=useState('');
  const [copiedAddress,setCopiedAddress]=useState(false);
  const [copiedContact,setCopiedContact]=useState(false);
+ // Device time updates the stage focus even without internet or a server push.
+ const [nowMs,setNowMs]=useState(()=>Date.now());
+ useEffect(()=>{
+  const refresh=()=>setNowMs(Date.now());
+  const timer=window.setInterval(refresh,15000);
+  window.addEventListener('focus',refresh);
+  document.addEventListener('visibilitychange',refresh);
+  return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+ },[]);
  useEffect(()=>{fetch('/api/public/event-settings').then(r=>r.json()).then(j=>setGeneral(j.settings)).catch(()=>{});},[]);
  useEffect(()=>{
   let mounted=true;
@@ -58,6 +63,9 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
  if(error)return <div role="alert" className="rounded-2xl border border-red-400/30 p-5 text-sm text-red-300">{error}<button onClick={()=>window.location.reload()} className="ml-3 underline">Tentar novamente</button></div>;
  if(!events.length)return <div className="rounded-3xl border border-white/10 bg-white/5 p-7"><CalendarDays className="mb-4 text-[#c4ff40]"/><h1 className="text-2xl font-black">Próximos eventos</h1><p className="mt-3 text-sm text-white/60">Nenhum evento cadastrado ainda. A programação aparecerá aqui quando for publicada.</p></div>;
  const event=events.find(e=>e.id===selected);
+ const timeline=event?getDJTimeline(event.lineup,event.starts_at,nowMs):[];
+ const currentlyPlaying=timeline.find(slot=>slot.status==='live');
+ const nextDJ=timeline.find(slot=>slot.status==='next');
  if(selected&&!event)return <div className="space-y-4"><button onClick={backToAgenda} className="flex items-center gap-2 text-sm text-[#c4ff40]"><ArrowLeft size={17}/> Trocar evento</button><p role="alert" className="rounded-2xl border border-white/15 p-5 text-sm text-white/60">Não encontramos esse evento. Selecione outro na agenda.</p></div>;
 
  // Agenda para escolher a festa; com uma seleção ativa, esta aba mostra sua programação.
@@ -106,19 +114,40 @@ export default function PublicEvents({activeEventId,onSelectEvent,onClearEvent}:
     {event.instagram_url&&<a href={link(event.instagram_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-xl border border-white/20 px-4 py-3 text-xs"><Instagram size={15}/> Instagram</a>}
    </div>}
   </section>
-  <section>
-   <div className="mb-4"><p className="text-xs font-bold uppercase tracking-widest text-[#c4ff40]">Programação</p><h2 className="mt-1 text-2xl font-black uppercase">Lineup</h2></div>
-   {event.lineup.length?<div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-    {event.lineup.map((dj,i)=><div key={i} className="flex gap-4 border-b border-white/10 p-4 last:border-0">
-     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#c4ff40]/10 font-black text-[#c4ff40]">{dj.nome?.charAt(0)||<Music2/>}</div>
-     <div className="min-w-0 flex-1"><p className="font-bold">{dj.nome}</p>{(dj.inicio||dj.fim)&&<p className="mt-1 flex items-center gap-1 text-xs text-white/50"><Clock3 size={13}/>{hour(dj.inicio)} — {hour(dj.fim)}</p>}
-      <div className="mt-3 flex flex-wrap gap-2">
-       {dj.instagram&&<a href={dj.instagram.startsWith('https://')?dj.instagram:'https://www.instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Instagram size={15}/> Instagram</a>}
-       {<a href={dj.spotify?.startsWith('https://open.spotify.com/')?dj.spotify:'https://open.spotify.com/search/'+encodeURIComponent(dj.nome)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> {dj.spotify?.startsWith('https://open.spotify.com/')&&!dj.spotify.includes('/search/')?'Ouvir no Spotify':'Buscar DJ no Spotify'}</a>}
+  <section aria-label="Programação dos DJs">
+   <div className="mb-4"><p className="text-xs font-bold uppercase tracking-widest text-[#c4ff40]">Programação</p><h2 className="mt-1 text-2xl font-black uppercase">Line-up</h2></div>
+   {currentlyPlaying&&<article aria-label="DJ tocando agora" aria-live="polite" className="mb-4 overflow-hidden rounded-2xl border-2 border-[#c4ff40]/70 bg-[radial-gradient(circle_at_90%_10%,#4b5430,transparent_60%),linear-gradient(135deg,#24152d,#171320)] p-5 shadow-[0_0_32px_#c4ff4015]">
+    <div className="flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full bg-[#c4ff40] px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-black"><Radio size={14} className="animate-pulse"/> Tocando agora</span><span className="text-[11px] text-white/55">Conforme horário programado</span></div>
+    <h3 className="mt-4 text-2xl font-black uppercase text-white">{displayLabel(currentlyPlaying.dj.nome)}</h3>
+    <p className="mt-2 flex items-center gap-2 text-sm font-semibold text-[#c4ff40]"><Clock3 size={16}/>{currentlyPlaying.timeLabel}</p>
+    <div role="progressbar" aria-label={'Progresso previsto da apresentação de '+currentlyPlaying.dj.nome} aria-valuemin={0} aria-valuemax={100} aria-valuenow={currentlyPlaying.progress} className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c4ff40] transition-[width] duration-500" style={{width:currentlyPlaying.progress+'%'}}/></div>
+    <p className="mt-2 text-right text-[11px] text-white/55">{currentlyPlaying.progress}% do horário previsto</p>
+   </article>}
+   {!currentlyPlaying&&nextDJ&&<div aria-label="Próximo DJ" className="mb-4 flex items-center gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] px-4 py-3">
+    <Music2 size={21} className="shrink-0 text-[#c4ff40]"/><div className="min-w-0 flex-1"><p className="text-[11px] font-black uppercase tracking-wider text-[#c4ff40]">Próximo DJ</p><p className="truncate text-base font-bold">{displayLabel(nextDJ.dj.nome)}</p><p className="mt-1 text-xs text-white/55">{nextDJ.timeLabel}</p></div>
+   </div>}
+   {timeline.length?<div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
+    {timeline.map(slot=>{
+     const dj=slot.dj,live=slot.status==='live';
+     return <div key={slot.index} aria-label={live?'Apresentação atual: '+dj.nome:undefined} className={'flex gap-3 border-b p-4 last:border-b-0 '+(live?'border-[#c4ff40]/40 bg-[#c4ff40]/[.095]':'border-white/10')}>
+      <div className={'flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-black '+(live?'bg-[#c4ff40] text-black':slot.status==='finished'?'bg-white/5 text-white/40':'bg-[#c4ff40]/10 text-[#c4ff40]')}>{dj.nome?.charAt(0)||<Music2/>}</div>
+      <div className="min-w-0 flex-1">
+       <div className="flex flex-wrap items-center gap-2">
+        <p className={'font-bold '+(live?'text-[#c4ff40]':slot.status==='finished'?'text-white/55':'text-white')}>{displayLabel(dj.nome)}</p>
+        {live&&<span className="rounded-full bg-[#c4ff40] px-2 py-0.5 text-[10px] font-black text-black">Tocando agora</span>}
+        {slot.status==='next'&&<span className="rounded-full border border-[#c4ff40]/40 px-2 py-0.5 text-[10px] font-bold text-[#c4ff40]">Em seguida</span>}
+        {slot.status==='finished'&&<span className="inline-flex items-center gap-1 text-[10px] text-white/40"><CheckCircle2 size={12}/> Encerrado</span>}
+       </div>
+       <p className={'mt-1 flex items-center gap-1 text-xs '+(live?'font-semibold text-[#c4ff40]':'text-white/55')}><Clock3 size={13}/>{slot.timeLabel}</p>
+       <div className="mt-3 flex flex-wrap gap-2">
+        {dj.instagram&&<a href={dj.instagram.startsWith('https://')?dj.instagram:'https://www.instagram.com/'+dj.instagram.replace(/^@/,'')} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Instagram size={15}/> Instagram</a>}
+        <a href={dj.spotify?.startsWith('https://open.spotify.com/')?dj.spotify:'https://open.spotify.com/search/'+encodeURIComponent(dj.nome)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-[#c4ff40]"><Music2 size={15}/> {dj.spotify?.startsWith('https://open.spotify.com/')&&!dj.spotify.includes('/search/')?'Ouvir no Spotify':'Buscar DJ no Spotify'}</a>
+       </div>
       </div>
-     </div>
-    </div>)}
+     </div>;
+    })}
    </div>:<div className="flex items-center gap-3 rounded-2xl border border-[#c4ff40]/20 bg-[#c4ff40]/5 p-5 text-sm font-semibold text-[#c4ff40]"><Music2 size={20}/> Line-up em breve</div>}
+   <p className="mt-3 text-[11px] leading-relaxed text-white/45">Os destaques acompanham os horários cadastrados para o evento e o relógio do aparelho, inclusive offline. Não são uma confirmação de início real da apresentação.</p>
   </section>
    {general?.contact_phone&&<section className="space-y-3 rounded-xl border border-white/10 bg-white/[.035] p-4"><h3 className="font-bold text-[#c4ff40]">Contato oficial</h3><p className="text-sm font-semibold">{general.contact_name||'Submundo 808'}</p><p className="text-xs text-white/60">{general.contact_phone.replace(/^(\d{2})(\d{5})(\d{4})$/,'($1) $2-$3')}</p><div className="flex flex-wrap gap-2"><button type="button" onClick={async()=>{try{await navigator.clipboard.writeText(general.contact_phone||'');setCopiedContact(true);window.setTimeout(()=>setCopiedContact(false),2200);}catch{setError('Não foi possível copiar o contato.');}}} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">{copiedContact?'✓ Copiado!':'Copiar número'}</button><a href={'tel:+55'+general.contact_phone} className="rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold">Ligar</a><a href={'https://wa.me/55'+general.contact_phone} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-[#c4ff40]/40 px-3 py-2 text-xs font-semibold text-[#c4ff40]">Chamar no WhatsApp</a></div></section>}
    {(event.services||event.venue.services||general)&&<section className="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"><h3 className="font-bold text-[#c4ff40]">Informações importantes</h3>{general&&<p className="text-sm">Classificação etária: {general.minimum_age===0?'Livre':general.minimum_age+' anos'}</p>}{([['Regras de entrada',general?.entry_rules],['Documentos aceitos',general?.accepted_documents],['Política de cancelamento',general?.cancellation_policy],['Serviços do local',event.venue.services],['Serviços do evento',event.services]] as const).filter(([,value])=>!!value).map(([title,value])=><div key={title}><h4 className="text-xs font-bold text-white/85">{title}</h4><p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-white/60">{value}</p></div>)}</section>}
