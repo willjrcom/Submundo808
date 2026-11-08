@@ -25,7 +25,7 @@ export default function Friends(){
   const peopleView=()=>new URLSearchParams(window.location.search).has('invite')||new URLSearchParams(window.location.search).get('view')==='people';
   const [tab,setTab]=useState<'people'|'groups'>(peopleView()?'people':'groups');
   const [pendingInvite,setPendingInvite]=useState(()=>captureGroupInviteFromUrl());
-  const [invitePreview,setInvitePreview]=useState<InvitePreview|null>(null),[invitePreviewError,setInvitePreviewError]=useState(''),[invitePreviewLoading,setInvitePreviewLoading]=useState(false);
+  const [invitePreview,setInvitePreview]=useState<InvitePreview|null>(null),[invitePreviewError,setInvitePreviewError]=useState(''),[invitePreviewLoading,setInvitePreviewLoading]=useState(false),[invitePreviewRetry,setInvitePreviewRetry]=useState(0);
   useEffect(()=>{
     if(!pendingInvite){setInvitePreview(null);setInvitePreviewError('');setInvitePreviewLoading(false);return;}
     let active=true;
@@ -37,7 +37,7 @@ export default function Friends(){
       .catch(e=>{if(active&&e.name!=='AbortError')setInvitePreviewError(e instanceof Error?e.message:'Convite indisponível.');})
       .finally(()=>{if(active)setInvitePreviewLoading(false);});
     return()=>{active=false;controller.abort();};
-  },[pendingInvite]);
+  },[pendingInvite,invitePreviewRetry]);
   function dismissInvite(){
     clearPendingGroupInvite();setPendingInvite('');setInvitePreview(null);setInvitePreviewError('');
     const url=new URL(window.location.href);
@@ -203,11 +203,11 @@ export default function Friends(){
        <GroupAvatar name={invitePreview.name} color={invitePreview.color} icon={invitePreview.icon} photo={invitePreview.photo} size="md"/>
        <h2 className="min-w-0 break-words text-xl font-black">{invitePreview.name}</h2>
       </div>}
-      {invitePreviewError&&<p role="alert" className="mt-3 text-sm text-red-300">{invitePreviewError}</p>}
+      {invitePreviewError&&<div className="mt-3 space-y-2"><p role="alert" className="text-sm text-red-300">{invitePreviewError}</p><button type="button" onClick={()=>setInvitePreviewRetry(v=>v+1)} className="rounded-lg border border-[#c4ff40]/50 px-3 py-2 text-xs font-semibold text-[#c4ff40]">Tentar novamente</button></div>}
       {!invitePreviewError&&<p className="mt-3 text-sm text-white/70">Entre com sua conta ou cadastre-se. Você será adicionado ao grupo automaticamente após o login.</p>}
       <button type="button" onClick={dismissInvite} className="mt-3 rounded-lg px-1 py-2 text-xs font-semibold text-white/60 underline">Ignorar convite</button>
      </div>
-     {!invitePreviewError&&<Account onUser={user=>{if(user){setAccess('loading');void load();}}}/>} 
+     {invitePreview&&!invitePreviewError&&<Account onUser={user=>{if(user){setAccess('loading');void load();}}}/>}  
     </div>:!navigator.onLine&&hasOfflineGroupInvites?<OfflineGroupInvites/>:<div className="rounded-2xl border border-white/10 p-6 text-center"><Users className="mx-auto mb-3 text-[#c4ff40]"/><p className="font-bold">Entre na sua conta para adicionar amigos</p><p className="mt-2 text-sm text-white/50">Faça login na aba Perfil.</p></div>:tab==='groups'?<><FriendGroups onDetailChange={setGroupDetailOpen}/>{!groupDetailOpen&&<button type="button" onClick={()=>switchTab('people')} className="mt-6 flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[.035] px-4 py-4 text-left"><span className="flex items-center gap-3"><Users size={20} className="text-[#c4ff40]"/><span><span className="block font-bold">Meus amigos</span><span className="text-xs text-white/55">Contatos salvos para suas próximas festas</span></span></span><span className="text-xs text-[#c4ff40]">{friends.length} amigo(s) ›</span></button>}</>:<>
       <div className="mb-5 space-y-3">
        <label className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/[.04] px-3"><Search className="shrink-0 text-white/45" size={18}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar amigos pelo nome" aria-label="Buscar pessoas pelo nome" className="min-w-0 w-full bg-transparent p-3 text-base text-white outline-none"/></label>
