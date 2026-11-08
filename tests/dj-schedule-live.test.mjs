@@ -110,5 +110,5 @@ test('aba Início usa data e hora, se atualiza automaticamente e destaca o DJ se
  assert.match(app,/Conforme horário programado/);
  assert.match(app,/inclusive offline/);
  assert.match(admin,/type="datetime-local" className=\{input\+' \[color-scheme:dark\]'\} value=\{dj\[k\]\}/);
- assert.match(server,/lineup:JSON\.parse\(e\.lineup_json\|\|'\\[\\]'\)/);
+ assert.match(server,/lineup:JSON\.parse\(e\.lineup_json/);
 });
