@@ -474,7 +474,9 @@ http.createServer(async (req,res)=>{
         const kind=String(b.kind||'info'),targetKind=String(b.targetKind||'event'),targetId=String(b.targetId||'');
         const audience=String(b.audience||'event'),schedule=Number(b.scheduledAt)||null,dispatch=String(b.action||'draft');
         if(!title||title.length>120||!message||message.length>700||!['promo','info','lineup','survey'].includes(kind)||!['event','map','point','menu','lineup','survey'].includes(targetKind)||!['event','all'].includes(audience)||!['draft','send','schedule','test'].includes(dispatch))return json(res,400,{error:'Dados da notificação inválidos.'});
-        if(audience==='event'&&!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Selecione um evento.'});
+        if(kind==='survey'&&(audience!=='event'||!eventId||targetKind!=='survey'||targetId))return json(res,400,{error:'Pesquisa de satisfação exige público do evento e destino Avaliação.'});
+         if(kind!=='survey'&&targetKind==='survey')return json(res,400,{error:'Para abrir uma avaliação, selecione o tipo Pesquisa de satisfação.'});
+         if(audience==='event'&&!db.prepare('SELECT 1 FROM events WHERE id=?').get(eventId))return json(res,400,{error:'Selecione um evento.'});
         if(targetKind==='point'){
           const rows=db.prepare('SELECT mm.markers_json FROM event_maps em JOIN map_markers mm ON mm.map_id=em.map_id WHERE em.event_id=?').all(eventId);
           if(!targetId||!rows.some(x=>{try{return JSON.parse(x.markers_json).some(m=>m.id===targetId);}catch{return false;}}))return json(res,400,{error:'Ponto não está cadastrado nos mapas do evento.'});
@@ -504,9 +506,10 @@ http.createServer(async (req,res)=>{
         if(!['send','schedule','test'].includes(action))return json(res,400,{error:'Ação inválida.'});
         const source=db.prepare("SELECT * FROM notifications WHERE id=? AND status='draft'").get(id);
         if(!source)return json(res,404,{error:'Modelo salvo não encontrado.'});
+         if(source.kind==='survey'&&(!source.event_id||source.audience!=='event'))return json(res,400,{error:'Edite este modelo de pesquisa e selecione um evento antes de enviar.'});
         if(action==='schedule'&&(!schedule||schedule<=Date.now()))return json(res,400,{error:'Informe uma data futura.'});
         const now=Date.now(),sendId=randomUUID(),status=action==='test'?'sent':action==='schedule'?'scheduled':'pending';
-        db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(sendId,source.event_id,source.title,source.body,source.kind,source.target_kind,source.target_id,action==='test'?'test':source.audience,status,action==='schedule'?schedule:null,u.id,now,action==='test'?now:null);
+        db.prepare('INSERT INTO notifications(id,event_id,title,body,kind,target_kind,target_id,audience,status,scheduled_at,created_by,created_at,sent_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(sendId,source.event_id,source.title,source.body,source.kind,source.kind==='survey'?'survey':source.target_kind,source.kind==='survey'?'':source.target_id,action==='test'?'test':source.audience,status,action==='schedule'?schedule:null,u.id,now,action==='test'?now:null);
         if(action==='test'){notificationTransaction(db,()=>addNotificationReceipt(db,sendId,u.id,now));void drainPushQueue();}
         else if(action==='send'){dispatchDueNotifications();void drainPushQueue();}
         return json(res,200,{ok:true,id:sendId});
