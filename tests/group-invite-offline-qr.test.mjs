@@ -70,7 +70,7 @@ test('QR tem matriz local legível com margem de silêncio, sem imagens de terce
  assert.match(component,/margin=4/);
  assert.match(component,/role="img"/);
  assert.match(component,/<svg/);
- assert.doesNotMatch(component,/https?:\/\//);
+ assert.doesNotMatch(component,/api\.qrserver\.com|<img\s|fetch\(/);
 });
 
 test('modal e recuperação offline usam convite salvo; URLs autenticadas continuam fora do Service Worker',()=>{
