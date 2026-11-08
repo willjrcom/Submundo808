@@ -16,12 +16,14 @@ test('produção usa somente PostgreSQL quando DATABASE_URL é válida',()=>{
 test('SQLite é permitido apenas no modo desenvolvimento, nunca como fallback de produção',()=>{
  assert.equal(databaseMode({NODE_ENV:'development'}),'sqlite');
 });
-test('admin consulta driver do banco sem expor credenciais',()=>{
+test('status do banco permanece disponível apenas no backend administrativo, sem exposição na interface',()=>{
  const server=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
  const ui=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-shell.tsx',import.meta.url),'utf8');
+ const profile=readFileSync(new URL('../artifacts/submundo-808/src/components/admin-company-profile.tsx',import.meta.url),'utf8');
  assert.match(server,/key==='database-status'.*engine:storageMode/);
- assert.match(ui,/Banco de dados da aplicação/);
- assert.match(ui,/api\('database-status'\)/);
+ assert.match(ui,/section==='Preferências'&&<AdminCompanyProfile\/>/);
+ assert.doesNotMatch(ui,/Banco de dados da aplicação|api\('database-status'\)|PostgreSQL conectado/);
+ assert.doesNotMatch(profile,/Banco de dados da aplicação|api\('database-status'\)|PostgreSQL conectado/);
 });
 
 test('bootstrap de produção recusa SQLite antes de carregar o servidor',()=>{
