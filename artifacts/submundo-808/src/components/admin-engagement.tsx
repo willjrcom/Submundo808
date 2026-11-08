@@ -2,7 +2,7 @@ import {useEffect,useState} from 'react';
 import {Bell,Star,Send,MapPin,RefreshCw} from 'lucide-react';
 const inp='w-full rounded-xl border border-white/20 bg-[#241b2c] px-3 py-2.5 text-sm text-white';
 async function request(route:string,body?:object){const r=await fetch('/api/admin/'+route,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:body?JSON.stringify(body):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Falha na operação');return j;}
-type Event={id:string;name:string};
+type Event={id:string;name:string;starts_at?:string;ends_at?:string};
 type Notification={id:string;title:string;body:string;status:string;event_id:string|null;kind:string;target_kind:string;target_id:string;audience:string;scheduled_at:number|null;event_name?:string;recipients:number;sent_at?:number;created_at:number;push_tracked:number;push_accepted:number;push_pending:number;push_failed:number;push_expired:number};
 type Review={event_id:string;event_name:string;rating:number;tags:string[];comment:string;updated_at:number};
 export function AdminReviews({events}:{events:Event[]}){
@@ -22,6 +22,30 @@ const notificationTypeDescriptions:Record<string,string>={
  survey:'Convida os participantes a avaliar a experiência no evento.'
 };
 const dateTime=(ms?:number|null)=>ms?new Date(ms).toLocaleString('pt-BR'):'—';
+// Eventos sem data definida continuam disponíveis; eventos em andamento usam a data de término.
+function notificationEventIsUpcoming(event:Event,now:number):boolean{
+ const boundary=event.ends_at||event.starts_at;
+ if(!boundary)return true;
+ const timestamp=Date.parse(boundary);
+ return !Number.isFinite(timestamp)||timestamp>=now;
+}
+function notificationEventLabel(event:Event):string{
+ if(!event.starts_at)return event.name+' — data a definir';
+ const timestamp=Date.parse(event.starts_at);
+ return event.name+' — '+(Number.isFinite(timestamp)?new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(timestamp):'data a definir');
+}
+function filterNotificationEvents(events:Event[],query:string,includePast:boolean,selectedId:string,now:number):Event[]{
+ const term=query.trim().toLocaleLowerCase('pt-BR');
+ return events
+  .filter(event=>event.id===selectedId||((includePast||notificationEventIsUpcoming(event,now))&&event.name.toLocaleLowerCase('pt-BR').includes(term)))
+  .sort((left,right)=>{
+   const a=notificationEventIsUpcoming(left,now),b=notificationEventIsUpcoming(right,now);
+   if(a!==b)return a?-1:1;
+   const startA=left.starts_at?Date.parse(left.starts_at):Infinity,startB=right.starts_at?Date.parse(right.starts_at):Infinity;
+   const timeA=Number.isFinite(startA)?startA:Infinity,timeB=Number.isFinite(startB)?startB:Infinity;
+   return timeA-timeB||left.name.localeCompare(right.name,'pt-BR');
+  });
+}
 export function AdminNotifications({events}:{events:Event[]}){
  const [items,setItems]=useState<Notification[]>([]);
  const [filterEvent,setFilterEvent]=useState(''),[filterStatus,setFilterStatus]=useState(''),[search,setSearch]=useState('');
@@ -30,8 +54,9 @@ export function AdminNotifications({events}:{events:Event[]}){
  const [dialog,setDialog]=useState(false),[confirmAction,setConfirmAction]=useState<'send'|'test'|null>(null);
  const [editingId,setEditingId]=useState(''),[eventId,setEventId]=useState(''),[title,setTitle]=useState(''),[message,setMessage]=useState('');
  const [kind,setKind]=useState('promo'),[targetKind,setTargetKind]=useState('event'),[targetId,setTargetId]=useState('');
- const [audience,setAudience]=useState('event'),[scheduled,setScheduled]=useState(''),[points,setPoints]=useState<{id:string;name:string}[]>([]);
+ const [audience,setAudience]=useState('all'),[scheduled,setScheduled]=useState(''),[points,setPoints]=useState<{id:string;name:string}[]>([]);
  const [feedback,setFeedback]=useState(''),[busy,setBusy]=useState(false);
+ const [eventQuery,setEventQuery]=useState(''),[includePastEvents,setIncludePastEvents]=useState(false);
  const [details,setDetails]=useState<Notification|null>(null),[sendDate,setSendDate]=useState(''),[confirmSend,setConfirmSend]=useState<'send'|'test'|'schedule'|null>(null);
  async function reload(){try{const r=await request('notifications');setItems(r.items);}catch(e){setFeedback(String(e));}}
  useEffect(()=>{void reload();},[]);
@@ -52,6 +77,7 @@ export function AdminNotifications({events}:{events:Event[]}){
  const tabItems=items.filter(n=>tab==='models'?n.status==='draft':tab==='scheduled'?n.status==='scheduled':n.status!=='draft'&&n.status!=='scheduled');
  const visible=tabItems.filter(n=>(!filterEvent||n.event_id===filterEvent)&&(!filterStatus||n.status===filterStatus)&&(!search||(n.title+' '+n.body+' '+(n.event_name||'')).toLowerCase().includes(search.toLowerCase())));
  const counts={models:items.filter(x=>x.status==='draft').length,scheduled:items.filter(x=>x.status==='scheduled').length,history:items.filter(x=>!['draft','scheduled'].includes(x.status)).length};
+ const eventOptions=filterNotificationEvents(events,eventQuery,includePastEvents,eventId,Date.now());
  function selectTab(next:'models'|'scheduled'|'history'){setTab(next);setFilterStatus('');setFeedback('');}
  function openSchedule(n:Notification){setScheduleEditing(n);const value=n.scheduled_at?new Date(n.scheduled_at-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):'';setScheduleWhen(value);setScheduleConfirm(null);setFeedback('');}
  async function updateSchedule(action:'reschedule'|'cancel'){
@@ -62,7 +88,7 @@ export function AdminNotifications({events}:{events:Event[]}){
   try{await request('notifications/schedule',{id:scheduleEditing.id,action,scheduledAt:action==='reschedule'?new Date(scheduleWhen).getTime():null});await reload();setScheduleEditing(null);setScheduleConfirm(null);setFeedback(action==='cancel'?'Agendamento cancelado. O modelo foi preservado.':'Agendamento atualizado.');}
   catch(e){setFeedback(e instanceof Error?e.message:String(e));setScheduleConfirm(null);}finally{setBusy(false);}
  }
- function reset(){setEditingId('');setEventId('');setTitle('');setMessage('');setKind('promo');setTargetKind('event');setTargetId('');setAudience('event');setScheduled('');setConfirmAction(null);}
+ function reset(){setEditingId('');setEventId('');setTitle('');setMessage('');setKind('promo');setTargetKind('event');setTargetId('');setAudience('all');setEventQuery('');setIncludePastEvents(false);setScheduled('');setConfirmAction(null);}
  function begin(n?:Notification){reset();if(n){setEditingId(n.id);setEventId(n.audience==='event'?(n.event_id||''):'');setTitle(n.title);setMessage(n.body);setKind(n.kind);setTargetKind(n.audience==='all'?'event':n.target_kind);setTargetId(n.audience==='all'?'':(n.target_id||''));setAudience(n.audience);setScheduled(n.scheduled_at?new Date(n.scheduled_at-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):'');}setFeedback('');setDialog(true);}
  async function saveTemplate(){
   if(!title.trim()||!message.trim()){setFeedback('Preencha título e mensagem.');return;}
@@ -92,7 +118,7 @@ export function AdminNotifications({events}:{events:Event[]}){
   {dialog&&<div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-3 sm:p-6" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy){setDialog(false);setConfirmAction(null);}}}><div role="dialog" aria-modal="true" aria-label={editingId?'Editar notificação':'Criar notificação'} className="relative flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#c4ff40]/25 bg-[#1a1421] shadow-2xl">
     <header className="flex shrink-0 items-center justify-between border-b border-white/10 p-4 sm:px-6"><div><h3 className="text-lg font-black">{editingId?'Editar notificação':'Nova notificação'}</h3><p className="text-xs text-white/50">Defina a mensagem, os destinatários e o destino do clique.</p></div><button aria-label="Fechar" onClick={()=>{setDialog(false);setConfirmAction(null);}} className="rounded-lg border border-white/15 px-3 py-2">✕</button></header>
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
-     <div className={'grid gap-3 '+(audience==='event'?'sm:grid-cols-2':'')}><label className="text-xs text-white/65">Público<select className={inp+' mt-1'} value={audience} onChange={e=>{const next=e.target.value;setAudience(next);if(next==='all'){setEventId('');setTargetId('');setTargetKind('event');}}}><option value="event">Conectados ao evento</option><option value="all">Todos os usuários</option></select></label>{audience==='event'&&<label className="text-xs text-white/65">Evento<select className={inp+' mt-1'} value={eventId} onChange={e=>{setEventId(e.target.value);setTargetId('');}}><option value="">Selecionar evento</option>{events.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>}</div>
+     <div className={'grid gap-3 '+(audience==='event'?'sm:grid-cols-2':'')}><label className="text-xs text-white/65">Público<select className={inp+' mt-1'} value={audience} onChange={e=>{const next=e.target.value;setAudience(next);if(next==='all'){setEventId('');setTargetId('');setTargetKind('event');setEventQuery('');setIncludePastEvents(false);}}}><option value="all">Todos os usuários</option><option value="event">Conectados ao evento</option></select></label>{audience==='event'&&<div className="min-w-0 space-y-2"><label htmlFor="notification-event-search" className="block text-xs text-white/65">Evento</label><input id="notification-event-search" type="search" aria-label="Buscar evento por nome" className={inp} value={eventQuery} onChange={e=>setEventQuery(e.target.value)} placeholder="Buscar evento por nome..."/><select aria-label="Selecionar evento" className={inp} value={eventId} onChange={e=>{setEventId(e.target.value);setTargetId('');}}><option value="">{eventOptions.length?'Selecionar evento':'Nenhum evento encontrado'}</option>{eventOptions.map(e=><option key={e.id} value={e.id}>{notificationEventLabel(e)}</option>)}</select><label className="flex items-center gap-2 text-xs text-white/60"><input type="checkbox" className="h-4 w-4 accent-[#c4ff40]" checked={includePastEvents} onChange={e=>setIncludePastEvents(e.target.checked)}/>Incluir eventos encerrados</label><p className="text-[11px] text-white/45">Eventos em andamento e futuros aparecem primeiro.</p></div>}</div>
      <label className="block text-xs text-white/65">Tipo<select className={inp+' mt-1'} value={kind} onChange={e=>setKind(e.target.value)}><option value="promo">Promoção</option><option value="info">Aviso importante</option><option value="lineup">Programação</option><option value="survey">Pesquisa de satisfação</option></select><span aria-live="polite" className="mt-1.5 block text-xs leading-relaxed text-white/55">{notificationTypeDescriptions[kind]}</span></label>
     <label className="block text-xs text-white/65">Título<input autoFocus className={inp+' mt-1'} maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} placeholder="Ex.: Bebida em dobro!"/></label>
     <label className="block text-xs text-white/65">Mensagem<textarea className={inp+' mt-1'} rows={3} maxLength={700} value={message} onChange={e=>setMessage(e.target.value)} placeholder="Descreva a promoção ou aviso..."/></label>
