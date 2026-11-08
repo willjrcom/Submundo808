@@ -92,7 +92,7 @@ export function AdminNotifications({events}:{events:Event[]}){
  function begin(n?:Notification){reset();if(n){setEditingId(n.id);setEventId(n.kind==='survey'||n.audience==='event'?(n.event_id||''):'');setTitle(n.title);setMessage(n.body);setKind(n.kind);setTargetKind(n.kind==='survey'?'survey':n.audience==='all'?'event':n.target_kind);setTargetId(n.kind==='survey'||n.audience==='all'?'':(n.target_id||''));setAudience(n.kind==='survey'?'event':n.audience);setScheduled(n.scheduled_at?new Date(n.scheduled_at-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16):'');}setFeedback('');setDialog(true);}
  function changeNotificationType(next:string){
   setKind(next);
-  if(next==='survey'){setAudience('event');setTargetKind('survey');setTargetId('');}
+  if(next==='survey'){setAudience('event');setTargetKind('survey');setTargetId('');setIncludePastEvents(true);}
   else if(next==='lineup'){setTargetKind('lineup');setTargetId('');}
   else if(kind==='survey'){setTargetKind('event');setTargetId('');}
  }
