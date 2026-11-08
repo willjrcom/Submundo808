@@ -49,6 +49,16 @@ const groupAlerts={
 
 export async function handleSocialApi({db,req,res,url,getUser,readBody,json,friendSecret,drainPushQueue}){
  const pathname=url.pathname;
+ // Um link válido permite mostrar apenas a identidade visual do grupo antes do login.
+ // Não expor identificadores, lista de membros, relações sociais nem o token.
+ if(pathname==='/api/public/group-invite'){
+  if(req.method!=='GET'){json(res,405,{error:'Método não permitido.'});return true;}
+  const token=String(url.searchParams.get('token')||'');
+  if(!/^[a-f0-9]{64}$/.test(token)){json(res,400,{error:'Convite de grupo inválido.'});return true;}
+  const group=db.prepare('SELECT name,color,icon,photo_data FROM friend_groups WHERE invite_hash=?').get(sha256(token));
+  if(!group){json(res,404,{error:'Este convite não está disponível.'});return true;}
+  json(res,200,{group:{name:group.name,color:group.color,icon:group.icon||'users',photo:group.photo_data||''}});return true;
+ }
  const route=pathname.startsWith('/api/groups/')||pathname==='/api/groups'||[
   '/api/friends','/api/friends/add','/api/friends/search','/api/friends/request','/api/friends/respond','/api/friends/requests'
  ].includes(pathname);
