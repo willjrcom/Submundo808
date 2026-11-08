@@ -37,6 +37,7 @@ jobs:
             tests/permission-flows.test.mjs \
             tests/crowd-analytics.test.mjs \
             tests/participant-public-copy-gps-cta.test.mjs \
+            tests/public-event-agenda.test.mjs \
             tests/public-event-navigation.test.mjs \
             tests/admin-map-modals-menu-page.test.mjs \
             tests/admin-route.test.mjs \
