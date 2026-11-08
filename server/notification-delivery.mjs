@@ -48,7 +48,7 @@ export function notificationTargetUrl(n){
  if(n.target_kind==='point')return '/map?event='+eventId+'&point='+encodeURIComponent(n.target_id||'');
  if(n.target_kind==='map')return '/map'+e;
  if(n.target_kind==='menu')return '/menu'+e;
- if(n.target_kind==='survey')return '/schedule/'+eventId+'?review=1';
+ if(n.kind==='survey'||n.target_kind==='survey')return '/schedule/'+eventId+'?review=1';
  return eventId?'/schedule/'+eventId:'/';
 }
 function reasonFor(error){
