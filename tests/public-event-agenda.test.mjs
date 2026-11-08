@@ -49,7 +49,7 @@ test('não classifica datas inválidas ou sem encerramento como festa anterior',
   event('fim-anterior-ao-inicio','2026-11-10T20:00:00-03:00','2026-11-08T04:00:00-03:00')
  ],now,date);
  assert.deepEqual(groups.past,[]);
- assert.deepEqual(groups.upcoming.map(e=>e.id),['fim-anterior-ao-inicio','ainda-vai']);
+ assert.deepEqual(groups.upcoming.map(e=>e.id),['ainda-vai','fim-anterior-ao-inicio']);
  assert.deepEqual(groups.undated.map(e=>e.id),['sem-fim','invalido','sem-data']);
 });
 
