@@ -45,10 +45,11 @@ export function publishDueNotificationReceipts(db,now=Date.now()){
 export function notificationTargetUrl(n){
  const eventId=encodeURIComponent(n.event_id||'');
  const e=eventId?'?event='+eventId:'';
+ // O tipo pesquisa prevalece sobre destinos salvos em modelos legados.
+ if(n.kind==='survey'||n.target_kind==='survey')return '/schedule/'+eventId+'?review=1';
  if(n.target_kind==='point')return '/map?event='+eventId+'&point='+encodeURIComponent(n.target_id||'');
  if(n.target_kind==='map')return '/map'+e;
  if(n.target_kind==='menu')return '/menu'+e;
- if(n.kind==='survey'||n.target_kind==='survey')return '/schedule/'+eventId+'?review=1';
  return eventId?'/schedule/'+eventId:'/';
 }
 function reasonFor(error){
