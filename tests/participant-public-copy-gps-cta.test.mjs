@@ -44,7 +44,7 @@ test('card de GPS desaparece somente após a primeira leitura válida',()=>{
  assert.match(map,/localGpsWatch.current=null;setLocalGpsEnabled\(false\)/);
 });
 
-test('privacidade continua configurável sem exibir atalhos de contas de teste',()=>{
+test('sessão de GPS pode ser encerrada sem atalhos para contas de teste',()=>{
  assert.match(map,/Perfil → Permissões/);
  assert.match(map,/const stopSharing=async\(\)=>/);
  assert.doesNotMatch(account,/Ferramentas de demonstração|Gerar administrador teste|Gerar usuário teste|generateDemo\(/);

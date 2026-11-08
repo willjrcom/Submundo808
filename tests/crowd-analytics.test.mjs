@@ -154,7 +154,7 @@ test('histórico é separado por evento e expira após 30 dias',()=>{
  }finally{db.close();}
 });
 
-test('rotas exigem admin e a localização do participante exige consentimento separado',()=>{
+test('rotas exigem admin e a localização exige ativação informada em um toque',()=>{
  const index=readFileSync(new URL('../server/index.mjs',import.meta.url),'utf8');
  const map=readFileSync(new URL('../artifacts/submundo-808/src/components/venue-map.tsx',import.meta.url),'utf8');
  const permissions=readFileSync(new URL('../artifacts/submundo-808/src/components/profile-permissions.tsx',import.meta.url),'utf8');
@@ -164,11 +164,11 @@ test('rotas exigem admin e a localização do participante exige consentimento s
  assert.match(index,/analytics_event_id/);
  assert.doesNotMatch(map,/Contribuir com estatísticas anônimas da festa/);
  assert.doesNotMatch(map,/analytics-consent/);
- assert.match(permissions,/Estatísticas anônimas do evento/);
- assert.match(permissions,/analytics-consent/);
- assert.match(permissions,/Revogar/);
- assert.match(permissions,/Autorizar/);
+ assert.doesNotMatch(permissions,/Estatísticas anônimas do evento/);
+ assert.doesNotMatch(permissions,/analytics-consent/);
+ assert.doesNotMatch(permissions,/Revogar|Autorizar/);
+ assert.match(permissions,/Encerrar localização e compartilhamento/);
  assert.match(map,/analyticsEnabled:shareEnabled&&statisticsEnabled/);
- assert.match(map,/await savePrefs\(true,true,activeEventId,true\)/);
+ assert.match(map,/await savePrefs\(true,true,activeEventId,true,unifiedActivationPending\.current\)/);
  assert.match(map,/statisticsEnabledRef\.current&&statisticsEventRef\.current===activeEventId/);
 });

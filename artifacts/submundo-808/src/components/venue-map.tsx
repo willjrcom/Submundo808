@@ -137,6 +137,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
   const dontShareRef=useRef(false);
   const privacyRevision=useRef(0);
+  const statisticsRevision=useRef(0);
+  const unifiedActivationPending=useRef(false);
   // Do not silently resume sharing after a configured deadline or revocation.
   const autoShareSuppressed=useRef(false);
   const prefsQueue=useRef<Promise<void>>(Promise.resolve());
@@ -173,13 +175,14 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   };
   const watch=useRef<number|null>(null);
   const trackingRef=useRef(false);
-  const savePrefs=(gpsEnabled:boolean,shareEnabled:boolean,eventId:string|null=null,statisticsEnabled=false)=>{
+  const savePrefs=(gpsEnabled:boolean,shareEnabled:boolean,eventId:string|null=null,statisticsEnabled=false,unifiedActivation=false)=>{
    // Serialize enable/disable writes so a slow enable cannot overwrite a newer stop.
    const run=async()=>{
     try{
      const result=await requestLocation('preferences',{
       gpsEnabled,shareEnabled,mode:'event',eventId,shareWithGroups:false,
-      analyticsEnabled:shareEnabled&&statisticsEnabled
+      analyticsEnabled:shareEnabled&&statisticsEnabled,
+      unifiedActivation:shareEnabled&&unifiedActivation
      });
      setSharingExpiresAt(result.expiresAt||null);
      statisticsEnabledRef.current=result.analyticsEnabled===true;
@@ -236,10 +239,13 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     }
    };
    const requestedPrivacyRevision=privacyRevision.current;
+   const requestedStatisticsRevision=statisticsRevision.current;
    void requestLocation('preferences').then(p=>{
     if(!alive)return;
-    statisticsEnabledRef.current=p.analyticsEnabled===true;
-    statisticsEventRef.current=p.analyticsEnabled===true?p.eventId||null:null;
+    if(statisticsRevision.current===requestedStatisticsRevision){
+     statisticsEnabledRef.current=p.analyticsEnabled===true;
+     statisticsEventRef.current=p.analyticsEnabled===true?p.eventId||null:null;
+    }
     if(privacyRevision.current===requestedPrivacyRevision){
      dontShareRef.current=p.dontShareWithFriends===true;
      setDontShareWithFriends(dontShareRef.current);
@@ -458,6 +464,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const stopSharing=async()=>{
    autoShareSuppressed.current=true;
    // Immediately stop the device's GPS, regardless of network availability.
+   unifiedActivationPending.current=false;
    cancelGpsStartup();
    if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
    setLocalGpsEnabled(false);setLocalGpsError('');
@@ -512,7 +519,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     if(dontShareRef.current||!navigator.onLine)return;
     void (async()=>{
      try{
-      await savePrefs(true,true,activeEventId,true);
+      await savePrefs(true,true,activeEventId,true,unifiedActivationPending.current);
+      unifiedActivationPending.current=false;
       if(cancelled()||dontShareRef.current)return;
       shareEpoch.current++;
       sharingRef.current=true;setSharing(true);
@@ -542,7 +550,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       activeEvent?.location_sharing_enabled!==1||authRequired||
       (localGpsWatch.current===null&&watch.current===null))return;
    try{
-    await savePrefs(true,true,activeEventId,statisticsEnabledRef.current&&statisticsEventRef.current===activeEventId);
+    await savePrefs(true,true,activeEventId,statisticsEnabledRef.current&&statisticsEventRef.current===activeEventId,unifiedActivationPending.current);
+    unifiedActivationPending.current=false;
     if(dontShareRef.current||!navigator.onLine)return;
     shareEpoch.current++;sharingRef.current=true;setSharing(true);
     lastSend.current=0;sendLatestLocation();setFriendError('');
@@ -559,19 +568,26 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     void stopSharing();
     return;
    }
-   // The server may remember a past session while Android GPS is no longer on.
-   // A new user gesture must be able to restart the device GPS.
-   if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
-    autoShareSuppressed.current=false;
-    startSharing();
-    return;
-   }
+   // Mesmo se uma sessão antiga existir, um novo gesto informa a ativação
+   // conjunta de amigos e Estatísticas. Não copiar consentimento silenciosamente.
    autoShareSuppressed.current=false;
-   // Trigger device permission synchronously on the user's first tap.
-   // Even when sharing is enabled by default, an opt-out or bad network
-   // must never prevent the user's own live position from working.
+   // Somente o toque explícito autoriza amigos e Estatísticas.
+   // Uma preferência antiga não é revogada silenciosamente ao carregar a tela.
+   const canShare=activeEvent?.location_sharing_enabled===1&&!authRequired;
+   // "Ativar GPS" (sem autorização para compartilhamento) continua só local.
+   // Jamais iniciar transmissão se o organizador ativar a função depois.
+   if(canShare){
+    unifiedActivationPending.current=true;
+    privacyRevision.current++;
+    dontShareRef.current=false;setDontShareWithFriends(false);
+    statisticsRevision.current++;
+    statisticsEnabledRef.current=true;statisticsEventRef.current=activeEventId;
+   }else{
+    unifiedActivationPending.current=false;
+   }
+   // O Android precisa receber a solicitação de GPS no gesto original.
    try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
-   if(!dontShareRef.current&&navigator.onLine&&activeEvent?.location_sharing_enabled===1&&!authRequired){
+   if(navigator.onLine&&canShare){
     startSharing();
    }else{
     toggleLocalPosition();
@@ -600,6 +616,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      void enableSharingWithActiveGps();
     }
    };
+   const onStopLocation=()=>{void stopSharing();};
+   const onStorage=(event:StorageEvent)=>{
+    if(event.key==='submundo-gps-stop-pending'&&event.newValue==='1')void stopSharing();
+   };
+   window.addEventListener('submundo-location-stop',onStopLocation);
+   window.addEventListener('storage',onStorage);
    const onStatisticsConsent=(event:Event)=>{
     const detail=(event as CustomEvent<{eventId:string;enabled:boolean}>).detail;
     if(detail?.eventId!==activeEventId)return;
@@ -610,7 +632,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    window.addEventListener('submundo-friend-sharing-privacy',onPrivacyChange);
    window.addEventListener('online',onOnline);
    if(navigator.onLine)onOnline();
-   return()=>{window.removeEventListener('submundo-statistics-consent',onStatisticsConsent);window.removeEventListener('submundo-friend-sharing-privacy',onPrivacyChange);window.removeEventListener('online',onOnline);};
+   return()=>{window.removeEventListener('submundo-location-stop',onStopLocation);window.removeEventListener('storage',onStorage);window.removeEventListener('submundo-statistics-consent',onStatisticsConsent);window.removeEventListener('submundo-friend-sharing-privacy',onPrivacyChange);window.removeEventListener('online',onOnline);};
   },[activeEventId,authRequired]);
 
  // Não projetar pessoas em plantas cujas referências geográficas não foram
@@ -661,11 +683,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <Navigation size={18} className="shrink-0 text-[#c4ff40]"/>
   <div className="min-w-0 flex-1">
    <p className="text-sm font-bold">Minha localização</p>
-   <p className="text-[11px] leading-relaxed text-white/60">{dontShareWithFriends?'GPS só no seu aparelho, inclusive offline. Compartilhamento desativado em Perfil → Permissões.':activeEvent?.location_sharing_enabled!==1?'GPS só no seu aparelho. O evento não permite compartilhar com amigos.':'Ao ativar, sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas até o fim da festa. Ajuste em Perfil → Permissões.'}</p>
+   <p className="text-[11px] leading-relaxed text-white/60">{activeEvent?.location_sharing_enabled!==1?'GPS só neste aparelho: o evento não permite compartilhar.':'Ao ativar, sua posição será compartilhada com amigos e contribuirá para Estatísticas agregadas até o fim da festa. Para encerrar, acesse Perfil → Permissões.'}</p>
   </div>
   <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
    className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-xs font-bold text-black disabled:opacity-60">
-   {gpsStarting||localGpsEnabled?'Ativando...':dontShareWithFriends||activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar GPS e compartilhar'}
+   {gpsStarting||localGpsEnabled?'Ativando...':activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar GPS e compartilhar'}
   </button>
   {gpsStarting&&<p className="w-full text-xs text-white/60">Obtendo a posição do aparelho...</p>}
   {localGpsError&&<p role="status" className="w-full text-xs text-amber-300">{localGpsError}</p>}

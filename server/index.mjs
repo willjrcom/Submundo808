@@ -365,10 +365,16 @@ http.createServer(async (req,res)=>{
         if(typeof b.gpsEnabled!=='boolean'||typeof b.shareEnabled!=='boolean'||(b.shareEnabled&&!b.gpsEnabled)||
            (b.shareWithGroups!==undefined&&typeof b.shareWithGroups!=='boolean')||
            (b.analyticsEnabled!==undefined&&typeof b.analyticsEnabled!=='boolean')||
+           (b.unifiedActivation!==undefined&&typeof b.unifiedActivation!=='boolean')||
+           (b.unifiedActivation===true&&(!b.shareEnabled||b.analyticsEnabled!==true))||
            (b.analyticsEnabled===true&&!b.shareEnabled))return json(res,400,{error:'Preferências inválidas.'});
         const now=Date.now();
-        if(b.shareEnabled&&db.prepare('SELECT share_friends_disabled FROM location_preferences WHERE user_id=?').get(user.id)?.share_friends_disabled===1){
-          return json(res,403,{error:'Você desativou o compartilhamento com amigos nas Permissões do aplicativo.'});
+        // Uma preferência antiga de não compartilhar só pode ser substituída
+        // por um novo toque informado em "Ativar GPS e compartilhar".
+        // Reconexões e carregamentos automáticos não alteram o opt-out legado.
+        if(b.shareEnabled&&b.unifiedActivation!==true&&
+           db.prepare('SELECT share_friends_disabled FROM location_preferences WHERE user_id=?').get(user.id)?.share_friends_disabled===1){
+          return json(res,403,{error:'Reative o compartilhamento usando o botão de GPS no Mapa.'});
         }
         let choice=null;
         if(b.shareEnabled){
@@ -381,6 +387,11 @@ http.createServer(async (req,res)=>{
         }
         db.prepare('INSERT INTO location_preferences(user_id,gps_enabled,share_enabled,share_mode,share_expires_at,share_event_id,share_with_groups,analytics_enabled,analytics_event_id,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET gps_enabled=excluded.gps_enabled,share_enabled=excluded.share_enabled,share_mode=excluded.share_mode,share_expires_at=excluded.share_expires_at,share_event_id=excluded.share_event_id,share_with_groups=excluded.share_with_groups,analytics_enabled=excluded.analytics_enabled,analytics_event_id=excluded.analytics_event_id,updated_at=excluded.updated_at')
           .run(user.id,Number(b.gpsEnabled),Number(b.shareEnabled),choice?.mode||'event',choice?.expiresAt||null,b.shareEnabled?b.eventId:null,b.shareEnabled&&b.shareWithGroups===true?1:0,b.shareEnabled&&b.analyticsEnabled===true?1:0,b.shareEnabled&&b.analyticsEnabled===true?b.eventId:null,now);
+        if(b.shareEnabled&&b.unifiedActivation===true){
+          // O usuário confirmou na mesma ação a localização de amigos e
+          // a contribuição para Estatísticas agregadas desta festa.
+          db.prepare('UPDATE location_preferences SET share_friends_disabled=0 WHERE user_id=?').run(user.id);
+        }
         if(!b.shareEnabled)db.prepare('DELETE FROM live_locations WHERE user_id=?').run(user.id);
         return json(res,200,{gpsEnabled:b.gpsEnabled,shareEnabled:b.shareEnabled,mode:choice?.mode||'event',eventId:b.shareEnabled?b.eventId:null,shareWithGroups:b.shareEnabled&&b.shareWithGroups===true,analyticsEnabled:b.shareEnabled&&b.analyticsEnabled===true,expiresAt:choice?.expiresAt||null});
       }
