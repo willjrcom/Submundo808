@@ -464,6 +464,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const stopSharing=async()=>{
    autoShareSuppressed.current=true;
    // Immediately stop the device's GPS, regardless of network availability.
+   unifiedActivationPending.current=false;
    cancelGpsStartup();
    if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
    setLocalGpsEnabled(false);setLocalGpsError('');
@@ -572,14 +573,21 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    autoShareSuppressed.current=false;
    // Somente o toque explícito autoriza amigos e Estatísticas.
    // Uma preferência antiga não é revogada silenciosamente ao carregar a tela.
-   unifiedActivationPending.current=true;
-   privacyRevision.current++;
-   dontShareRef.current=false;setDontShareWithFriends(false);
-   statisticsRevision.current++;
-   statisticsEnabledRef.current=true;statisticsEventRef.current=activeEventId;
+   const canShare=activeEvent?.location_sharing_enabled===1&&!authRequired;
+   // "Ativar GPS" (sem autorização para compartilhamento) continua só local.
+   // Jamais iniciar transmissão se o organizador ativar a função depois.
+   if(canShare){
+    unifiedActivationPending.current=true;
+    privacyRevision.current++;
+    dontShareRef.current=false;setDontShareWithFriends(false);
+    statisticsRevision.current++;
+    statisticsEnabledRef.current=true;statisticsEventRef.current=activeEventId;
+   }else{
+    unifiedActivationPending.current=false;
+   }
    // O Android precisa receber a solicitação de GPS no gesto original.
    try{localStorage.removeItem('submundo-gps-stop-pending');}catch{}
-   if(navigator.onLine&&activeEvent?.location_sharing_enabled===1&&!authRequired){
+   if(navigator.onLine&&canShare){
     startSharing();
    }else{
     toggleLocalPosition();
