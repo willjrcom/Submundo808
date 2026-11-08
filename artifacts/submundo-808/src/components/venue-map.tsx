@@ -143,6 +143,8 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [dontShareWithFriends,setDontShareWithFriends]=useState(false);
   const dontShareRef=useRef(false);
   const privacyRevision=useRef(0);
+  // Do not silently resume sharing after a configured deadline or revocation.
+  const autoShareSuppressed=useRef(false);
   const prefsQueue=useRef<Promise<void>>(Promise.resolve());
   const [shareMode,setShareMode]=useState<ShareMode>('event');
   const [shareWithGroups,setShareWithGroups]=useState(false);
@@ -389,11 +391,13 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   },[]);
   const endFriendShareKeepingGps=(message:string)=>{
    // Expiry/revocation stops publishing but never stops the phone's local GPS.
+   autoShareSuppressed.current=true;
    shareEpoch.current++;sharingRef.current=false;setSharing(false);
    setSharingExpiresAt(null);setSharingEventId(null);
    setFriendError('');setGeoError(message);
   };
   const endLocalSharing=(message:string)=>{
+   autoShareSuppressed.current=true;
    gpsAttemptId.current++;
    gpsActivatingRef.current=false;
    gpsInitialCancel.current?.();gpsInitialCancel.current=null;
@@ -451,6 +455,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    }
   },[activeEventId]);
   const stopSharing=async()=>{
+   autoShareSuppressed.current=true;
    // Immediately stop the device's GPS, regardless of network availability.
    cancelGpsStartup();
    if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
@@ -532,7 +537,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   };
 
   const enableSharingWithActiveGps=async()=>{
-   if(dontShareRef.current||sharingRef.current||!navigator.onLine||!activeEventId||
+   if(autoShareSuppressed.current||dontShareRef.current||sharingRef.current||!navigator.onLine||!activeEventId||
       activeEvent?.location_sharing_enabled!==1||authRequired||
       (localGpsWatch.current===null&&watch.current===null))return;
    try{
@@ -556,9 +561,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    // The server may remember a past session while Android GPS is no longer on.
    // A new user gesture must be able to restart the device GPS.
    if(sharingRef.current&&!dontShareRef.current&&navigator.onLine){
+    autoShareSuppressed.current=false;
     startSharing();
     return;
    }
+   autoShareSuppressed.current=false;
    // Trigger device permission synchronously on the user's first tap.
    // Even when sharing is enabled by default, an opt-out or bad network
    // must never prevent the user's own live position from working.
