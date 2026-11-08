@@ -18,14 +18,33 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,onOpenMenu
  const [confirmDj,setConfirmDj]=useState<number|null>(null);
  const [name,setName]=useState(event?.name||''),[venue,setVenue]=useState(event?.venue_id||''),[selected,setSelected]=useState<string[]>(event?.map_ids||[]),[description,setDescription]=useState(event?.description||''),[starts,setStarts]=useState(event?.starts_at||''),[ends,setEnds]=useState(event?.ends_at||''),[site,setSite]=useState(event?.site_url||''),[tickets,setTickets]=useState(event?.tickets_url||''),[instagram,setInstagram]=useState(event?.instagram_url||''),[djs,setDjs]=useState<{nome:string;instagram:string;spotify?:string;inicio:string;fim:string}[]>(event?.lineup||[]),[error,setError]=useState(''),[message,setMessage]=useState('');
  const [doors,setDoors]=useState(event?.doors_at||''),[cover,setCover]=useState(event?.cover_image||''),[services,setServices]=useState(event?.services||''),[published,setPublished]=useState(Boolean(event?.is_published)),[publishing,setPublishing]=useState(false);
- const [locationSharingEnabled,setLocationSharingEnabled]=useState(Number(event?.location_sharing_enabled)===1);
+ const [locationSharingEnabled,setLocationSharingEnabled]=useState(event?Number(event.location_sharing_enabled)===1:true);
+  const [confirmDisableLocation,setConfirmDisableLocation]=useState(false),[locationBusy,setLocationBusy]=useState(false),[locationError,setLocationError]=useState(''),[locationNotice,setLocationNotice]=useState('');
  const [meapleEventId,setMeapleEventId]=useState(event?.meaple_event_id||'');
  const [saving,setSaving]=useState(false);
  const [eventFormChanged,setEventFormChanged]=useState(false),[confirmMenuExit,setConfirmMenuExit]=useState(false);
  function requestMenu(){if(!onOpenMenu)return;if(eventFormChanged){setConfirmMenuExit(true);return;}onOpenMenu();}
+ async function changeLocationSharing(enabled:boolean){
+  if(locationBusy||saving)return;
+  setLocationError('');setLocationNotice('');
+  if(!event?.id){
+   setLocationSharingEnabled(enabled);setConfirmDisableLocation(false);setEventFormChanged(true);
+   return;
+  }
+  setLocationBusy(true);
+  try{
+   await request('set-event-location-sharing',{id:event.id,enabled});
+   setLocationSharingEnabled(enabled);
+   setConfirmDisableLocation(false);
+   setLocationNotice(enabled?'Localização permitida neste evento. Cada participante precisa ativar seu GPS no Mapa.':'Compartilhamento desativado. As sessões e posições ativas deste evento foram encerradas.');
+   onPublicationChanged?.();
+  }catch(err){
+   setLocationError(err instanceof Error?err.message:'Não foi possível alterar o compartilhamento. Tente novamente.');
+  }finally{setLocationBusy(false);}
+ }
  async function save(e:React.FormEvent){
   e.preventDefault();
-  if(saving)return;
+  if(saving||locationBusy)return;
   setError('');setMessage('');
   const validation=validateEventFields(name,venue,starts,ends,[site,tickets,instagram])||validateDjLinks(djs);
   if(validation){setTab('geral');setError(validation);return;}
@@ -59,7 +78,10 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,onOpenMenu
     <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs">Início do show<input type="datetime-local" step="60" className={input+' [color-scheme:dark]'} value={starts} onChange={e=>setStarts(e.target.value)}/></label><label className="text-xs">Fim<input type="datetime-local" className={input+' [color-scheme:dark]'} value={ends} onChange={e=>setEnds(e.target.value)}/></label></div>
     <label className="block space-y-2 text-xs">Capa do evento (opcional)<input type="file" accept="image/jpeg,image/png,image/webp" className={input} onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>6_000_000){setError('Imagem muito grande (máximo 6 MB).');return;}const img=new Image();const u=URL.createObjectURL(file);img.onload=()=>{const canvas=document.createElement('canvas'),scale=Math.min(1,800/img.width,450/img.height);canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d')?.drawImage(img,0,0,canvas.width,canvas.height);URL.revokeObjectURL(u);const data=canvas.toDataURL('image/jpeg',.68);if(data.length>150000){setError('A capa ainda está muito grande. Tente uma imagem menor.');return;}setCover(data);setError('');};img.onerror=()=>{URL.revokeObjectURL(u);setError('Imagem inválida.');};img.src=u;}}/>{cover&&<div className="space-y-2"><img src={cover} alt="Prévia da capa do evento" className="h-36 w-full rounded-xl object-cover"/><button type="button" className="text-xs text-red-300 underline" onClick={()=>{setCover('');setEventFormChanged(true);}}>Remover capa</button></div>}</label>
     <label className="block space-y-1 text-xs">Serviços extras deste evento (opcional)<textarea rows={3} maxLength={2000} value={services} onChange={e=>setServices(e.target.value)} className={input} placeholder="Ex.: Chapelaria R$ 12; ambulatório; guarda-volumes"/></label>
-    <label className="flex items-start gap-3 rounded-xl border border-white/15 bg-white/[.03] p-4 text-sm"><input type="checkbox" checked={locationSharingEnabled} onChange={e=>setLocationSharingEnabled(e.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Permitir compartilhamento de localização neste evento</strong><span className="mt-1 block text-xs text-white/55">Habilite somente após testar a precisão no local. Desabilitar encerra imediatamente os compartilhamentos deste evento; o mapa continua disponível.</span></span></label>
+    <label className="flex items-start gap-3 rounded-xl border border-white/15 bg-white/[.03] p-4 text-sm"><input type="checkbox" checked={locationSharingEnabled} disabled={locationBusy||saving} onChange={e=>{e.stopPropagation();if(e.target.checked)void changeLocationSharing(true);else{setLocationError('');setConfirmDisableLocation(true);}}} className="mt-1 h-4 w-4 shrink-0 accent-[#c4ff40]"/><span><strong className="block">Permitir compartilhamento de localização neste evento</strong><span className="mt-1 block text-xs text-white/55">Ativado por padrão nos eventos novos. Os participantes só compartilham sua posição quando ativam o GPS no Mapa. Desativar não remove o mapa.</span></span></label>
+     {locationBusy&&<p role="status" className="text-xs text-white/60">Atualizando compartilhamento...</p>}
+     {locationNotice&&<p role="status" className="text-xs text-[#c4ff40]">{locationNotice}</p>}
+     {locationError&&!confirmDisableLocation&&<p role="alert" className="text-xs text-red-300">{locationError}</p>}
     <input type="url" className={input} placeholder="Site oficial" value={site} onChange={e=>setSite(e.target.value)}/>
    </div>
    <div className={tab==='programacao'?'space-y-3':'hidden'}><div className="flex items-center justify-between"><h4 className="font-bold">Programação / Lineup</h4><button type="button" className="rounded-lg border border-white/20 px-3 py-2 text-xs" onClick={()=>{setEventFormChanged(true);setDjs(v=>[...v,{nome:'',instagram:'',spotify:'',inicio:'',fim:''}]);}}>+ DJ</button></div><p className="text-xs leading-relaxed text-white/55">Informe a data e o horário de início e fim de cada DJ. Para apresentações depois da meia-noite, selecione a data do dia seguinte. O participante verá automaticamente quem está tocando na aba Início, inclusive offline.</p>
@@ -85,9 +107,20 @@ export function EventEditor({venues,maps,onSaved,onPublicationChanged,onOpenMenu
     </div>
    </div>
    <div className={tab==='ingressos'?'space-y-3':'hidden'}><h4 className="font-bold">Ingressos e redes sociais</h4><label className="block text-xs">ID do evento na Meaple<input className={input} value={meapleEventId} onChange={e=>setMeapleEventId(e.target.value)} placeholder="ID do evento na Meaple"/></label><input type="url" className={input} placeholder="Link externo de ingressos" value={tickets} onChange={e=>setTickets(e.target.value)}/><input type="url" className={input} placeholder="Instagram do evento" value={instagram} onChange={e=>setInstagram(e.target.value)}/><p className="text-xs text-white/50">Sem processamento de pagamentos pelo aplicativo.</p></div>
-   {tab!=='cardapio'&&<button type="submit" disabled={saving} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50">{saving?'Salvando evento...':'Salvar evento'}</button>}
+   {tab!=='cardapio'&&<button type="submit" disabled={saving||locationBusy} className="w-full rounded-xl bg-[#c4ff40] p-3 font-bold text-black disabled:opacity-50">{saving?'Salvando evento...':'Salvar evento'}</button>}
   </form>
   {event&&!published&&<p className="text-xs text-white/55">Para publicar: salve nome, estabelecimento, datas válidas e pelo menos um mapa. Depois use “Publicar evento”.</p>}
+  {confirmDisableLocation&&<div role="presentation" className="fixed inset-0 z-[160] flex items-start justify-center overflow-y-auto bg-black/85 p-3 py-6" onMouseDown={e=>{if(e.target===e.currentTarget&&!locationBusy)setConfirmDisableLocation(false);}}>
+   <section role="alertdialog" aria-modal="true" aria-labelledby="disable-event-location-title" aria-describedby="disable-event-location-description" className="my-auto w-full max-w-md space-y-4 rounded-2xl border border-red-400/35 bg-[#211729] p-5 shadow-2xl">
+    <div className="flex items-start justify-between gap-3">
+     <h3 id="disable-event-location-title" className="text-lg font-black">Desativar compartilhamento de localização?</h3>
+     <button type="button" aria-label="Fechar confirmação de localização" disabled={locationBusy} onClick={()=>setConfirmDisableLocation(false)} className="rounded-lg border border-white/20 px-3 py-2 text-white/70 disabled:opacity-50">✕</button>
+    </div>
+    <p id="disable-event-location-description" className="text-sm leading-relaxed text-white/75">{event?.id?'A desativação será imediata: as posições dos amigos serão retiradas e as sessões de GPS e Estatísticas deste evento serão encerradas.':'Ao cadastrar este evento, os participantes não poderão compartilhar localização nem contribuir para Estatísticas até você permitir.'} O mapa 2D continuará disponível. Ao permitir novamente, cada participante precisará ativar seu GPS.</p>
+    {locationError&&<p role="alert" className="rounded-lg border border-red-400/30 p-3 text-sm text-red-300">{locationError}</p>}
+    <button type="button" autoFocus disabled={locationBusy} onClick={()=>void changeLocationSharing(false)} className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{locationBusy?'Desativando...':'Confirmar desativação'}</button>
+   </section>
+  </div>}
   {confirmDj!==null&&<div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"><div className="w-full max-w-sm space-y-4 rounded-2xl border border-white/20 bg-[#241b2c] p-6"><h3 className="text-lg font-bold">Remover DJ?</h3><p className="text-sm text-white/70">Remover {djs[confirmDj]?.nome||'este DJ'} do lineup?</p><div className="flex justify-end gap-3"><button type="button" onClick={()=>setConfirmDj(null)} className="rounded-xl border border-white/20 px-4 py-2">Cancelar</button><button type="button" onClick={()=>{setDjs(v=>v.filter((_,i)=>i!==confirmDj));setEventFormChanged(true);setConfirmDj(null);}} className="rounded-xl bg-red-600 px-4 py-2 font-bold">Remover</button></div></div></div>}
   {confirmMenuExit&&<div role="presentation" className="fixed inset-0 z-[140] flex items-center justify-center bg-black/85 p-3">
    <div role="alertdialog" aria-modal="true" aria-labelledby="unsaved-event-title" className="w-full max-w-md space-y-4 rounded-2xl border border-amber-400/35 bg-[#211729] p-5 shadow-2xl">
