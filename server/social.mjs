@@ -301,7 +301,7 @@ export async function handleSocialApi({db,req,res,url,getUser,readBody,json,frie
    if(!/^[a-f0-9]{64}$/.test(token))return reject(400,'Link de convite inválido.');
    const g=db.prepare('SELECT * FROM friend_groups WHERE invite_hash=?').get(sha256(token));
    if(!g)return reject(404,'Grupo não encontrado.');
-   if(member(g.id))return json(res,200,{ok:true,joined:true,id:g.id});
+   if(member(g.id)){json(res,200,{ok:true,joined:true,id:g.id});return true;}
    const count=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE group_id=?').get(g.id).n;
    if(count>=50)return reject(409,'O grupo atingiu o limite de 50 pessoas.');
    const mine=db.prepare('SELECT COUNT(*) AS n FROM friend_group_members WHERE user_id=?').get(user.id).n;
