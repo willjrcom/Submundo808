@@ -1,7 +1,7 @@
 import {useEffect,useState} from 'react';
 import PageLoading from './page-loading';
 import useMinimumLoading from './use-minimum-loading';
-import {displayLabel} from './display-label';
+import {displayLabel,displayPublicDescription} from './display-label';
 import {CalendarDays,ArrowLeft} from 'lucide-react';
 
 type Product={id:string;name:string;description:string;category:string;effective_price_cents:number};
@@ -42,7 +42,6 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
   <p className="text-sm text-white/65">Escolha uma festa na aba Início para ver os produtos e preços do evento.</p>
   <button type="button" onClick={onChooseEvent} className="rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black">Escolher evento</button>
  </section>;
- const hasDemoProducts=items.some(p=>p.id.startsWith('meaple-808-demo-product-'));
  const categories=[...new Set(items.map(p=>p.category))];
  return <section className="space-y-5">
   <div>
@@ -50,7 +49,6 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
    <h1 className="mt-2 text-3xl font-black uppercase">Produtos e preços</h1>
    <p className="mt-2 text-sm font-semibold text-white/70">{displayLabel(eventName)||'Evento selecionado'}</p>
   </div>
-  {hasDemoProducts&&!showLoading&&<div role="note" className="rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-xs font-semibold text-amber-100">Cardápio demonstrativo: itens, preços e disponibilidade são fictícios e não representam as vendas do evento.</div>}
   {showLoading?<PageLoading compact label="Carregando produtos" description="Preparando o cardápio deste evento."/>
    :error?<div className="space-y-4 rounded-2xl border border-white/15 bg-white/5 p-5" role="status"><p className="text-sm text-white/70">Este evento não está disponível. Escolha outro para consultar o cardápio.</p><button type="button" onClick={onChooseEvent} className="inline-flex items-center gap-2 rounded-xl bg-[#c4ff40] px-4 py-3 text-sm font-bold text-black"><CalendarDays size={17}/> Escolher outro evento</button></div>
    :!items.length?<p className="rounded-2xl border border-white/10 p-5 text-sm text-white/60">Ainda não há produtos cadastrados para este evento.</p>
@@ -58,7 +56,7 @@ export default function EventMenu({activeEventId,onChooseEvent}:{activeEventId:s
     <h2 className="mb-3 font-bold uppercase">{category}</h2>
     <div className="divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10 bg-white/5">
      {items.filter(p=>p.category===category).map(p=><div key={p.id} className="flex items-center justify-between gap-4 p-4">
-      <div><p className="font-semibold">{p.name}</p>{p.description&&<p className="mt-1 text-xs text-white/50">{p.description}</p>}</div>
+      <div><p className="font-semibold">{p.name}</p>{displayPublicDescription(p.description)&&<p className="mt-1 text-xs text-white/50">{displayPublicDescription(p.description)}</p>}</div>
       <span className="shrink-0 font-bold text-[#c4ff40]">{money(p.effective_price_cents)}</span>
      </div>)}
     </div>
