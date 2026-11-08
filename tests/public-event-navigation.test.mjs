@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 const root=new URL('../artifacts/submundo-808/src/',import.meta.url);
 const app=readFileSync(new URL('App.tsx',root),'utf8');
 const home=readFileSync(new URL('components/public-events.tsx',root),'utf8');
+const homeDetails=readFileSync(new URL('components/public-event-home.tsx',root),'utf8');
 const menu=readFileSync(new URL('components/event-menu.tsx',root),'utf8');
 const map=readFileSync(new URL('components/venue-map.tsx',root),'utf8');
 const selection=readFileSync(new URL('components/active-event.ts',root),'utf8');
@@ -113,10 +114,11 @@ test('entrada em grupo permite escanear QR Code pela câmera e mantém link manu
 
 
 test('evento sem atrações exibe Line-up em breve e não exibe horas inventadas',()=>{
- assert.match(home,/Line-up em breve/);
- assert.match(home,/timeline\.length\?/);
- assert.match(home,/slot\.timeLabel/);
+ assert.match(homeDetails,/Line-up em breve/);
+ assert.match(homeDetails,/timeline\.length\?/);
+ assert.match(homeDetails,/slot\.timeLabel/);
  assert.match(home,/getDJTimeline\(event\.lineup,event\.starts_at,nowMs\)/);
+ assert.match(home,/<PublicEventHome key=\{event\.id\} event=\{event\}/);
 });
 test('mapa sem avisos de desenvolvimento não inventa navegação GPS; cardápio ainda protege preços de exemplo',()=>{
  assert.doesNotMatch(map,/Mapa demonstrativo — não representa a planta real/);
