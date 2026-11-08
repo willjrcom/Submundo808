@@ -33,6 +33,8 @@ jobs:
             tests/participant-event-home-tabs.test.mjs \
             tests/gps-default-friend-sharing.test.mjs \
             tests/privacy-notices.test.mjs \
+            tests/ios-installation-permissions.test.mjs \
+            tests/permission-flows.test.mjs \
             tests/crowd-analytics.test.mjs \
             tests/participant-public-copy-gps-cta.test.mjs \
             tests/public-event-navigation.test.mjs \

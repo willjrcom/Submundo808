@@ -23,6 +23,8 @@ export function adminRole(db,userId){
  return row&&roleOk(row.role)?row.role:null;
 }
 const ownerCount=db=>Number(db.prepare("SELECT COUNT(*) AS n FROM admin_users WHERE role='owner'").get().n);
+const firstAdminId=db=>db.prepare('SELECT user_id FROM admin_users ORDER BY created_at ASC,user_id ASC LIMIT 1').get()?.user_id;
+const canBootstrap=(db,actor)=>ownerCount(db)===0&&adminRole(db,actor?.id)==='admin'&&firstAdminId(db)===actor.id;
 const transaction=(db,cb)=>{
  db.exec('BEGIN IMMEDIATE');
  try{const result=cb();db.exec('COMMIT');return result;}
@@ -38,14 +40,14 @@ const getAdmin=(db,id)=>db.prepare(
 const requireOwner=(db,actor)=>{if(adminRole(db,actor.id)!=='owner')forbidden();};
 
 export async function handleAdminAccess({
- db,actor,key,method,url,data={},passwordHash,validPassword,sendInvite=null,
+ db,actor,key,method,url,data={},passwordHash,sendInvite=null,
  mailConfigured=false,baseUrl=''
 }){
  try{
   if(!adminRole(db,actor?.id))forbidden();
   if(key==='admins'&&method==='GET'){
    const items=db.prepare('SELECT a.user_id AS id,u.name,u.email,a.role,a.created_at,a.granted_by FROM admin_users a JOIN users u ON u.id=a.user_id ORDER BY a.created_at ASC,a.user_id ASC').all();
-   return {status:200,body:{items,role:adminRole(db,actor.id),ownerCount:ownerCount(db)}};
+   return {status:200,body:{items,role:adminRole(db,actor.id),ownerCount:ownerCount(db),bootstrapEligible:canBootstrap(db,actor)}};
   }
   if(key==='admins-audit'&&method==='GET'){
    requireOwner(db,actor);
@@ -67,11 +69,11 @@ export async function handleAdminAccess({
   const action=String(data?.action||'');
   if(action==='bootstrap'){
    if(adminRole(db,actor.id)!=='admin')forbidden();
-   const stored=db.prepare('SELECT password FROM users WHERE id=?').get(actor.id);
-   if(!stored||!validPassword(String(data.password||''),stored.password))return {status:403,body:{error:'Confirme sua senha atual para assumir a propriedade.'}};
    transaction(db,()=>{
     if(ownerCount(db)!==0)conflict('O proprietário já foi definido.');
-    db.prepare("UPDATE admin_users SET role='owner',granted_by=? WHERE user_id=? AND role='admin'").run(actor.id,actor.id);
+    if(firstAdminId(db)!==actor.id)forbidden();
+    const updated=db.prepare("UPDATE admin_users SET role='owner',granted_by=? WHERE user_id=? AND role='admin'").run(actor.id,actor.id);
+    if(updated.changes!==1)conflict('Não foi possível concluir a atribuição do primeiro proprietário.');
     audit(db,actor.id,actor.id,'bootstrap','admin','owner');
    });
    return {status:200,body:{ok:true,role:'owner'}};

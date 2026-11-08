@@ -24,6 +24,8 @@ test('CRUD tem modal para criar, editar, revogar e assumir propriedade',()=>{
  assert.match(component,/dialog==='edit'/);
  assert.match(component,/dialog==='revoke'/);
  assert.match(component,/dialog==='bootstrap'/);
+ assert.match(component,/state\.bootstrapEligible/);
+ assert.doesNotMatch(component,/<input type="password" autoComplete="current-password"/);
  assert.match(component,/role==='owner'/);
  assert.match(component,/onClick=\{\(\)=>open\('create'\)\}/);
  assert.match(component,/const isOwner=state\?\.role==='owner'/);

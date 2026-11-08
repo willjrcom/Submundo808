@@ -20,7 +20,7 @@ test('o modal de Permissões não contém opt-out de amigos nem autorização in
  assert.match(permissions,/window\.dispatchEvent\(new Event\('submundo-location-stop'\)\)/);
  assert.match(permissions,/localStorage\.setItem\('submundo-gps-stop-pending','1'\)/);
  assert.match(permissions,/fetch\('\/api\/location\/stop'/);
- assert.match(permissions,/A localização só será compartilhada quando você tocar em Ativar GPS e compartilhar/);
+ assert.match(permissions,/Sua posição só será compartilhada quando você tocar em Ativar GPS e compartilhar/);
 });
 
 test('compartilhamento e Estatísticas só começam no novo toque informado do usuário',()=>{

@@ -18,7 +18,7 @@ test('iPhone/iPad detecta instalação via Safari standalone ou display-mode PWA
 test('linha instalar aplicativo oferece tutorial via Compartilhar do Safari',()=>{
  assert.match(permissions,/>Instalar aplicativo</);
  assert.match(permissions,/const \[tutorialOpen,setTutorialOpen\]=useState\(false\)/);
- assert.match(permissions,/if\(ios\)\{setTutorialOpen\(true\);return;\}/);
+ assert.match(permissions,/if\(ios\)\{\s*setTutorialOpen\(true\)/);
  assert.match(permissions,/role="dialog" aria-modal="true" aria-label="Como instalar o Submundo808 no iPhone"/);
  assert.match(permissions,/Abra no Safari/);
  assert.match(permissions,/Toque em Compartilhar/);
@@ -32,7 +32,10 @@ test('linha instalar aplicativo oferece tutorial via Compartilhar do Safari',()=
 test('ativar push no iPhone exige instalação e não pode ser ignorado no clique',()=>{
  assert.match(permissions,/const needsIosInstall=ios&&!installed/);
  assert.match(permissions,/key==='notifications'&&needsIosInstall/);
- assert.match(permissions,/locked\?<button type="button" disabled/);
+ assert.match(permissions,/locked\?<button type="button" onClick=/);
+ assert.match(permissions,/Ver como instalar/);
+ assert.match(permissions,/createPortal\(<div role="presentation"/);
+ assert.match(permissions,/document\.body\)\}/);
  assert.match(permissions,/if\(requiresIosInstallationForPush\(\)\)\{/);
  assert.match(permissions,/setTutorialOpen\(true\)/);
  assert.match(permissions,/window\.addEventListener\('focus',refresh\)/);
@@ -63,9 +66,10 @@ test('bloqueio é destacado em vermelho e não se confunde com autorização ver
 test('mensagens de permissão ficam no próprio card, não no rodapé do modal',()=>{
  assert.match(permissions,/const \[message,setMessage\]=useState\(''\),\[messageKey,setMessageKey\]/);
  assert.match(permissions,/const setNotice=\(key:/);
- assert.match(permissions,/setNotice\('location',denied\?/);
- assert.match(permissions,/setNotice\('notifications','Notificações: '/);
- assert.match(permissions,/setNotice\('camera','Câmera: '/);
+ assert.match(permissions,/const warningMessage=noticeTone==='error'/);
+ assert.match(permissions,/setNotice\('location',result\.message,'error'\)/);
+ assert.match(permissions,/setNotice\('notifications',result\.message,'error'\)/);
+ assert.match(permissions,/setNotice\('camera',result\.message,'error'\)/);
  assert.match(permissions,/setNotice\(key as 'location'\|'notifications'\|'camera'/);
  assert.match(permissions,/messageKey===key&&message/);
  assert.match(permissions,/\(denied\|\|\(messageKey===key&&message\)\)&&<div role=/);
