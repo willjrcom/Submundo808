@@ -24,6 +24,7 @@ jobs:
       - name: Test map dialogs, event menu routing and existing admin regressions
         run: |
           node --test \
+            tests/admin-company-profile.test.mjs \
             tests/admin-map-modals-menu-page.test.mjs \
             tests/admin-route.test.mjs \
             tests/admin-dashboard-routing.test.mjs \
