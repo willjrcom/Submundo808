@@ -1,24 +1,41 @@
-# Telemetria de uso por evento — Submundo 808
+# Telemetria e engajamento — Submundo 808
 
-## O que é medido
+## Objetivo e limites da medição
+O dashboard **Visão Geral** apresenta utilização do PWA por evento e no agregado. Não mede o número de pessoas dentro do local, ingressos, comparecimento físico, bilheteria ou check-ins. Esses dados exigem integração própria de entrada (QR Code/ingresso).
 
-- **Usuários/dispositivos únicos**: contagem distinta por conta autenticada, ou por identificador aleatório persistido neste navegador enquanto não houver sessão autenticada. Não é uma contagem exata de pessoas.
-- **Ativos nos últimos 15 minutos**: dispositivos/contas que enviaram sinal de navegação ou atividade com a página visível. **Não representa pessoas fisicamente no evento.**
-- **Acessos às funcionalidades**: entradas nas telas Programação, Mapa, Cardápio e Amigos. Sinais automáticos de atividade (a cada 60 s) não entram nesse indicador.
-- **Uso por hora**: usuários/dispositivos distintos por hora no dia selecionado, em horário de Brasília. Não significa simultaneidade.
-- **Contas vinculadas**: pessoas autenticadas que selecionaram o evento em algum momento; independem da telemetria e não comprovam ingresso ou check-in.
+O período é interpretado em **America/Sao_Paulo**, atualmente UTC-03. Os filtros disponíveis são Hoje, últimos 7 dias, últimos 30 dias e intervalo personalizado até 90 dias. Gráficos diários usam dia local; o gráfico de Hoje usa horas locais. Não são fabricados dados históricos anteriores à implantação.
 
-O painel mostra Visão Geral > Telemetria e Engajamento, com filtro de evento e data, e também o detalhe do evento. As contagens começam após o deploy desta versão: não existe reconstrução confiável de visitas históricas.
+## Indicadores
+| Indicador | Definição |
+|---|---|
+| Usuários únicos estimados | Distintos pela conta autenticada ou pelo identificador persistente gerado no navegador; uma mesma pessoa pode ser contada novamente em dispositivos diferentes ou ao fazer login |
+| Aberturas/sessões | Sessões distintas que utilizaram pelo menos um evento no intervalo. Uma sessão é renovada após 30 minutos de inatividade no navegador; alternar entre eventos não duplica sessões no total global |
+| Ativos agora | Contas/identificadores com sinal de uso nos últimos 15 minutos, independentemente do filtro de datas, mantendo o filtro de evento |
+| Uso por funcionalidade | Entradas em Programação, Mapa, Cardápio e Amigos. Heartbeat e pausa não são contabilizados como acessos |
+| Tempo médio de uso | Média por sessão, em segundos, da soma de intervalos observados entre sinais enquanto o aplicativo estava visível. Intervalos superiores a 90 s e períodos em segundo plano não são incluídos. É estimativa e pode subcontar o final da sessão |
+| Retorno de usuários | Proporção da base de usuários do intervalo imediatamente anterior que também utilizou o app no intervalo selecionado. É uma taxa de retorno de coorte, não a retenção clássica D1/D7. Mostra — quando não há base anterior suficiente |
+| Usuários por faixa horária ou dia | Usuários distintos em cada faixa; a soma das faixas não equivale necessariamente aos usuários distintos de todo o período |
+| Contas vinculadas | Usuários autenticados que selecionaram um evento (tabela event_participants), sem comprovação de ingresso ou comparecimento |
+| Localização compartilhada | Indicador legado de compartilhamento voluntário de GPS, não utilizado para determinar sessões e usuários únicos |
 
-## Segurança, privacidade e limites
+As métricas são armazenadas em event_usage_buckets (agregadas por hora/funcionalidade/ator) e event_usage_sessions (sessões pseudonimizadas). A API pública de gravação valida dados e evento publicado. Consulta de relatórios somente para administradores.
 
-- A API pública aceita apenas eventos publicados e funcionalidades de uma lista fechada.
-- A API de relatórios é restrita a administradores no servidor.
-- As chaves de visitantes são pseudonimizadas com HMAC no backend; o banco não armazena UUID original do dispositivo, IP, GPS, e-mail nem URLs para a telemetria.
-- Registros são agregados por hora / funcionalidade / visitante e eliminados após **90 dias**, com limpeza na inicialização e diária.
-- O navegador com Do Not Track ativo não envia eventos.
-- Uma pessoa não autenticada pode ser contada novamente ao mudar de navegador ou aparelho; ao entrar na conta, a mudança de identificador também pode duplicar sua contagem.
-- Um navegador pode falsificar eventos; as contagens são indicadores de adoção, não de faturamento, bilheteria ou controle de acesso.
-- Para medir **presença física**, criar integração com check-in de ingresso/QR Code, independente da telemetria e do GPS.
+## Privacidade e desempenho
+- Visitor ID e session ID são gerados no navegador, mas persistidos no servidor **apenas após HMAC**, usando o segredo do backend; não gravar IP, URL, e-mail, identificador bruto ou GPS para telemetria.
+- O sistema respeita Do Not Track no navegador.
+- Heartbeat é enviado a cada 60 segundos, apenas com tela visível e conexão disponível. Mudanças de visibilidade sinalizam pausa e retorno; falhas silenciosas de rede não impedem navegar no PWA.
+- Retenção de **90 dias** com limpeza na inicialização e diária; relatórios antigos poderão retornar vazios. O filtro personalizado aceita no máximo 90 dias.
+- Eventos sintéticos/demos não devem ser confundidos com eventos comerciais; registros de teste requerem exclusão por processo administrativo autorizado, sem apagar o banco em produção.
+- Cada request grava agregados por evento, hora e usuário e uma sessão; índices permitem consultar histórico por data e evento. Verificar consumo de CPU e número de requisições em teste de carga antes de grandes festas.
+- Uso de identificadores pseudônimos e comportamento de navegação ainda podem configurar tratamento de dados pessoais segundo a LGPD. Revisar transparência, base legal, política de privacidade e processo de exclusão com o controlador antes de disponibilização ampla.
 
-Antes de ativar amplamente em produção, revisar a política de privacidade e o enquadramento LGPD (finalidade, transparência, base legal, prazo e direitos), e validar carga com público esperado, especialmente com PostgreSQL síncrono e limites por IP.
+## Código e validação
+- PWA: artifacts/submundo-808/src/components/usage-telemetry.ts e src/App.tsx
+- Dashboard: artifacts/submundo-808/src/components/admin-usage.tsx
+- Backend: server/event-usage.mjs, server/index.mjs
+- Testes: tests/event-usage.test.mjs e tests/telemetry-dashboard.test.mjs
+- CI: .github/workflows/admin-ui-check.yml
+- CSV exportado contém somente resultados agregados do comparativo por evento.
+
+## Restrições conhecidas
+Uma mudança de dispositivo, login durante a visita, armazenamento bloqueado ou bloqueio de requests pode criar duplicações ou subcontagens. A duração nunca é inferida a partir de navegação em segundo plano, e o navegador pode encerrar antes de enviar o último sinal. Os indicadores orientam decisões operacionais de produto, não uma contagem auditável de pessoas presentes.

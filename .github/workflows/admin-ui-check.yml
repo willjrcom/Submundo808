@@ -52,9 +52,12 @@ jobs:
             tests/map-area-editor.test.mjs \
             tests/entity-crud-ui.test.mjs \
             tests/event-save-validation.test.mjs \
-            tests/event-usage.test.mjs
+            tests/event-usage.test.mjs \
+            tests/telemetry-dashboard.test.mjs
       - name: Check backend syntax
         run: node --check server/index.mjs
+      - name: Typecheck frontend
+        run: pnpm --filter @workspace/submundo-808 typecheck
       - name: Build frontend
         env:
           PORT: '3000'

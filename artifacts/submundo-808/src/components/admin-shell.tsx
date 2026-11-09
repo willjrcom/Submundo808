@@ -172,8 +172,8 @@ export default function AdminShell(){
  {section==='Preferências'&&<AdminCompanyProfile/>}
  {section==='Administradores'&&<AdminAdmins currentUserId={user.id}/>}
 
- {section==='Visão geral'&&<div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[{label:'Usuários ativos (últimos 15 min)',count:stats.activeUsers,Icon:Users},{label:'Usuários cadastrados',count:stats.totalUsers,Icon:Users},{label:'Compartilhando localização agora',count:stats.sharingNow,Icon:Users},{label:'Estabelecimentos',count:venues.length,Icon:Building2},{label:'Mapas',count:maps.length,Icon:Map},{label:'Eventos',count:events.length,Icon:CalendarDays}].map(({label,count,Icon})=><div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-5"><Icon size={20} className="text-[#c4ff40]"/><p className="mt-3 text-sm text-white/60">{label}</p><p className="mt-2 text-3xl font-black text-[#c4ff40]">{count}</p></div>)}</div>}
- {section==='Visão geral'&&<AdminUsage events={events}/>}
+ {section==='Visão geral'&&<AdminUsage events={events} sharingNow={stats.sharingNow} registeredUsers={stats.totalUsers}
+   venueCount={venues.length} mapCount={maps.length} totalEvents={events.length} onlineUsers={stats.activeUsers} onOpenEvent={id=>go({section:'Eventos',id,creating:false})}/>}
 
  
  {section==='Estabelecimentos'&&(

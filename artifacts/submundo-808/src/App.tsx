@@ -1,5 +1,5 @@
 import EventMenu from './components/event-menu';
-import {reportEventUsage} from './components/usage-telemetry';
+import {reportEventUsage,pauseEventUsage} from './components/usage-telemetry';
 import PublicEvents from './components/public-events';
 import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
@@ -110,11 +110,20 @@ function ParticipantApp() {
   useEffect(()=>{
     if(!activeEventId)return;
     const ping=()=>reportEventUsage(activeEventId,'heartbeat');
+    const onVisibility=()=>{if(document.visibilityState==='hidden')pauseEventUsage(activeEventId);else ping();};
+    const onPageHide=()=>pauseEventUsage(activeEventId);
     ping();
     const timer=window.setInterval(ping,60000);
-    document.addEventListener('visibilitychange',ping);
+    document.addEventListener('visibilitychange',onVisibility);
+    window.addEventListener('pagehide',onPageHide);
     window.addEventListener('online',ping);
-    return()=>{window.clearInterval(timer);document.removeEventListener('visibilitychange',ping);window.removeEventListener('online',ping);};
+    return()=>{
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisibility);
+      window.removeEventListener('pagehide',onPageHide);
+      window.removeEventListener('online',ping);
+      pauseEventUsage(activeEventId);
+    };
   },[activeEventId]);
   useEffect(()=>{
     if(!activeEventId||tab==='perfil')return;

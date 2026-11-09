@@ -645,7 +645,13 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='GET'&&key==='database-status')return json(res,200,{engine:storageMode});
         if(req.method==='GET'&&key==='usage'){
-          const result=readEventUsage(db,{eventId:url.searchParams.get('event_id')||'',day:url.searchParams.get('day')||undefined});
+          const result=readEventUsage(db,{
+            eventId:url.searchParams.get('event_id')||'',
+            period:url.searchParams.get('period')||'today',
+            day:url.searchParams.get('day')||undefined,
+            from:url.searchParams.get('from')||'',
+            to:url.searchParams.get('to')||''
+          });
           return json(res,result.status,result.body);
         }
         if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history'||key==='crowd-hourly')){
