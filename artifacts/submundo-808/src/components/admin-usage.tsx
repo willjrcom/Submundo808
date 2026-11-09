@@ -244,7 +244,7 @@ export default function AdminUsage({
     <div className={metricCard}>
      <div className="flex items-center gap-2"><MapPin size={19} className="text-[#b877fa]"/><h4 className="font-bold">{fixedEventId?'Contas vinculadas':'Localização compartilhada'}</h4></div>
      <p className="mt-3 text-3xl font-black">{formatNumber(fixedEventId?usage.linkedUsers??0:sharingNow??0)}</p>
-     <p className="mt-1 text-xs text-white/55">{fixedEventId?'Selecionaram o evento; não comprova entrada':'Compartilhando agora (total do aplicativo, com consentimento)'}</p>
+     <p className="mt-1 text-xs text-white/55">{fixedEventId?'Selecionaram o evento; não comprova entrada':'Com envio confirmado ao servidor nos últimos 90 segundos (total do app). GPS somente local não é contabilizado.'}</p>
     </div>
    </div>
    {!fixedEventId&&<div className={metricCard}>

@@ -130,6 +130,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [gpsStarting,setGpsStarting]=useState(false);
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
+  const [serverSharing,setServerSharing]=useState<boolean|null>(null);
   // Device-only GPS never calls the server or activates friend sharing.
   const [localGpsEnabled,setLocalGpsEnabled]=useState(false);
   const [localGpsError,setLocalGpsError]=useState('');
@@ -307,7 +308,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    const currentEventId=activeEventRef.current;
    if(!currentEventId){sendBusy.current=false;return;}
    void requestLocation('update',{...position,eventId:currentEventId}).then(()=>{
-    if(epoch===shareEpoch.current){lastSend.current=Date.now();setFriendError('');}
+    if(epoch===shareEpoch.current){lastSend.current=Date.now();setServerSharing(true);setFriendError('');}
    }).catch(e=>{
     if(epoch!==shareEpoch.current)return;
     if([403,409,410].includes((e as {status?:number}).status||0)){
@@ -359,6 +360,16 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     },24000);
    }
   };
+  useEffect(()=>{
+    if(!sharing){setServerSharing(false);return;}
+    let alive=true;
+    const verify=()=>void requestLocation('me')
+     .then(result=>{if(alive)setServerSharing(result.sharing===true);})
+     .catch(()=>{if(alive)setServerSharing(null);});
+    verify();
+    const timer=window.setInterval(verify,20000);
+    return()=>{alive=false;window.clearInterval(timer);};
+  },[sharing]);
   const toggleLocalPosition=()=>{
    if(localGpsWatch.current!==null){
     navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;
@@ -399,7 +410,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const endFriendShareKeepingGps=(message:string)=>{
    // Expiry/revocation stops publishing but never stops the phone's local GPS.
    autoShareSuppressed.current=true;
-   shareEpoch.current++;sharingRef.current=false;setSharing(false);
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
    setSharingExpiresAt(null);
    setFriendError('');setGeoError(message);
   };
@@ -411,7 +422,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
-   setTracking(false);setSharing(false);setGpsStarting(false);
+   setTracking(false);setSharing(false);setServerSharing(false);setGpsStarting(false);
    setLocation(null);locationRef.current=null;
    setSharingExpiresAt(null);
    setGeoError(message);
@@ -469,7 +480,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
    setLocalGpsEnabled(false);setLocalGpsError('');
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
-   shareEpoch.current++;sharingRef.current=false;setSharing(false);
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
    setGpsPermissionRequired(false);lastSend.current=0;
    setSharingExpiresAt(null);
    trackingRef.current=false;setTracking(false);
@@ -523,12 +534,14 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       unifiedActivationPending.current=false;
       if(cancelled()||dontShareRef.current)return;
       shareEpoch.current++;
-      sharingRef.current=true;setSharing(true);
+      sharingRef.current=true;setSharing(true);setServerSharing(null);
       lastSend.current=0;
       sendLatestLocation();
      }catch(error){
       if(cancelled())return;
-      setFriendError('O GPS está ativo no aparelho, mas o compartilhamento não foi sincronizado. Continuaremos usando a planta offline.');
+      setServerSharing(false);
+      const reason=error instanceof Error?error.message:'Falha desconhecida.';
+      setFriendError('GPS ativo apenas neste aparelho. O servidor não iniciou o compartilhamento: '+reason);
      }
     })();
    };
@@ -553,10 +566,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     await savePrefs(true,true,activeEventId,statisticsEnabledRef.current&&statisticsEventRef.current===activeEventId,unifiedActivationPending.current);
     unifiedActivationPending.current=false;
     if(dontShareRef.current||!navigator.onLine)return;
-    shareEpoch.current++;sharingRef.current=true;setSharing(true);
+    shareEpoch.current++;sharingRef.current=true;setSharing(true);setServerSharing(null);
     lastSend.current=0;sendLatestLocation();setFriendError('');
-   }catch{
-    setFriendError('GPS local ativo. Sem conexão para compartilhar com amigos; tentaremos quando a rede voltar.');
+   }catch(error){
+    setServerSharing(false);
+    setFriendError('GPS local ativo, mas compartilhamento não iniciado: '+(error instanceof Error?error.message:'Sem conexão com o servidor.'));
    }
   };
   const toggleUnifiedGps=()=>{
@@ -600,7 +614,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     dontShareRef.current=disabled;setDontShareWithFriends(disabled);
     if(disabled){
      // The server already revoked live locations. Keep the device GPS running.
-     shareEpoch.current++;sharingRef.current=false;setSharing(false);
+     shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
      setSharingExpiresAt(null);setFriendError('');
     }else if(localGpsWatch.current!==null||watch.current!==null){
      void enableSharingWithActiveGps();
@@ -698,6 +712,13 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <h2 className="text-xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[65%] truncate rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-2 py-1 text-[11px] font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
  </div>
+ {(tracking||location||localGpsEnabled||sharing||gpsStarting)&&<div aria-label="Estado do compartilhamento de localização"
+   className={'rounded-xl border px-3 py-2.5 text-xs '+(sharing&&serverSharing===true?'border-[#c4ff40]/30 bg-[#c4ff40]/[.06] text-[#c4ff40]':'border-amber-400/25 bg-amber-400/[.06] text-amber-100')}>
+   <p className="font-bold">{sharing&&serverSharing===true?'Localização compartilhada — confirmada pelo servidor':sharing&&serverSharing===null?'Verificando se o servidor está recebendo o GPS...':'GPS ativo apenas neste aparelho — sem compartilhamento confirmado'}</p>
+   <p className="mt-1 text-white/60">O painel conta somente localizações recebidas pelo servidor nos últimos 90 segundos. Mostrar sua posição no mapa não significa compartilhá-la.</p>
+   {friendError&&<p role="alert" className="mt-2 text-amber-200">{friendError}</p>}
+   {geoError&&<p role="status" className="mt-2 text-amber-200">{geoError}</p>}
+  </div>}
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{publicMapName(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-3 sm:p-5"><p className="mb-2 text-xs font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Ambientes da planta">
