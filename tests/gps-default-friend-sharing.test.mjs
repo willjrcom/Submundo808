@@ -25,7 +25,7 @@ test('o modal de Permissões não contém opt-out de amigos nem autorização in
 
 test('compartilhamento e Estatísticas só começam no novo toque informado do usuário',()=>{
  const section=map.indexOf('return <section className="space-y-3">');
- const trigger=map.indexOf('onClick={toggleUnifiedGps}',section);
+ const trigger=map.indexOf('onClick={sharing?resumeSavedGps:gpsSessionError?toggleLocalPosition:toggleUnifiedGps}',section);
  const drawing=map.indexOf('Mapa do evento</h2>',section);
  assert.ok(section>=0&&trigger>section&&drawing>trigger);
  assert.match(map,/const toggleUnifiedGps=\(\)=>\{/);
@@ -103,4 +103,28 @@ test('mapa diferencia GPS local de posição realmente recebida pelo servidor',(
  assert.match(map,/O servidor não iniciou o compartilhamento:/);
  const dashboard=read('artifacts/submundo-808/src/components/admin-usage.tsx');
  assert.match(dashboard,/nos últimos 90 segundos/);
+});
+
+test('refresh restaura a sessão sem novo consentimento, sem falsificar confirmação do servidor',()=>{
+ assert.match(map,/const \[gpsSessionChecking,setGpsSessionChecking\]=useState\(true\)/);
+ assert.match(map,/const restoreSharing=\(\)=>\{/);
+ assert.match(map,/requestLocation\('preferences'\)/);
+ assert.match(map,/if\(p.shareEnabled&&!dontShareRef.current&&!stopPending&&!autoShareSuppressed.current\)/);
+ assert.match(map,/sharingRef.current=true;setSharing\(true\);setServerSharing\(null\)/);
+ assert.match(map,/void checkPermission\(\)/);
+ assert.match(map,/if\(status.state==='granted'\)/);
+ assert.match(map,/if\(watch.current===null&&!gpsActivatingRef.current\)startGps\(\)/);
+ assert.match(map,/disabled=\{gpsSessionChecking\|\|gpsStarting\|\|localGpsEnabled/);
+ assert.match(map,/gpsSessionChecking\?'Verificando sessão\.\.\.'/);
+ assert.match(map,/sharing\?resumeSavedGps:gpsSessionError\?toggleLocalPosition:toggleUnifiedGps/);
+ assert.match(map,/const resumeSavedGps=\(\)=>\{/);
+ assert.match(map,/setGpsSessionError\(''\);startGps\(\)/);
+ assert.match(map,/Retomando o compartilhamento salvo/);
+ assert.match(map,/window.removeEventListener\('online',retryRestoreOnOnline\)/);
+});
+test('sem evento selecionado o reload não revoga compartilhamento existente',()=>{
+ assert.match(map,/if\(!activeEventRef.current\)\{/);
+ assert.match(map,/Selecione o evento em que você iniciou o compartilhamento/);
+ assert.match(map,/else if\(p.eventId!==activeEventRef.current\)\{/);
+ assert.match(map,/localStorage.getItem\('submundo-gps-stop-pending'\)/);
 });

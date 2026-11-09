@@ -37,7 +37,7 @@ test('planta e pontos não expõem avisos internos em nomes ou descrições',()=
 test('card de GPS desaparece somente após a primeira leitura válida',()=>{
  assert.match(map,/\{\(!tracking\|\|!location\)&&<div[^\n]+aria-label="Ativar minha localização"/);
  assert.match(map,/setLocation\(next\);setTracking\(true\)/);
- assert.match(map,/disabled=\{gpsStarting\|\|localGpsEnabled\}/);
+ assert.match(map,/disabled=\{gpsSessionChecking\|\|gpsStarting\|\|localGpsEnabled/);
  assert.match(map,/Ativar e compartilhar/);
  assert.doesNotMatch(map,/'Parar GPS'|'Desativar GPS'/);
  assert.match(map,/if\(error.code===1\|\|!locationRef.current\)/);
