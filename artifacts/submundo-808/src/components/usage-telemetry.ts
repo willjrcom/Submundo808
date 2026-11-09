@@ -1,5 +1,14 @@
 export type UsageFeature = 'heartbeat' | 'programacao' | 'mapa' | 'cardapio' | 'amigos';
 const VISITOR_KEY = 'submundo-usage-device-v1';
+const DISABLE_KEY = 'submundo-usage-telemetry-disabled';
+export function isUsageTelemetryEnabled(): boolean {
+  try { return localStorage.getItem(DISABLE_KEY) !== '1'; }
+  catch { return true; }
+}
+export function setUsageTelemetryEnabled(enabled: boolean): void {
+  try { localStorage.setItem(DISABLE_KEY,enabled?'0':'1'); }
+  catch { /* Bloqueio de armazenamento não interrompe o aplicativo. */ }
+}
 const SESSION_KEY = 'submundo-usage-session-v1';
 const SESSION_TOUCH_KEY = 'submundo-usage-session-touch-v1';
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -8,7 +17,7 @@ let temporaryVisitorId = '';
 let temporarySessionId = '';
 
 function enabled(): boolean {
-  return navigator.onLine && navigator.doNotTrack !== '1';
+  return navigator.onLine && navigator.doNotTrack !== '1' && isUsageTelemetryEnabled();
 }
 function visitorId(): string {
   if (temporaryVisitorId) return temporaryVisitorId;

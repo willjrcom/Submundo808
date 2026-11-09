@@ -23,6 +23,7 @@ As métricas são armazenadas em event_usage_buckets (agregadas por hora/funcion
 ## Privacidade e desempenho
 - Visitor ID e session ID são gerados no navegador, mas persistidos no servidor **apenas após HMAC**, usando o segredo do backend; não gravar IP, URL, e-mail, identificador bruto ou GPS para telemetria.
 - O sistema respeita Do Not Track no navegador.
+- O usuário pode desligar e religar novos registros de uso em **Perfil → Permissões do aplicativo → Estatísticas de uso**, sem afetar o GPS. Esta preferência fica salva localmente no aparelho.
 - Heartbeat é enviado a cada 60 segundos, apenas com tela visível e conexão disponível. Mudanças de visibilidade sinalizam pausa e retorno; falhas silenciosas de rede não impedem navegar no PWA.
 - Retenção de **90 dias** com limpeza na inicialização e diária; relatórios antigos poderão retornar vazios. O filtro personalizado aceita no máximo 90 dias.
 - Eventos sintéticos/demos não devem ser confundidos com eventos comerciais; registros de teste requerem exclusão por processo administrativo autorizado, sem apagar o banco em produção.

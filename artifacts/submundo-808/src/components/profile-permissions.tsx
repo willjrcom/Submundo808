@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Bell,MapPin,Camera,CheckCircle2,Download,Share,Smartphone,X,ExternalLink,AlertTriangle} from 'lucide-react';
 import {isIosDevice,isPwaInstalled,requiresIosInstallationForPush,isIosEmbeddedBrowser,getDeferredInstallPrompt,clearDeferredInstallPrompt} from './pwa-installation';
+import {isUsageTelemetryEnabled,setUsageTelemetryEnabled} from './usage-telemetry';
 import {permissionFailure,requestGpsPosition,requestCameraAccess,registerPush,requestNativeInstallation} from './permission-flows.mjs';
 type State='granted'|'denied'|'prompt'|'unsupported';
 /** Apenas permissões ainda solicitáveis justificam exibir a introdução automaticamente. */
@@ -20,6 +21,10 @@ export async function hasPendingAppPermissions():Promise<boolean>{
 }
 export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [statuses,setStatuses]=useState<Record<string,State>>({location:'prompt',notifications:'prompt',camera:'prompt'});
+ const [usageEnabled,setUsageEnabled]=useState(isUsageTelemetryEnabled);
+ const toggleUsage=()=>{
+  setUsageEnabled(current=>{const next=!current;setUsageTelemetryEnabled(next);return next;});
+ };
  const [message,setMessage]=useState(''),[messageKey,setMessageKey]=useState<'installation'|'location'|'notifications'|'camera'|null>(null),[noticeTone,setNoticeTone]=useState<'info'|'success'|'error'>('info'),[busy,setBusy]=useState('');
  const setNotice=(key:'installation'|'location'|'notifications'|'camera',text:string,tone:'info'|'success'|'error'='info')=>{setMessageKey(key);setMessage(text);setNoticeTone(tone);};
  const clearNotice=()=>{setMessage('');setMessageKey(null);setNoticeTone('info');};
@@ -233,6 +238,16 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const successMessage=noticeTone==='success';
  return <div className="space-y-4">
   <p className="text-sm text-white/60">Configure os recursos do celular. Permissões já concedidas aparecem como ativadas.</p>
+  <section aria-label="Privacidade das estatísticas de uso" className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[.035] p-3">
+   <div className="min-w-0 flex-1">
+    <p className="text-sm font-bold">Estatísticas de uso do aplicativo</p>
+    <p className="mt-1 text-xs leading-relaxed text-white/55">Ajuda a entender quantas pessoas utilizam Programação, Mapa, Cardápio e Amigos em cada evento. Usamos identificadores pseudônimos; a medição não utiliza a sua localização GPS. Os registros ficam por até 90 dias. Você pode desativar novos registros neste aparelho.</p>
+   </div>
+   <button type="button" onClick={toggleUsage} aria-pressed={usageEnabled}
+    className={'min-h-11 shrink-0 rounded-xl border px-4 py-2 text-xs font-bold '+(usageEnabled?'border-[#c4ff40]/50 bg-[#c4ff40]/10 text-[#c4ff40]':'border-white/25 text-white/70')}>
+    {usageEnabled?'Ativa · Desativar':'Desativada · Ativar'}
+   </button>
+  </section>
   <div className="flex min-h-[92px] flex-wrap items-center gap-3 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.055] p-3">
    <Smartphone className="shrink-0 text-[#c4ff40]" size={22}/>
    <div className="min-w-0 flex-1">

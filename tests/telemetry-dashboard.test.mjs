@@ -26,6 +26,10 @@ test('Home integra dashboard completo e conserva os contadores operacionais',()=
 
 test('API e frontend enviam sessões com pausa, sem consumir telemetria no admin',()=>{
   assert.match(client,/sessionId: sessionId\(\)/);
+  assert.match(client,/isUsageTelemetryEnabled\(\)/);
+  const profile=read('artifacts/submundo-808/src/components/profile-permissions.tsx');
+  assert.match(profile,/Estatísticas de uso do aplicativo/);
+  assert.match(profile,/setUsageTelemetryEnabled\(next\)/);
   assert.match(client,/document.visibilityState !== 'visible'/);
   assert.match(app,/pauseEventUsage\(activeEventId\)/);
   assert.match(app,/reportEventUsage\(activeEventId,'heartbeat'\)/);
