@@ -718,7 +718,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    <p className="mt-1 text-white/60">O painel conta somente localizações recebidas pelo servidor nos últimos 90 segundos. Mostrar sua posição no mapa não significa compartilhá-la.</p>
    {friendError&&<p role="alert" className="mt-2 text-amber-200">{friendError}</p>}
    {geoError&&<p role="status" className="mt-2 text-amber-200">{geoError}</p>}
-  </div>
+  </div>}
   {maps.length>1&&<select aria-label="Selecionar mapa" value={selectedMap} onChange={e=>setSelectedMap(e.target.value)} className="w-full rounded-xl border border-white/20 bg-[#241b2c] p-3">{maps.map(m=><option key={m.id} value={m.id}>{publicMapName(m.name)}</option>)}</select>}
  {!selectedMap?<p className="rounded-xl border border-white/10 p-5 text-sm text-white/50">Este evento ainda não possui mapas publicados.</p>:<div className="overflow-visible rounded-2xl border border-white/15 bg-[#17111d] p-3 sm:p-5"><p className="mb-2 text-xs font-bold">{publicMapName(data?.map.name)}</p><div ref={setMapElement} className="relative w-full overflow-visible rounded-xl border border-white/20 bg-[#0e0c14]" style={{aspectRatio:mapFrameAspect(normalizeMapFrame(data?.map.frame)),backgroundImage:'linear-gradient(#ffffff12 1px,transparent 1px),linear-gradient(90deg,#ffffff12 1px,transparent 1px)',backgroundSize:'10% 10%'}}>
  <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Ambientes da planta">
