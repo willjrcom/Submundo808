@@ -95,9 +95,9 @@ test('GPS local aparece antes da resposta da API e dados offline não esperam lo
 
 test('mapa diferencia GPS local de posição realmente recebida pelo servidor',()=>{
  const map=read('artifacts/submundo-808/src/components/venue-map.tsx');
- assert.match(map,/requestLocation\('me'\)/);
- assert.match(map,/setServerSharing\(result.sharing===true\)/);
- assert.match(map,/setServerSharing\(true\)/);
+ assert.doesNotMatch(map,/requestLocation\('me'\)/);
+ assert.doesNotMatch(map,/serverSharing|setServerSharing/);
+ assert.match(map,/shareEpoch.current\+\+;sharingRef.current=true;setSharing\(true\)/);
  assert.doesNotMatch(map,/Estado do compartilhamento de localização/);
  assert.doesNotMatch(map,/O painel conta somente localizações recebidas pelo servidor/);
  assert.match(map,/O servidor não iniciou o compartilhamento:/);
@@ -110,7 +110,7 @@ test('refresh restaura a sessão sem novo consentimento, sem falsificar confirma
  assert.match(map,/const restoreSharing=\(\)=>\{/);
  assert.match(map,/requestLocation\('preferences'\)/);
  assert.match(map,/if\(p.shareEnabled&&!dontShareRef.current&&!stopPending&&!autoShareSuppressed.current\)/);
- assert.match(map,/sharingRef.current=true;setSharing\(true\);setServerSharing\(null\)/);
+ assert.match(map,/sharingRef.current=true;setSharing\(true\)/);
  assert.match(map,/void checkPermission\(\)/);
  assert.match(map,/if\(status.state==='granted'\)/);
  assert.match(map,/if\(watch.current===null&&!gpsActivatingRef.current\)startGps\(\)/);

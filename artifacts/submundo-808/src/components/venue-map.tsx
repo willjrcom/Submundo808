@@ -142,7 +142,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [gpsStarting,setGpsStarting]=useState(false);
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
-  const [serverSharing,setServerSharing]=useState<boolean|null>(null);
   // A preferência de compartilhamento sobrevive ao reload; nunca oferecer uma nova
   // autorização antes de consultar o estado persistido no servidor.
   const [gpsSessionChecking,setGpsSessionChecking]=useState(true);
@@ -298,7 +297,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       }else{
        // Reaproveitar o consentimento válido; com permissão concedida, o GPS
        // e os heartbeats voltam sem outro clique nem novo POST /preferences.
-       sharingRef.current=true;setSharing(true);setServerSharing(null);
+       sharingRef.current=true;setSharing(true);
        void checkPermission();
       }
      }else if(!stopPending){
@@ -360,7 +359,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    const currentEventId=activeEventRef.current;
    if(!currentEventId){sendBusy.current=false;return;}
    void requestLocation('update',{...position,eventId:currentEventId}).then(()=>{
-    if(epoch===shareEpoch.current){lastSend.current=Date.now();setServerSharing(true);setFriendError('');}
+    if(epoch===shareEpoch.current){lastSend.current=Date.now();setFriendError('');}
    }).catch(e=>{
     if(epoch!==shareEpoch.current)return;
     if([403,409,410].includes((e as {status?:number}).status||0)){
@@ -413,16 +412,6 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     },24000);
    }
   };
-  useEffect(()=>{
-    if(!sharing){setServerSharing(false);return;}
-    let alive=true;
-    const verify=()=>void requestLocation('me')
-     .then(result=>{if(alive)setServerSharing(result.sharing===true);})
-     .catch(()=>{if(alive)setServerSharing(null);});
-    verify();
-    const timer=window.setInterval(verify,20000);
-    return()=>{alive=false;window.clearInterval(timer);};
-  },[sharing]);
   const toggleLocalPosition=()=>{
    if(localGpsWatch.current!==null){
     navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;
@@ -463,7 +452,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const endFriendShareKeepingGps=(message:string)=>{
    // Expiry/revocation stops publishing but never stops the phone's local GPS.
    autoShareSuppressed.current=true;
-   shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);
    setSharingExpiresAt(null);
    setFriendError('');setGeoError(message);
   };
@@ -475,7 +464,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(watchStartupTimeout.current!==null){window.clearTimeout(watchStartupTimeout.current);watchStartupTimeout.current=null;}
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
    shareEpoch.current++;sharingRef.current=false;trackingRef.current=false;
-   setTracking(false);setSharing(false);setServerSharing(false);setGpsStarting(false);
+   setTracking(false);setSharing(false);setGpsStarting(false);
    setLocation(null);locationRef.current=null;
    setSharingExpiresAt(null);
    forgetLocalGpsIntent();
@@ -534,7 +523,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    if(localGpsWatch.current!==null){navigator.geolocation.clearWatch(localGpsWatch.current);localGpsWatch.current=null;}
    setLocalGpsEnabled(false);setLocalGpsError('');
    if(watch.current!==null){navigator.geolocation.clearWatch(watch.current);watch.current=null;}
-   shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
+   shareEpoch.current++;sharingRef.current=false;setSharing(false);
    forgetLocalGpsIntent();
    setGpsPermissionRequired(false);lastSend.current=0;
    setSharingExpiresAt(null);
@@ -589,12 +578,12 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       unifiedActivationPending.current=false;
       if(cancelled()||dontShareRef.current)return;
       shareEpoch.current++;
-      sharingRef.current=true;setSharing(true);setServerSharing(null);
+      sharingRef.current=true;setSharing(true);
       lastSend.current=0;
       sendLatestLocation();
      }catch(error){
       if(cancelled())return;
-      setServerSharing(false);
+      
       autoShareSuppressed.current=true;
       const reason=error instanceof Error?error.message:'Falha desconhecida.';
       setFriendError('GPS ativo apenas neste aparelho. O servidor não iniciou o compartilhamento: '+reason);
@@ -622,10 +611,10 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     await savePrefs(true,true,activeEventId,statisticsEnabledRef.current&&statisticsEventRef.current===activeEventId,unifiedActivationPending.current);
     unifiedActivationPending.current=false;
     if(dontShareRef.current||!navigator.onLine)return;
-    shareEpoch.current++;sharingRef.current=true;setSharing(true);setServerSharing(null);
+    shareEpoch.current++;sharingRef.current=true;setSharing(true);
     lastSend.current=0;sendLatestLocation();setFriendError('');
    }catch(error){
-    setServerSharing(false);
+    
     autoShareSuppressed.current=true;
     setFriendError('GPS local ativo, mas compartilhamento não iniciado: '+(error instanceof Error?error.message:'Sem conexão com o servidor.'));
    }
@@ -682,7 +671,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     dontShareRef.current=disabled;setDontShareWithFriends(disabled);
     if(disabled){
      // The server already revoked live locations. Keep the device GPS running.
-     shareEpoch.current++;sharingRef.current=false;setSharing(false);setServerSharing(false);
+     shareEpoch.current++;sharingRef.current=false;setSharing(false);
      setSharingExpiresAt(null);setFriendError('');
     }else if(localGpsWatch.current!==null||watch.current!==null){
      void enableSharingWithActiveGps();
@@ -771,6 +760,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    </button>
   </div>
   {gpsSessionError&&<p className="mt-1 text-[11px] text-white/60">Não foi possível verificar o compartilhamento. O GPS local continua disponível.</p>}
+  {friendError&&<p role="status" className="mt-1 text-[11px] text-amber-200">{friendError}</p>}
   {geoError&&<p role="status" className="mt-1 text-[11px] text-amber-200">{geoError}</p>}
   {localGpsError&&<p role="status" className="mt-1 text-[11px] text-amber-200">{localGpsError}</p>}
  </div>}
