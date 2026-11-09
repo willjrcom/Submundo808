@@ -17,6 +17,7 @@ import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
 import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
 import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,readCrowdHourly,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
+import {ensureEventUsageSchema,recordEventUsage,readEventUsage,pruneEventUsage} from './event-usage.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
 import http from 'node:http';
 import * as webpushModule from 'web-push';
@@ -142,6 +143,9 @@ for(const [column,definition] of [
  if(!db.prepare('PRAGMA table_info(location_preferences)').all().some(c=>c.name===column))db.exec('ALTER TABLE location_preferences ADD COLUMN '+column+' '+definition);
 }
 ensureCrowdSchema(db);
+ensureEventUsageSchema(db);
+const usageCleanupTimer=setInterval(()=>{try{pruneEventUsage(db);}catch(e){console.error('Usage cleanup failed',e?.message);}},24*60*60*1000);
+usageCleanupTimer.unref?.();
 expireLocationShares(db);
 // Snapshots persist only anonymous aggregate counts, never individual GPS fixes.
 let lastCrowdBucket=-1;
@@ -290,6 +294,12 @@ http.createServer(async (req,res)=>{
         const errorType=String(payload.errorType||'Error').replace(/[^a-zA-Z]/g,'').slice(0,40);
         console.error(JSON.stringify({level:'error',source:'frontend',timestamp:new Date().toISOString(),requestId,page,component,code,errorType}));
         return json(res,202,{ok:true});
+      }
+      if(url.pathname==='/api/event-usage'&&req.method==='POST'){
+        const payload=await body(req);
+        const visitor=getUser(req);
+        const outcome=recordEventUsage(db,payload,{userId:visitor?.id||null,secret:JWT_SECRET});
+        return json(res,outcome.status,outcome.body);
       }
       if(url.pathname==='/api/admin/map-config'&&req.method==='GET'){
         const user=getUser(req);if(!isAdmin(user))return json(res,403,{error:'Acesso restrito ao administrador.'});
@@ -634,6 +644,10 @@ http.createServer(async (req,res)=>{
           return json(res,result.status,result.body);
         }
         if(req.method==='GET'&&key==='database-status')return json(res,200,{engine:storageMode});
+        if(req.method==='GET'&&key==='usage'){
+          const result=readEventUsage(db,{eventId:url.searchParams.get('event_id')||'',day:url.searchParams.get('day')||undefined});
+          return json(res,result.status,result.body);
+        }
         if(req.method==='GET'&&(key==='crowd-live'||key==='crowd-history'||key==='crowd-hourly')){
           const eventId=String(url.searchParams.get('event_id')||'');
           const mapId=String(url.searchParams.get('map_id')||'');

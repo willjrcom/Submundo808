@@ -3,6 +3,7 @@ import {displayLabel} from './display-label';
 import {formatDJTimeRange} from './dj-schedule';
 import {AdminMapThumbnail,useAdminMapAreas} from './admin-map-thumbnail';
 import AdminDashboardReviews from './admin-dashboard-reviews';
+import AdminUsage from './admin-usage';
 
 type Dj={nome:string;inicio?:string;fim?:string};
 type Venue={id:string;name:string;city?:string;address?:string;cover_image?:string;logo_image?:string};
@@ -81,6 +82,7 @@ export default function AdminEventDashboard({event,venues,maps,onEdit,onOpenMap,
    </div>:<p className="rounded-xl border border-dashed border-white/15 p-4 text-sm text-white/55">Nenhuma planta vinculada ao evento.</p>}
    {venue&&<button type="button" onClick={()=>onOpenAnalytics(venue.id,event.id)} className="text-sm font-bold text-[#c4ff40]">Ver estatísticas do evento</button>}
   </section>
+  <AdminUsage events={[event]} fixedEventId={event.id}/>
   <AdminDashboardReviews eventId={event.id}/>
   {event.services&&<section className="rounded-xl border border-white/10 bg-white/[.035] p-4"><p className="mb-2 text-sm font-bold">Serviços extras</p><p className="whitespace-pre-line text-sm text-white/65">{event.services}</p></section>}
  </div>;
