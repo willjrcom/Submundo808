@@ -1,4 +1,5 @@
 import EventMenu from './components/event-menu';
+import {reportEventUsage,pauseEventUsage} from './components/usage-telemetry';
 import PublicEvents from './components/public-events';
 import { useEffect, useState } from 'react';
 import VenueMap from './components/venue-map';
@@ -105,6 +106,29 @@ function ParticipantApp() {
     // Reconciliar a seleção guardada no localStorage após login/refresh.
     void fetch('/api/events/participation',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({eventId:activeEventId})}).catch(()=>{});
   },[activeEventId]);
+
+  useEffect(()=>{
+    if(!activeEventId)return;
+    const ping=()=>reportEventUsage(activeEventId,'heartbeat');
+    const onVisibility=()=>{if(document.visibilityState==='hidden')pauseEventUsage(activeEventId);else ping();};
+    const onPageHide=()=>pauseEventUsage(activeEventId);
+    ping();
+    const timer=window.setInterval(ping,60000);
+    document.addEventListener('visibilitychange',onVisibility);
+    window.addEventListener('pagehide',onPageHide);
+    window.addEventListener('online',ping);
+    return()=>{
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange',onVisibility);
+      window.removeEventListener('pagehide',onPageHide);
+      window.removeEventListener('online',ping);
+      pauseEventUsage(activeEventId);
+    };
+  },[activeEventId]);
+  useEffect(()=>{
+    if(!activeEventId||tab==='perfil')return;
+    reportEventUsage(activeEventId,tab==='inicio'?'programacao':tab);
+  },[activeEventId,tab]);
 
   const chooseAnotherEvent=()=>{clearEvent();window.history.pushState({tab:'inicio'},'','/');setTab('inicio');window.dispatchEvent(new Event('submundo-navigation'));window.scrollTo(0,0);};
   useEffect(()=>{
