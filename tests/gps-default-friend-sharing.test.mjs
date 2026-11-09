@@ -92,3 +92,15 @@ test('GPS local aparece antes da resposta da API e dados offline não esperam lo
  assert.match(worker,/timeoutMs=3200/);
  assert.match(offline,/setTimeout\(\(\)=>controller\.abort\(\),4500\)/);
 });
+
+test('mapa diferencia GPS local de posição realmente recebida pelo servidor',()=>{
+ const map=read('artifacts/submundo-808/src/components/venue-map.tsx');
+ assert.match(map,/requestLocation\('me'\)/);
+ assert.match(map,/setServerSharing\(result.sharing===true\)/);
+ assert.match(map,/setServerSharing\(true\)/);
+ assert.match(map,/Estado do compartilhamento de localização/);
+ assert.match(map,/GPS ativo apenas neste aparelho/);
+ assert.match(map,/O servidor não iniciou o compartilhamento:/);
+ const dashboard=read('artifacts/submundo-808/src/components/admin-usage.tsx');
+ assert.match(dashboard,/nos últimos 90 segundos/);
+});

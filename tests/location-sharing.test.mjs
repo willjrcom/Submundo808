@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {
  SHARING_MODES,SHARING_TIME_ZONE,LOCATION_FRESH_MS,
- eventEndTimestamp,resolveSharingExpiry,expireLocationShares
+ eventEndTimestamp,resolveSharingExpiry,expireLocationShares,countActiveLocationShares
 } from '../server/location-sharing.mjs';
 
 const HOUR=3600000;
@@ -130,5 +130,21 @@ test('sessões legadas sem expiração são encerradas com segurança',()=>{
   expireLocationShares(db,NOW);
   assert.equal(db.prepare('SELECT share_enabled FROM location_preferences WHERE user_id=?').get('legacy').share_enabled,0);
   assert.equal(db.prepare('SELECT 1 FROM live_locations WHERE user_id=?').get('legacy'),undefined);
+ }finally{db.close();}
+});
+
+test('painel contabiliza apenas coordenadas recentes, com compartilhamento autorizado e válido',()=>{
+ const db=fixture();
+ try{
+  for(const [id,enabled,expiry,age] of [
+   ['active',1,NOW+HOUR,10_000],['local-only',0,NOW+HOUR,10_000],
+   ['expired',1,NOW-1,10_000],['stale',1,NOW+HOUR,LOCATION_FRESH_MS+1000]
+  ]){
+   db.prepare('INSERT INTO location_preferences VALUES(?,?,?,?,?,?,?)').run(id,1,enabled,'4h',expiry,'festival',NOW);
+   db.prepare('INSERT INTO live_locations VALUES(?,?,?,?,?)').run(id,-23.55,-46.63,6,NOW-age);
+  }
+  assert.equal(countActiveLocationShares(db,NOW),1);
+  db.prepare('UPDATE events SET location_sharing_enabled=0 WHERE id=?').run('festival');
+  assert.equal(countActiveLocationShares(db,NOW),0);
  }finally{db.close();}
 });

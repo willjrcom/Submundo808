@@ -15,7 +15,7 @@ import {parseAreaGeometry,validateAreaGeometries} from './map-area-geometry.mjs'
 import {saveMapCalibration} from './map-calibration-save.mjs';
 import {initializeRealTourDemo} from './real-tour-reset.mjs';
 import {ensurePushQueueSchema,notificationTransaction,addNotificationReceipt,publishDueNotificationReceipts,processPendingPushes} from './notification-delivery.mjs';
-import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS} from './location-sharing.mjs';
+import {resolveSharingExpiry,expireLocationShares,LOCATION_FRESH_MS,countActiveLocationShares} from './location-sharing.mjs';
 import {ensureCrowdSchema,readCrowdLive,crowdPublicView,readCrowdHistory,sampleCrowdHistory,readCrowdHourly,CROWD_BUCKET_MS} from './crowd-analytics.mjs';
 import {ensureEventUsageSchema,recordEventUsage,readEventUsage,pruneEventUsage} from './event-usage.mjs';
 import {ensureSocialSchema,handleSocialApi} from './social.mjs';
@@ -749,7 +749,7 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='GET'&&key==='overview'){
           const cutoff=Date.now()-15*60*1000;
-          return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(*) n FROM user_activity WHERE last_seen>?').get(cutoff).n,sharingNow:db.prepare('SELECT COUNT(*) n FROM live_locations WHERE updated_at>?').get(Date.now()-90000).n,activeWindowMinutes:15});
+          return json(res,200,{totalUsers:db.prepare('SELECT COUNT(*) n FROM users').get().n,activeUsers:db.prepare('SELECT COUNT(*) n FROM user_activity WHERE last_seen>?').get(cutoff).n,sharingNow:countActiveLocationShares(db),activeWindowMinutes:15});
         }
         if(req.method==='POST'&&key==='edit-venue'){
           const b=await body(req),id=String(b.id||''),name=String(b.name||'').trim().slice(0,100);

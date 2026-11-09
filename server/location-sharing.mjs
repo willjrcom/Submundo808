@@ -55,3 +55,14 @@ export function expireLocationShares(db,now=Date.now()){
  db.prepare('UPDATE location_preferences SET share_enabled=0,gps_enabled=0,updated_at=? WHERE share_enabled=1 AND (share_expires_at IS NULL OR share_expires_at<=? OR share_event_id IS NULL OR NOT EXISTS (SELECT 1 FROM events WHERE id=share_event_id AND location_sharing_enabled=1))').run(now,now);
  db.prepare('DELETE FROM live_locations WHERE updated_at<? OR user_id NOT IN (SELECT user_id FROM location_preferences WHERE share_enabled=1 AND share_expires_at>?)').run(now-LOCATION_FRESH_MS,now);
 }
+
+// A mesma definição da API /api/location/me: coordenadas recentes e consentimento não expirado.
+export function countActiveLocationShares(db,now=Date.now()){
+ const row=db.prepare('SELECT COUNT(DISTINCT l.user_id) AS n FROM live_locations l '+
+  'JOIN location_preferences p ON p.user_id=l.user_id '+
+  'JOIN events e ON e.id=p.share_event_id '+
+  'WHERE l.updated_at>? AND l.updated_at<=? AND p.share_enabled=1 AND p.gps_enabled=1 '+
+  'AND p.share_expires_at>? AND e.location_sharing_enabled=1')
+  .get(now-LOCATION_FRESH_MS,now,now);
+ return Number(row?.n||0);
+}
