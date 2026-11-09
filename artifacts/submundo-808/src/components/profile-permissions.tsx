@@ -34,6 +34,9 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  const [tutorialOpen,setTutorialOpen]=useState(false);
  const tutorialCloseRef=useRef<HTMLButtonElement|null>(null);
  const [locationActive,setLocationActive]=useState(false);
+ const [localGpsActive,setLocalGpsActive]=useState(()=>{
+  try{return !!localStorage.getItem('submundo-gps-local-enabled-event-v1');}catch{return false;}
+ });
  const [locationBusy,setLocationBusy]=useState(false),[locationLoading,setLocationLoading]=useState(true);
  const [locationMessage,setLocationMessage]=useState(''),[locationError,setLocationError]=useState('');
  const [stopPending,setStopPending]=useState(()=>{try{return localStorage.getItem('submundo-gps-stop-pending')==='1';}catch{return false;}});
@@ -110,6 +113,8 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
  async function stopLocationSession(){
   if(locationBusy||locationSyncRef.current)return;
   setLocationBusy(true);setLocationError('');setLocationMessage('');
+  try{localStorage.removeItem('submundo-gps-local-enabled-event-v1');}catch{}
+  setLocalGpsActive(false);
   try{localStorage.setItem('submundo-gps-stop-pending','1');}catch{}
   window.dispatchEvent(new Event('submundo-location-stop'));
   setLocationActive(false);setStopPending(true);
@@ -287,9 +292,9 @@ export default function ProfilePermissions({onClose}:{onClose?:()=>void}){
   })}
   
   {locationLoading&&<p role="status" className="text-xs text-white/45">Consultando sessão de localização...</p>}
-  {locationActive&&<section aria-label="Sessão de localização ativa" className="space-y-2 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.05] p-3">
+  {(locationActive||localGpsActive)&&<section aria-label="Sessão de localização ativa" className="space-y-2 rounded-xl border border-[#c4ff40]/25 bg-[#c4ff40]/[.05] p-3">
    <p className="font-bold text-[#c4ff40]">Localização ativa</p>
-   <p className="text-xs leading-relaxed text-white/65">Sua posição é compartilhada com amigos e contribui para Estatísticas agregadas até o fim da festa. É possível encerrar a sessão a qualquer momento.</p>
+   <p className="text-xs leading-relaxed text-white/65">{locationActive?'Compartilhamento permitido para esta festa. É possível encerrar a sessão a qualquer momento.':'GPS ativado neste aparelho. Não há compartilhamento confirmado com amigos.'}</p>
    <button type="button" disabled={locationBusy} onClick={()=>void stopLocationSession()} className="rounded-xl border border-amber-400/45 px-3 py-2.5 text-xs font-bold text-amber-200 disabled:opacity-50">{locationBusy?'Encerrando...':'Encerrar localização e compartilhamento'}</button>
   </section>}
   {locationMessage&&<p role="status" className="rounded-lg border border-white/15 p-3 text-xs text-white/70">{locationMessage}</p>}
