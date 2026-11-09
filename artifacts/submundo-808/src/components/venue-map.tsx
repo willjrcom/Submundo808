@@ -272,7 +272,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     const requestedPrivacyRevision=privacyRevision.current;
     const requestedStatisticsRevision=statisticsRevision.current;
     setGpsSessionChecking(true);
-    void requestLocation('preferences').then(p=>{
+    void requestLocation('preferences').then(async p=>{
      if(!alive)return;
      setGpsSessionError('');
      if(statisticsRevision.current===requestedStatisticsRevision){
@@ -302,11 +302,11 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
       }
      }else if(!stopPending){
       // Mesmo que a festa tenha acabado, recuperar o GPS local previamente ativado.
-      return resumeLocalGpsIfAllowed();
+      await resumeLocalGpsIfAllowed();
      }
-    }).catch(error=>{
+    }).catch(async error=>{
      if(alive)setGpsSessionError(error instanceof Error?error.message:'Não foi possível consultar a sessão de localização.');
-     return resumeLocalGpsIfAllowed();
+     await resumeLocalGpsIfAllowed();
     }).finally(()=>{
      if(alive)setGpsSessionChecking(false);
     });
