@@ -51,7 +51,10 @@ jobs:
             tests/map-editor-error-recovery.test.mjs \
             tests/map-area-editor.test.mjs \
             tests/entity-crud-ui.test.mjs \
-            tests/event-save-validation.test.mjs
+            tests/event-save-validation.test.mjs \
+            tests/event-usage.test.mjs
+      - name: Check backend syntax
+        run: node --check server/index.mjs
       - name: Build frontend
         env:
           PORT: '3000'
