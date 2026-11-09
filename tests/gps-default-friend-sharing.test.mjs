@@ -119,7 +119,7 @@ test('refresh restaura a sessão sem novo consentimento, sem falsificar confirma
  assert.match(map,/sharing\?resumeSavedGps:hasLocalGpsIntent\(activeEventId\)\|\|gpsSessionError\?toggleLocalPosition:toggleUnifiedGps/);
  assert.match(map,/const resumeSavedGps=\(\)=>\{/);
  assert.match(map,/setGpsSessionError\(''\);startGps\(\)/);
- assert.match(map,/return resumeLocalGpsIfAllowed\(\)/);
+ assert.match(map,/await resumeLocalGpsIfAllowed\(\)/);
  assert.match(map,/window.removeEventListener\('online',retryRestoreOnOnline\)/);
 });
 test('sem evento selecionado o reload não revoga compartilhamento existente',()=>{
@@ -135,7 +135,7 @@ test('GPS persistido oculta os avisos no topo e não reinicia compartilhamento e
  assert.match(map,/const resumeLocalGpsIfAllowed=async\(\)=>\{/);
  assert.match(map,/permission\?\.state!=='granted'/);
  assert.match(map,/autoShareSuppressed\.current=true;\s*toggleLocalPosition\(\)/);
- assert.match(map,/else if\(!stopPending\)\{[\s\S]*?return resumeLocalGpsIfAllowed\(\)/);
+ assert.match(map,/else if\(!stopPending\)\{[\s\S]*?await resumeLocalGpsIfAllowed\(\)/);
  assert.match(map,/\{!gpsSessionChecking&&!tracking&&!location&&!localGpsEnabled&&!gpsStarting&&watch.current===null/);
  assert.doesNotMatch(map,/Estado do compartilhamento de localização/);
  assert.doesNotMatch(map,/O painel conta somente localizações recebidas pelo servidor/);
