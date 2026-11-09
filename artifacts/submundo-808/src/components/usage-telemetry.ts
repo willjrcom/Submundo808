@@ -8,7 +8,7 @@ let temporaryVisitorId = '';
 let temporarySessionId = '';
 
 function enabled(): boolean {
-  return navigator.onLine && navigator.doNotTrack !== '1' && window.doNotTrack !== '1';
+  return navigator.onLine && navigator.doNotTrack !== '1';
 }
 function visitorId(): string {
   if (temporaryVisitorId) return temporaryVisitorId;
