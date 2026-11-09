@@ -131,6 +131,10 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   const [tracking,setTracking]=useState(false);
   const [sharing,setSharing]=useState(false);
   const [serverSharing,setServerSharing]=useState<boolean|null>(null);
+  // A preferência de compartilhamento sobrevive ao reload; nunca oferecer uma nova
+  // autorização antes de consultar o estado persistido no servidor.
+  const [gpsSessionChecking,setGpsSessionChecking]=useState(true);
+  const [gpsSessionError,setGpsSessionError]=useState('');
   // Device-only GPS never calls the server or activates friend sharing.
   const [localGpsEnabled,setLocalGpsEnabled]=useState(false);
   const [localGpsError,setLocalGpsError]=useState('');
@@ -239,31 +243,49 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
      if(alive)setGpsPermissionRequired(true);
     }
    };
-   const requestedPrivacyRevision=privacyRevision.current;
-   const requestedStatisticsRevision=statisticsRevision.current;
-   void requestLocation('preferences').then(p=>{
-    if(!alive)return;
-    if(statisticsRevision.current===requestedStatisticsRevision){
-     statisticsEnabledRef.current=p.analyticsEnabled===true;
-     statisticsEventRef.current=p.analyticsEnabled===true?p.eventId||null:null;
-    }
-    if(privacyRevision.current===requestedPrivacyRevision){
-     dontShareRef.current=p.dontShareWithFriends===true;
-     setDontShareWithFriends(dontShareRef.current);
-    }
-    setSharingExpiresAt(p.expiresAt||null);
-    if(p.shareEnabled&&!dontShareRef.current&&localStorage.getItem('submundo-gps-stop-pending')!=='1'){
-     if(!activeEventRef.current||p.eventId!==activeEventRef.current){
-      // Do not resume GPS from a different festival or a legacy unscoped session.
-      void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
-      void requestLocation('stop',{}).catch(()=>{});
-      setSharingExpiresAt(null);
-     }else{
-      sharingRef.current=true;setSharing(true);
-      void checkPermission();
+   const restoreSharing=()=>{
+    const requestedPrivacyRevision=privacyRevision.current;
+    const requestedStatisticsRevision=statisticsRevision.current;
+    setGpsSessionChecking(true);
+    void requestLocation('preferences').then(p=>{
+     if(!alive)return;
+     setGpsSessionError('');
+     if(statisticsRevision.current===requestedStatisticsRevision){
+      statisticsEnabledRef.current=p.analyticsEnabled===true;
+      statisticsEventRef.current=p.analyticsEnabled===true?p.eventId||null:null;
      }
-    }
-   }).catch(()=>{});
+     if(privacyRevision.current===requestedPrivacyRevision){
+      dontShareRef.current=p.dontShareWithFriends===true;
+      setDontShareWithFriends(dontShareRef.current);
+     }
+     setSharingExpiresAt(p.expiresAt||null);
+     let stopPending=false;
+     try{stopPending=localStorage.getItem('submundo-gps-stop-pending')==='1';}catch{}
+     if(p.shareEnabled&&!dontShareRef.current&&!stopPending&&!autoShareSuppressed.current){
+      if(!activeEventRef.current){
+       // Sem seleção de evento, não revogar por engano a sessão válida de outra aba.
+       setGpsSessionError('Selecione o evento em que você iniciou o compartilhamento para retomar o GPS.');
+      }else if(p.eventId!==activeEventRef.current){
+       // Trocar de festa não pode transmitir coordenadas para o evento errado.
+       void requestLocation('preferences',{gpsEnabled:false,shareEnabled:false}).catch(()=>{});
+       void requestLocation('stop',{}).catch(()=>{});
+       setSharingExpiresAt(null);
+      }else{
+       // Reaproveitar o consentimento válido; com permissão concedida, o GPS
+       // e os heartbeats voltam sem outro clique nem novo POST /preferences.
+       sharingRef.current=true;setSharing(true);setServerSharing(null);
+       void checkPermission();
+      }
+     }
+    }).catch(error=>{
+     if(alive)setGpsSessionError(error instanceof Error?error.message:'Não foi possível consultar a sessão de localização.');
+    }).finally(()=>{
+     if(alive)setGpsSessionChecking(false);
+    });
+   };
+   restoreSharing();
+   const retryRestoreOnOnline=()=>{if(!sharingRef.current)restoreSharing();};
+   window.addEventListener('online',retryRestoreOnOnline);
    const refresh=async()=>{
     const eventId=activeEventRef.current;
     if(!eventId){if(alive){setFriends([]);setFriendsReady(true);}return;}
@@ -290,6 +312,7 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
    },20000);
    return()=>{
     alive=false;window.clearInterval(refreshTimer);window.clearInterval(heartbeat);
+    window.removeEventListener('online',retryRestoreOnOnline);
     if(permissionStatus)permissionStatus.onchange=null;
     gpsAttemptId.current++;
     gpsActivatingRef.current=false;
@@ -573,7 +596,18 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
     setFriendError('GPS local ativo, mas compartilhamento não iniciado: '+(error instanceof Error?error.message:'Sem conexão com o servidor.'));
    }
   };
+  const resumeSavedGps=()=>{
+   // O gesto do usuário só é necessário quando a permissão não persistiu no navegador.
+   // A preferência de compartilhar já foi validada no servidor: não reautorizar.
+   if(gpsSessionChecking||!sharingRef.current||gpsStarting||watch.current!==null)return;
+   if(!window.isSecureContext||!navigator.geolocation){
+    setGeoError('GPS indisponível. Confira a permissão do navegador e a conexão HTTPS.');
+    return;
+   }
+   setGpsSessionError('');startGps();
+  };
   const toggleUnifiedGps=()=>{
+   if(gpsSessionChecking)return;
    if(localGpsWatch.current!==null&&!sharingRef.current){
     toggleLocalPosition();
     return;
@@ -697,13 +731,15 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <div className="flex flex-wrap items-center gap-2">
    <Navigation size={16} className="shrink-0 text-[#c4ff40]"/>
    <p className="min-w-0 flex-1 text-xs font-bold">Minha localização</p>
-   <button type="button" onClick={toggleUnifiedGps} disabled={gpsStarting||localGpsEnabled}
+   <button type="button" onClick={sharing?resumeSavedGps:gpsSessionError?toggleLocalPosition:toggleUnifiedGps}
+    disabled={gpsSessionChecking||gpsStarting||localGpsEnabled||(sharing&&watch.current!==null)}
     className="shrink-0 rounded-lg bg-[#c4ff40] px-3 py-2 text-[11px] font-bold text-black disabled:opacity-60">
-    {gpsStarting||localGpsEnabled?'Ativando...':activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar e compartilhar'}
+    {gpsSessionChecking?'Verificando sessão...':sharing?(gpsStarting?'Retomando GPS...':'Retomar GPS'):gpsSessionError?'GPS local':localGpsEnabled?'Ativando...':activeEvent?.location_sharing_enabled!==1||authRequired?'Ativar GPS':'Ativar e compartilhar'}
    </button>
   </div>
-  <p className="mt-1.5 text-[11px] leading-snug text-white/60">{activeEvent?.location_sharing_enabled!==1?'Sua posição fica só neste aparelho; o evento não permite compartilhar.':authRequired?'Entre na sua conta para compartilhar com amigos. O GPS local continua disponível.':'Compartilhe com amigos e contribua para estatísticas agregadas até o fim da festa. Desative em Perfil → Permissões.'}</p>
-  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Obtendo a posição do aparelho...</p>}
+  <p className="mt-1.5 text-[11px] leading-snug text-white/60">{gpsSessionChecking?'Verificando se o compartilhamento anterior continua válido.':sharing?'Sua sessão de compartilhamento foi restaurada. O GPS será retomado automaticamente quando autorizado pelo navegador.':gpsSessionError?'Não foi possível verificar a sessão; o GPS local continua disponível.':activeEvent?.location_sharing_enabled!==1?'Sua posição fica só neste aparelho; o evento não permite compartilhar.':authRequired?'Entre na sua conta para compartilhar com amigos. O GPS local continua disponível.':'Compartilhe com amigos e contribua para estatísticas agregadas até o fim da festa. Desative em Perfil → Permissões.'}</p>
+  {gpsSessionError&&<p role="status" className="mt-2 text-xs text-amber-300">{gpsSessionError}</p>}
+  {gpsStarting&&<p className="mt-2 text-xs text-white/60">Obtendo sua posição pelo GPS...</p>}
   {localGpsError&&<p role="status" className="mt-2 text-xs text-amber-300">{localGpsError}</p>}
   {geoError&&<p role="status" className="mt-2 text-xs text-amber-300">{geoError}</p>}
   {friendError&&sharing&&<p className="mt-2 text-xs text-amber-300">Os amigos não puderam ser atualizados. O GPS local continua funcionando.</p>}
@@ -712,9 +748,9 @@ export default function VenueMap({activeEventId,onChooseEvent,focusRequest}:{act
   <h2 className="text-xl font-black uppercase">Mapa do evento</h2>
   {activeEvent&&<span className="max-w-[65%] truncate rounded-lg border border-[#c4ff40]/25 bg-[#c4ff40]/5 px-2 py-1 text-[11px] font-semibold text-[#c4ff40]" title={displayLabel(activeEvent.name)}>{displayLabel(activeEvent.name)}</span>}
  </div>
- {(tracking||location||localGpsEnabled||sharing||gpsStarting)&&<div aria-label="Estado do compartilhamento de localização"
+ {(gpsSessionChecking||tracking||location||localGpsEnabled||sharing||gpsStarting)&&<div aria-label="Estado do compartilhamento de localização"
    className={'rounded-xl border px-3 py-2.5 text-xs '+(sharing&&serverSharing===true?'border-[#c4ff40]/30 bg-[#c4ff40]/[.06] text-[#c4ff40]':'border-amber-400/25 bg-amber-400/[.06] text-amber-100')}>
-   <p className="font-bold">{sharing&&serverSharing===true?'Localização compartilhada — confirmada pelo servidor':sharing&&serverSharing===null?'Verificando se o servidor está recebendo o GPS...':'GPS ativo apenas neste aparelho — sem compartilhamento confirmado'}</p>
+   <p className="font-bold">{gpsSessionChecking?'Verificando sessão de compartilhamento...':sharing&&serverSharing===true?'Localização compartilhada — confirmada pelo servidor':sharing&&serverSharing===null?'Retomando o compartilhamento salvo...':sharing?'Compartilhamento autorizado — aguardando GPS recente':'GPS ativo apenas neste aparelho — sem compartilhamento confirmado'}</p>
    <p className="mt-1 text-white/60">O painel conta somente localizações recebidas pelo servidor nos últimos 90 segundos. Mostrar sua posição no mapa não significa compartilhá-la.</p>
    {friendError&&<p role="alert" className="mt-2 text-amber-200">{friendError}</p>}
    {geoError&&<p role="status" className="mt-2 text-amber-200">{geoError}</p>}
