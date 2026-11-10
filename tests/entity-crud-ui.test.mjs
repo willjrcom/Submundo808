@@ -18,6 +18,6 @@ test('backend still protects related venues and maps against direct delete reque
  assert.match(server,/entity==='map'&&db.prepare\('SELECT 1 FROM event_maps WHERE map_id=\?'/);
  assert.match(server,/entity==='venue'&&\(db.prepare\('SELECT 1 FROM venue_maps WHERE venue_id=\?'/);
 });
-test('venue search still checks the legacy full address',()=>{
- assert.match(server,/OR address LIKE \? ESCAPE/);
+test('venue search still checks the legacy full address using normalized matching',()=>{
+ assert.match(server,/matchesSearch\(\[item\.name,item\.city,item\.street,item\.neighborhood,item\.postal_code,item\.address\],q\)/);
 });
