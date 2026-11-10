@@ -1,4 +1,5 @@
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
+import {matchesSearch} from './search-normalize.mjs';
 
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export class AdminAccessError extends Error{
@@ -60,9 +61,8 @@ export async function handleAdminAccess({
    requireOwner(db,actor);
    const q=String(url?.searchParams.get('q')||'').trim();
    if(q.length<2||q.length>80)return {status:200,body:{items:[]}};
-   const escaped=q.toLowerCase().replace(/[\\%_]/g,'\\$&');
-   const items=db.prepare("SELECT u.id,u.name,u.email FROM users u LEFT JOIN admin_users a ON a.user_id=u.id WHERE a.user_id IS NULL AND (LOWER(u.name) LIKE ? ESCAPE '\\' OR LOWER(u.email) LIKE ? ESCAPE '\\') ORDER BY u.name LIMIT 15")
-    .all('%'+escaped+'%','%'+escaped+'%');
+   const items=db.prepare("SELECT u.id,u.name,u.email FROM users u LEFT JOIN admin_users a ON a.user_id=u.id WHERE a.user_id IS NULL ORDER BY u.name").all()
+    .filter(item=>matchesSearch([item.name,item.email],q)).slice(0,15);
    return {status:200,body:{items}};
   }
   if(key!=='admins'||method!=='POST')return {status:405,body:{error:'Operação não permitida.'}};

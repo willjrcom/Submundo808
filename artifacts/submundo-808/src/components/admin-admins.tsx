@@ -1,5 +1,6 @@
 import {useEffect,useState,type FormEvent} from 'react';
 import {Check,Copy,History,Plus,Search,Shield,ShieldCheck,Trash2,UserRound,X} from 'lucide-react';
+import {matchesSearch} from '../lib/search-normalize';
 
 type Role='owner'|'admin';
 type Admin={id:string;name:string;email:string;role:Role;created_at:number;granted_by?:string|null};
@@ -33,7 +34,7 @@ export default function AdminAdmins({currentUserId}:{currentUserId:string}){
  const [created,setCreated]=useState<Created|null>(null),[copied,setCopied]=useState(false);
  const [showAudit,setShowAudit]=useState(false),[history,setHistory]=useState<Log[]>([]),[historyError,setHistoryError]=useState('');
  const isOwner=state?.role==='owner';
- const filtered=(state?.items||[]).filter(item=>(item.name+' '+item.email+' '+roleLabel(item.role)).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+ const filtered=(state?.items||[]).filter(item=>matchesSearch([item.name,item.email,roleLabel(item.role)],search));
 
  async function reload(){
   setLoadError('');

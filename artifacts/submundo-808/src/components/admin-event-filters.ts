@@ -1,3 +1,4 @@
+import {normalizeSearch} from '../lib/search-normalize';
 export type EventPeriod='upcoming'|'today'|'past'|'all';
 export type EventStatus='live'|'upcoming'|'past'|'undated';
 export type EventRecord={id:string;name:string;venue_id?:string;starts_at?:string;ends_at?:string;map_ids?:string[];lineup?:unknown[]};
@@ -15,13 +16,12 @@ export function isEventOnDay(event:EventRecord,day:string):boolean{
  const end=parse(event.ends_at);const last=end&&end.getTime()>start.getTime()?end:start;
  return localDay(start)<=day&&day<=localDay(last);
 }
-const fold=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
 export function filterAdminEvents<T extends EventRecord>(events:T[],filters:EventFilters,venues:{id:string;name:string}[],now=new Date()):T[]{
- const today=localDay(now),query=fold(filters.search.trim()),venueById=new Map(venues.map(v=>[v.id,v.name]));
+ const today=localDay(now),query=normalizeSearch(filters.search),venueById=new Map(venues.map(v=>[v.id,v.name]));
  return events.filter(event=>{
   if(filters.venueId&&event.venue_id!==filters.venueId)return false;
   if(filters.month&&!event.starts_at?.startsWith(filters.month))return false;
-  if(query&&!fold(event.name+' '+(venueById.get(event.venue_id||'')||'')).includes(query))return false;
+  if(query&&!normalizeSearch(event.name+' '+(venueById.get(event.venue_id||'')||'')).includes(query))return false;
   const status=eventStatus(event,now);
   if(filters.period==='upcoming'&&status!=='upcoming'&&status!=='live')return false;
   if(filters.period==='past'&&status!=='past')return false;

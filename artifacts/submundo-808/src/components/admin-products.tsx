@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import PageLoading from './page-loading';
+import {matchesSearch} from '../lib/search-normalize';
 import useMinimumLoading from './use-minimum-loading';
 type Product={id:string;name:string;description:string;category:string;default_price_cents:number};
 async function api(key:string,data?:object){const r=await fetch('/api/admin/'+key,{method:data?'POST':'GET',headers:{'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const j=await r.json();if(!r.ok)throw Error(j.error||'Erro');return j;}
@@ -51,7 +52,7 @@ export function EventMenuEditor({eventId,onBack}:{eventId:string;onBack?:()=>voi
   return()=>{active=false;};
  },[eventId]);
  const categories=[...new Set(products.map(p=>p.category))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
- const visible=products.filter(p=>(!category||p.category===category)&&(!query||[p.name,p.description,p.category].some(x=>x.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')))));
+ const visible=products.filter(p=>(!category||p.category===category)&&(!query||matchesSearch([p.name,p.description,p.category],query)));
  const chosen=Object.keys(selected).length;
  const mark=(id:string,enabled:boolean)=>setSelected(old=>{const next={...old};if(enabled)next[id]=old[id]||{price:''};else delete next[id];return next;});
  const markCategory=(cat:string,enabled:boolean)=>setSelected(old=>{const next={...old};for(const p of products.filter(x=>x.category===cat)){if(enabled)next[p.id]=next[p.id]||{price:''};else delete next[p.id];}return next;});

@@ -1,4 +1,5 @@
 import {updateEventExtras} from './event-edit-extras.mjs';
+import {matchesSearch} from './search-normalize.mjs';
 import {applyEventLocationSharing} from './event-location-sharing.mjs';
 import {venueMediaFields} from './venue-media.mjs';
 import {hasSubmittedReview,insertReviewOnce} from './review-once.mjs';
@@ -675,14 +676,16 @@ http.createServer(async (req,res)=>{
         }
         if(req.method==='GET'&&key==='search-venues'){
           const q=String(url.searchParams.get('q')||'').trim().slice(0,100);
-          const text='%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%';
-          const items=db.prepare("SELECT * FROM venues WHERE ?='' OR name LIKE ? ESCAPE '\\' OR city LIKE ? ESCAPE '\\' OR street LIKE ? ESCAPE '\\' OR neighborhood LIKE ? ESCAPE '\\' OR postal_code LIKE ? ESCAPE '\\' OR address LIKE ? ESCAPE '\\' ORDER BY name COLLATE NOCASE LIMIT 200").all(q,text,text,text,text,text,text);
+          const items=db.prepare('SELECT * FROM venues ORDER BY name COLLATE NOCASE').all()
+            .filter(item=>matchesSearch([item.name,item.city,item.street,item.neighborhood,item.postal_code,item.address],q))
+            .slice(0,200);
           return json(res,200,{items});
         }
         if(req.method==='GET'&&key==='products'){
-          const q=String(url.searchParams.get('q')||'').trim().slice(0,120).toLowerCase(),category=String(url.searchParams.get('category')||'').trim().slice(0,60);
-          const pattern='%'+q.replace(/[\\%_]/g,c=>'\\'+c)+'%';
-          return json(res,200,{items:db.prepare("SELECT * FROM products WHERE (?='' OR lower(name) LIKE ? ESCAPE '\\' OR lower(description) LIKE ? ESCAPE '\\' OR lower(category) LIKE ? ESCAPE '\\') AND (?='' OR category=?) ORDER BY category,name").all(q,pattern,pattern,pattern,category,category)});
+          const q=String(url.searchParams.get('q')||'').trim().slice(0,120),category=String(url.searchParams.get('category')||'').trim().slice(0,60);
+          const items=db.prepare("SELECT * FROM products WHERE (?='' OR category=?) ORDER BY category,name").all(category,category)
+            .filter(item=>matchesSearch([item.name,item.description,item.category],q));
+          return json(res,200,{items});
         }
         if(req.method==='GET'&&key==='event-products'){const id=String(url.searchParams.get('event_id')||'');return json(res,200,{items:db.prepare('SELECT product_id,price_cents FROM event_products WHERE event_id=?').all(id)});}
         if(req.method==='POST'&&key==='save-product'){
